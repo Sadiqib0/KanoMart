@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kano Mart | Local Marketplace for Kano</title>
+    <meta
+      name="description"
+      content="Kano Mart is a bilingual English and Hausa marketplace for food, groceries, fashion, children school items, and everyday essentials in Kano."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Kano Mart home">
+        <span class="brand-mark" aria-hidden="true">KM</span>
+        <span>
+          <strong>Kano Mart</strong>
+          <small data-en="Kano marketplace" data-ha="Kasuwar Kano">Kano marketplace</small>
+        </span>
+      </a>
+
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <a href="#categories" data-en="Categories" data-ha="Rukunai">Categories</a>
+        <a href="#payments" data-en="Payments" data-ha="Biya">Payments</a>
+        <a href="#vendor" data-en="Vendors" data-ha="Dillalai">Vendors</a>
+        <a href="#admin" data-en="Admin" data-ha="Admin">Admin</a>
+      </nav>
+
+      <div class="header-actions">
+        <div class="language-toggle" role="group" aria-label="Choose language">
+          <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">
+            EN
+          </button>
+          <button class="language-option" type="button" data-language="ha" aria-pressed="false">
+            HA
+          </button>
+        </div>
+
+        <button
+          class="icon-button cart-button"
+          type="button"
+          aria-label="Cart"
+          data-aria-en="Cart"
+          data-aria-ha="Kwando"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <path d="M6.2 6h15l-1.7 8.1a2 2 0 0 1-2 1.6H9.1a2 2 0 0 1-2-1.7L5.7 3.8H3" />
+            <circle cx="9.8" cy="20" r="1.5" />
+            <circle cx="17.2" cy="20" r="1.5" />
+          </svg>
+          <span class="cart-count" data-cart-count>0</span>
+        </button>
+
+        <a class="vendor-button" href="#vendor" data-en="Register vendor" data-ha="Yi rajistar dan kasuwa">
+          Register vendor
+        </a>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <img
+          class="hero-image"
+          src="assets/kano-market-hero.png"
+          alt="A Kano marketplace counter with groceries, fabrics, school supplies, and local essentials"
+          data-alt-en="A Kano marketplace counter with groceries, fabrics, school supplies, and local essentials"
+          data-alt-ha="Teburin kasuwar Kano mai kayan masarufi, yaduka, kayan makaranta, da abubuwan yau da kullum"
+        />
+        <div class="hero-shade" aria-hidden="true"></div>
+
+        <div class="hero-content">
+          <p class="eyebrow" data-en="Trusted local vendors across Kano" data-ha="Amintattun dillalai a fadin Kano">
+            Trusted local vendors across Kano
+          </p>
+          <h1 id="hero-title" data-en="Welcome to Kano Mart" data-ha="Barka da zuwa Kano Mart">
+            Welcome to Kano Mart
+          </h1>
+          <p
+            class="hero-copy"
+            data-en="Search and buy food, groceries, fashion, school items, and everyday essentials from trusted Kano vendors."
+            data-ha="Nemo ka saya abinci, kayan masarufi, kaya, kayan makaranta, da abubuwan yau da kullum daga amintattun dillalan Kano."
+          >
+            Search and buy food, groceries, fashion, school items, and everyday essentials from trusted Kano vendors.
+          </p>
+
+          <form class="search-form" id="searchForm" role="search">
+            <label class="sr-only" for="marketSearch">Search for any desired item</label>
+            <svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+              <circle cx="10.8" cy="10.8" r="7.2" />
+              <path d="m16.1 16.1 4.4 4.4" />
+            </svg>
+            <input
+              id="marketSearch"
+              type="search"
+              autocomplete="off"
+              placeholder="Search rice, yaduka, school bags, perfume..."
+              data-placeholder-en="Search rice, yaduka, school bags, perfume..."
+              data-placeholder-ha="Nemi shinkafa, yaduka, jakar makaranta, turare..."
+              required
+            />
+            <button type="submit" data-en="Search" data-ha="Nema">Search</button>
+          </form>
+
+          <div class="quick-searches" aria-label="Popular quick searches">
+            <button type="button" data-query-en="rice" data-query-ha="shinkafa" data-en="Rice" data-ha="Shinkafa">
+              Rice
+            </button>
+            <button type="button" data-query-en="fabrics" data-query-ha="yaduka" data-en="Fabrics" data-ha="Yaduka">
+              Fabrics
+            </button>
+            <button
+              type="button"
+              data-query-en="school bags"
+              data-query-ha="jakunkunan makaranta"
+              data-en="School bags"
+              data-ha="Jakunkunan makaranta"
+            >
+              School bags
+            </button>
+            <button type="button" data-query-en="perfumes" data-query-ha="turare" data-en="Perfumes" data-ha="Turare">
+              Perfumes
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="results-section" id="results" aria-live="polite">
+        <div class="section-heading">
+          <p class="eyebrow" data-en="Marketplace search" data-ha="Neman kaya">Marketplace search</p>
+          <h2 id="resultsTitle" data-en="Welcome to Kano Mart" data-ha="Barka da zuwa Kano Mart">
+            Welcome to Kano Mart
+          </h2>
+          <p
+            id="resultsIntro"
+            data-en="Search for an item to see local results. Every completed search helps Kano Mart understand demand."
+            data-ha="Nemi kaya domin ganin sakamako. Kowane bincike yana taimakawa Kano Mart fahimtar bukatun mutane."
+          >
+            Search for an item to see local results. Every completed search helps Kano Mart understand demand.
+          </p>
+        </div>
+
+        <div class="result-status" id="resultStatus" hidden></div>
+        <div class="product-grid" id="resultsGrid"></div>
+        <div class="empty-state" id="emptyState" hidden>
+          <strong data-en="Search saved for Kano Mart" data-ha="An ajiye binciken domin Kano Mart">
+            Search saved for Kano Mart
+          </strong>
+          <p
+            data-en="We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it."
+            data-ha="Ba mu samu wannan kaya yanzu ba. An ajiye bincikenka domin Kano Mart ta tanadi wannan kaya daga baya."
+          >
+            We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it.
+          </p>
+        </div>
+      </section>
+
+      <section class="categories-section" id="categories">
+        <div class="section-heading">
+          <p class="eyebrow" data-en="Shop by need" data-ha="Saya bisa bukata">Shop by need</p>
+          <h2 data-en="Main categories" data-ha="Manyan rukunai">Main categories</h2>
+          <p
+            data-en="Clear bilingual categories help customers find familiar items without technical stress."
+            data-ha="Rukunai biyu da Turanci da Hausa suna saukaka wa kwastomomi gano kayan da suke so."
+          >
+            Clear bilingual categories help customers find familiar items without technical stress.
+          </p>
+        </div>
+
+        <div class="category-grid">
+          <article class="category-card food-card">
+            <div class="category-topline">
+              <span class="category-kicker">A</span>
+              <h3 data-en="Food" data-ha="Abinci">Food</h3>
+            </div>
+            <ul>
+              <li data-en="Restaurants" data-ha="Gidajen Abinci">Restaurants</li>
+              <li data-en="Traditional dishes" data-ha="Abincin gargajiya">Traditional dishes</li>
+              <li data-en="Fast food and snacks" data-ha="Kayan ciye-ciye">Fast food and snacks</li>
+              <li data-en="Groceries" data-ha="Kayan masarufi">Groceries</li>
+            </ul>
+          </article>
+
+          <article class="category-card fashion-card">
+            <div class="category-topline">
+              <span class="category-kicker">B</span>
+              <h3 data-en="Fashion" data-ha="Kaya">Fashion</h3>
+            </div>
+            <ul>
+              <li data-en="Fabrics" data-ha="Yaduka">Fabrics</li>
+              <li data-en="Boutique clothes" data-ha="Kayan boutique">Boutique clothes</li>
+              <li data-en="Cosmetics" data-ha="Kayan kwalliya">Cosmetics</li>
+              <li data-en="Shoes" data-ha="Takalma">Shoes</li>
+              <li data-en="Caps" data-ha="Huluna">Caps</li>
+              <li data-en="Jallabiya" data-ha="Jallabiya">Jallabiya</li>
+              <li data-en="Watches" data-ha="Agogo">Watches</li>
+              <li data-en="Glasses" data-ha="Tabarau">Glasses</li>
+              <li data-en="Perfumes" data-ha="Turare">Perfumes</li>
+              <li data-en="Bags" data-ha="Jakunkuna">Bags</li>
+              <li data-en="Jewelry" data-ha="Kayan ado">Jewelry</li>
+            </ul>
+          </article>
+
+          <article class="category-card children-card">
+            <div class="category-topline">
+              <span class="category-kicker">C</span>
+              <h3 data-en="Children" data-ha="Yara">Children</h3>
+            </div>
+            <ul>
+              <li data-en="Schools and education" data-ha="Makarantu da ilimi">Schools and education</li>
+              <li data-en="Books" data-ha="Littattafai">Books</li>
+              <li data-en="School bags" data-ha="Jakunkunan makaranta">School bags</li>
+              <li data-en="Lunch box" data-ha="Akwatin abincin makaranta">Lunch box</li>
+              <li data-en="Children wears" data-ha="Kayan yara">Children wears</li>
+              <li data-en="Children shoes" data-ha="Takalman yara">Children shoes</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="payment-section" id="payments">
+        <div class="section-heading">
+          <p class="eyebrow" data-en="Simple and secure" data-ha="Sauki da tsaro">Simple and secure</p>
+          <h2 data-en="Payment options" data-ha="Hanyoyin biyan kudi">Payment options</h2>
+          <p
+            data-en="Customers can choose the payment style they already trust, with clear status updates after every order."
+            data-ha="Kwastomomi za su iya zabar hanyar biyan da suka saba amincewa da ita, tare da bayyanannen matsayin oda."
+          >
+            Customers can choose the payment style they already trust, with clear status updates after every order.
+          </p>
+        </div>
+
+        <div class="payment-layout">
+          <div class="payment-methods">
+            <article>
+              <span>01</span>
+              <h3 data-en="Card payment" data-ha="Biyan kati">Card payment</h3>
+              <p data-en="Debit and credit cards with instant confirmation." data-ha="Katin banki tare da tabbatarwa nan take.">
+                Debit and credit cards with instant confirmation.
+              </p>
+            </article>
+            <article>
+              <span>02</span>
+              <h3 data-en="Bank transfer" data-ha="Tura kudi ta banki">Bank transfer</h3>
+              <p
+                data-en="Transfer to a verified Kano Mart account with order matching."
+                data-ha="Tura kudi zuwa asusun Kano Mart da aka tabbatar tare da daidaita oda."
+              >
+                Transfer to a verified Kano Mart account with order matching.
+              </p>
+            </article>
+            <article>
+              <span>03</span>
+              <h3 data-en="USSD" data-ha="Lambar USSD">USSD</h3>
+              <p data-en="Pay from any supported phone without internet banking." data-ha="Biya daga kowace waya da ke goyon baya ba tare da bankin yanar gizo ba.">
+                Pay from any supported phone without internet banking.
+              </p>
+            </article>
+            <article>
+              <span>04</span>
+              <h3 data-en="Wallet" data-ha="Aljihun kudi">Wallet</h3>
+              <p data-en="Store balance for faster repeat purchases." data-ha="Ajiye kudi domin saurin sayayya a gaba.">
+                Store balance for faster repeat purchases.
+              </p>
+            </article>
+            <article>
+              <span>05</span>
+              <h3 data-en="Pay on delivery" data-ha="Biya idan an kawo">Pay on delivery</h3>
+              <p
+                data-en="Useful for first-time customers who want extra confidence."
+                data-ha="Yana taimaka wa sabbin kwastomomi su kara samun kwarin gwiwa."
+              >
+                Useful for first-time customers who want extra confidence.
+              </p>
+            </article>
+          </div>
+
+          <aside class="trust-panel" aria-label="Payment trust features">
+            <h3 data-en="Built for confidence" data-ha="An gina shi domin aminci">Built for confidence</h3>
+            <ul>
+              <li data-en="Verified vendors and order receipts" data-ha="Tabbatattun dillalai da takardar oda">
+                Verified vendors and order receipts
+              </li>
+              <li data-en="Clear paid, pending, and failed status" data-ha="Bayyanannen matsayin an biya, yana jira, ko ya gaza">
+                Clear paid, pending, and failed status
+              </li>
+              <li data-en="Support for local delivery confirmation" data-ha="Tallafin tabbatar da isarwa a cikin gida">
+                Support for local delivery confirmation
+              </li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <section class="vendor-section" id="vendor">
+        <div class="section-heading">
+          <p class="eyebrow" data-en="Vendor growth" data-ha="Ci gaban dillalai">Vendor growth</p>
+          <h2 data-en="Sell on Kano Mart" data-ha="Yi kasuwanci a Kano Mart">Sell on Kano Mart</h2>
+          <p
+            data-en="Vendors can register, list products, manage stock, receive orders, and update availability from one simple flow."
+            data-ha="Dillalai za su iya yin rajista, saka kaya, kula da adadi, karbar oda, da sabunta samuwa cikin sauki."
+          >
+            Vendors can register, list products, manage stock, receive orders, and update availability from one simple flow.
+          </p>
+        </div>
+
+        <div class="vendor-layout">
+          <div class="vendor-steps" aria-label="Vendor capabilities">
+            <article>
+              <h3 data-en="Register" data-ha="Rajista">Register</h3>
+              <p data-en="Submit business name, phone number, area, and product category." data-ha="Aika sunan kasuwanci, lambar waya, yanki, da rukunin kaya.">
+                Submit business name, phone number, area, and product category.
+              </p>
+            </article>
+            <article>
+              <h3 data-en="List products" data-ha="Saka kaya">List products</h3>
+              <p
+                data-en="Add product names, price, photos, delivery area, and tags."
+                data-ha="Saka sunan kaya, farashi, hotuna, yankin kai kaya, da alamomin nema."
+              >
+                Add product names, price, photos, delivery area, and tags.
+              </p>
+            </article>
+            <article>
+              <h3 data-en="Manage stock" data-ha="Kula da kaya">Manage stock</h3>
+              <p data-en="Update quantity, availability, and daily delivery readiness." data-ha="Sabunta adadi, samuwa, da shirin kai kaya na kullum.">
+                Update quantity, availability, and daily delivery readiness.
+              </p>
+            </article>
+            <article>
+              <h3 data-en="Receive orders" data-ha="Karbar oda">Receive orders</h3>
+              <p data-en="See customer requests, payment state, and delivery handoff status." data-ha="Duba bukatun kwastoma, matsayin biya, da matsayin mika kaya.">
+                See customer requests, payment state, and delivery handoff status.
+              </p>
+            </article>
+          </div>
+
+          <form class="vendor-form" id="vendorForm">
+            <h3 data-en="Vendor registration" data-ha="Rajistar dan kasuwa">Vendor registration</h3>
+            <label>
+              <span data-en="Business name" data-ha="Sunan kasuwanci">Business name</span>
+              <input type="text" name="businessName" required />
+            </label>
+            <label>
+              <span data-en="Phone number" data-ha="Lambar waya">Phone number</span>
+              <input type="tel" name="phone" required />
+            </label>
+            <label>
+              <span data-en="Market area" data-ha="Yankin kasuwa">Market area</span>
+              <input
+                type="text"
+                name="area"
+                placeholder="Kantin Kwari, Tarauni, Sabon Gari..."
+                data-placeholder-en="Kantin Kwari, Tarauni, Sabon Gari..."
+                data-placeholder-ha="Kantin Kwari, Tarauni, Sabon Gari..."
+                required
+              />
+            </label>
+            <label>
+              <span data-en="Main category" data-ha="Babban rukuni">Main category</span>
+              <select name="category" required>
+                <option value="" data-en="Choose" data-ha="Zaba">Choose</option>
+                <option value="food" data-en="Food" data-ha="Abinci">Food</option>
+                <option value="fashion" data-en="Fashion" data-ha="Kaya">Fashion</option>
+                <option value="children" data-en="Children" data-ha="Yara">Children</option>
+                <option value="essentials" data-en="Essentials" data-ha="Kayan yau da kullum">Essentials</option>
+              </select>
+            </label>
+            <button type="submit" data-en="Submit vendor request" data-ha="Aika bukatar rajista">
+              Submit vendor request
+            </button>
+            <p class="form-message" id="vendorMessage" role="status"></p>
+          </form>
+        </div>
+      </section>
+
+      <section class="admin-section" id="admin">
+        <div class="section-heading">
+          <p class="eyebrow" data-en="Admin intelligence" data-ha="Bayanan admin">Admin intelligence</p>
+          <h2 data-en="Admin dashboard" data-ha="Allon admin">Admin dashboard</h2>
+          <p
+            data-en="The admin can review search history, popular searches, failed searches, user demand trends, vendor performance, order records, and payment status."
+            data-ha="Admin zai iya duba tarihin bincike, shahararrun bincike, binciken da bai samu kaya ba, bukatun masu amfani, aikin dillalai, bayanan oda, da matsayin biyan kudi."
+          >
+            The admin can review search history, popular searches, failed searches, user demand trends, vendor performance,
+            order records, and payment status.
+          </p>
+        </div>
+
+        <div class="admin-metrics">
+          <article>
+            <span data-en="Total searches" data-ha="Jimillar bincike">Total searches</span>
+            <strong id="totalSearches">0</strong>
+          </article>
+          <article>
+            <span data-en="Failed searches" data-ha="Binciken da bai samu ba">Failed searches</span>
+            <strong id="failedSearches">0</strong>
+          </article>
+          <article>
+            <span data-en="Saved vendors" data-ha="Dillalan da aka ajiye">Saved vendors</span>
+            <strong id="savedVendors">0</strong>
+          </article>
+          <article>
+            <span data-en="Top demand" data-ha="Babbar bukata">Top demand</span>
+            <strong id="topDemand">None</strong>
+          </article>
+        </div>
+
+        <div class="admin-actions">
+          <button type="button" id="exportSearches" data-en="Export searches" data-ha="Fitar da bincike">
+            Export searches
+          </button>
+          <button type="button" id="clearSearches" class="secondary-action" data-en="Clear prototype data" data-ha="Goge bayanan gwaji">
+            Clear prototype data
+          </button>
+        </div>
+
+        <div class="admin-grid">
+          <article class="admin-panel">
+            <h3 data-en="Popular searches" data-ha="Shahararrun bincike">Popular searches</h3>
+            <div id="popularSearches" class="rank-list"></div>
+          </article>
+
+          <article class="admin-panel">
+            <h3 data-en="Failed searches" data-ha="Binciken da bai samu ba">Failed searches</h3>
+            <div id="failedSearchList" class="rank-list"></div>
+          </article>
+
+          <article class="admin-panel demand-panel">
+            <h3 data-en="User demand trends" data-ha="Yanayin bukatun masu amfani">User demand trends</h3>
+            <div id="demandTrends" class="trend-list"></div>
+          </article>
+
+          <article class="admin-panel">
+            <h3 data-en="Vendor performance" data-ha="Aikin dillalai">Vendor performance</h3>
+            <div class="record-list" id="vendorPerformance"></div>
+          </article>
+
+          <article class="admin-panel">
+            <h3 data-en="Order records" data-ha="Bayanan oda">Order records</h3>
+            <div class="record-list" id="orderRecords"></div>
+          </article>
+
+          <article class="admin-panel">
+            <h3 data-en="Payment status" data-ha="Matsayin biyan kudi">Payment status</h3>
+            <div class="record-list" id="paymentStatus"></div>
+          </article>
+        </div>
+
+        <div class="search-table-wrap">
+          <table>
+            <caption data-en="Search history" data-ha="Tarihin bincike">Search history</caption>
+            <thead>
+              <tr>
+                <th scope="col" data-en="Query" data-ha="Bincike">Query</th>
+                <th scope="col" data-en="Results" data-ha="Sakamako">Results</th>
+                <th scope="col" data-en="Category" data-ha="Rukuni">Category</th>
+                <th scope="col" data-en="Status" data-ha="Matsayi">Status</th>
+                <th scope="col" data-en="Time" data-ha="Lokaci">Time</th>
+              </tr>
+            </thead>
+            <tbody id="searchHistoryTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <strong>Kano Mart</strong>
+      <span data-en="A trusted local marketplace for Kano." data-ha="Amintacciyar kasuwar yanar gizo ta Kano.">
+        A trusted local marketplace for Kano.
+      </span>
+    </footer>
+
+    <script src="dist/app.js"></script>
+  </body>
+</html>
