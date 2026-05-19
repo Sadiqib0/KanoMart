@@ -4,10 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "esbuild src/app.ts --bundle --outfile=dist/app.js --target=es2020 --format=iife",
+    "dev": "esbuild src/app.ts --bundle --outfile=dist/app.js --target=es2020 --format=iife --watch",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "esbuild": "^0.24.0",
     "typescript": "^5.8.0"
   }
 }

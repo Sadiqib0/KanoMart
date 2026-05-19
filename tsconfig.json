@@ -1,13 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "lib": ["DOM", "DOM.Iterable", "ES2020"],
     "strict": true,
-    "noEmitOnError": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src"]
 }

@@ -3,11 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#176b4d" />
     <title>Kano Mart | Local Marketplace for Kano</title>
     <meta
       name="description"
       content="Kano Mart is a bilingual English and Hausa marketplace for food, groceries, fashion, children school items, and everyday essentials in Kano."
     />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -49,7 +54,7 @@
             <circle cx="9.8" cy="20" r="1.5" />
             <circle cx="17.2" cy="20" r="1.5" />
           </svg>
-          <span class="cart-count" data-cart-count>0</span>
+          <span class="cart-count" data-cart-count aria-label="Cart item count">0</span>
         </button>
 
         <a class="vendor-button" href="#vendor" data-en="Register vendor" data-ha="Yi rajistar dan kasuwa">
@@ -73,8 +78,9 @@
           <p class="eyebrow" data-en="Trusted local vendors across Kano" data-ha="Amintattun dillalai a fadin Kano">
             Trusted local vendors across Kano
           </p>
-          <h1 id="hero-title" data-en="Welcome to Kano Mart" data-ha="Barka da zuwa Kano Mart">
-            Welcome to Kano Mart
+          <h1 id="hero-title">
+            <span data-en="Welcome to" data-ha="Barka da zuwa">Welcome to</span>
+            <span class="brand-highlight">Kano Mart</span>
           </h1>
           <p
             class="hero-copy"
@@ -85,7 +91,9 @@
           </p>
 
           <form class="search-form" id="searchForm" role="search">
-            <label class="sr-only" for="marketSearch">Search for any desired item</label>
+            <label class="sr-only" for="marketSearch" data-en="Search for any desired item" data-ha="Nemi kayan da kake so">
+              Search for any desired item
+            </label>
             <svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
               <circle cx="10.8" cy="10.8" r="7.2" />
               <path d="m16.1 16.1 4.4 4.4" />
@@ -102,7 +110,7 @@
             <button type="submit" data-en="Search" data-ha="Nema">Search</button>
           </form>
 
-          <div class="quick-searches" aria-label="Popular quick searches">
+          <div class="quick-searches" role="group" aria-label="Popular quick searches">
             <button type="button" data-query-en="rice" data-query-ha="shinkafa" data-en="Rice" data-ha="Shinkafa">
               Rice
             </button>
@@ -125,40 +133,36 @@
         </div>
       </section>
 
-      <section class="results-section" id="results" aria-live="polite">
+      <section class="results-section" id="results" aria-labelledby="resultsTitle">
         <div class="section-heading">
           <p class="eyebrow" data-en="Marketplace search" data-ha="Neman kaya">Marketplace search</p>
-          <h2 id="resultsTitle" data-en="Welcome to Kano Mart" data-ha="Barka da zuwa Kano Mart">
-            Welcome to Kano Mart
-          </h2>
-          <p
-            id="resultsIntro"
-            data-en="Search for an item to see local results. Every completed search helps Kano Mart understand demand."
-            data-ha="Nemi kaya domin ganin sakamako. Kowane bincike yana taimakawa Kano Mart fahimtar bukatun mutane."
-          >
+          <h2 id="resultsTitle">Welcome to Kano Mart</h2>
+          <p id="resultsIntro">
             Search for an item to see local results. Every completed search helps Kano Mart understand demand.
           </p>
         </div>
 
-        <div class="result-status" id="resultStatus" hidden></div>
-        <div class="product-grid" id="resultsGrid"></div>
-        <div class="empty-state" id="emptyState" hidden>
-          <strong data-en="Search saved for Kano Mart" data-ha="An ajiye binciken domin Kano Mart">
-            Search saved for Kano Mart
-          </strong>
-          <p
-            data-en="We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it."
-            data-ha="Ba mu samu wannan kaya yanzu ba. An ajiye bincikenka domin Kano Mart ta tanadi wannan kaya daga baya."
-          >
-            We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it.
-          </p>
+        <div aria-live="polite" aria-atomic="false">
+          <div class="result-status" id="resultStatus" hidden></div>
+          <div class="product-grid" id="resultsGrid"></div>
+          <div class="empty-state" id="emptyState" hidden>
+            <strong data-en="Search saved for Kano Mart" data-ha="An ajiye binciken domin Kano Mart">
+              Search saved for Kano Mart
+            </strong>
+            <p
+              data-en="We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it."
+              data-ha="Ba mu samu wannan kaya yanzu ba. An ajiye bincikenka domin Kano Mart ta tanadi wannan kaya daga baya."
+            >
+              We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it.
+            </p>
+          </div>
         </div>
       </section>
 
-      <section class="categories-section" id="categories">
+      <section class="categories-section" id="categories" aria-labelledby="categories-title">
         <div class="section-heading">
           <p class="eyebrow" data-en="Shop by need" data-ha="Saya bisa bukata">Shop by need</p>
-          <h2 data-en="Main categories" data-ha="Manyan rukunai">Main categories</h2>
+          <h2 id="categories-title" data-en="Main categories" data-ha="Manyan rukunai">Main categories</h2>
           <p
             data-en="Clear bilingual categories help customers find familiar items without technical stress."
             data-ha="Rukunai biyu da Turanci da Hausa suna saukaka wa kwastomomi gano kayan da suke so."
@@ -170,7 +174,7 @@
         <div class="category-grid">
           <article class="category-card food-card">
             <div class="category-topline">
-              <span class="category-kicker">A</span>
+              <span class="category-kicker" aria-hidden="true">A</span>
               <h3 data-en="Food" data-ha="Abinci">Food</h3>
             </div>
             <ul>
@@ -183,7 +187,7 @@
 
           <article class="category-card fashion-card">
             <div class="category-topline">
-              <span class="category-kicker">B</span>
+              <span class="category-kicker" aria-hidden="true">B</span>
               <h3 data-en="Fashion" data-ha="Kaya">Fashion</h3>
             </div>
             <ul>
@@ -203,7 +207,7 @@
 
           <article class="category-card children-card">
             <div class="category-topline">
-              <span class="category-kicker">C</span>
+              <span class="category-kicker" aria-hidden="true">C</span>
               <h3 data-en="Children" data-ha="Yara">Children</h3>
             </div>
             <ul>
@@ -218,10 +222,10 @@
         </div>
       </section>
 
-      <section class="payment-section" id="payments">
+      <section class="payment-section" id="payments" aria-labelledby="payments-title">
         <div class="section-heading">
           <p class="eyebrow" data-en="Simple and secure" data-ha="Sauki da tsaro">Simple and secure</p>
-          <h2 data-en="Payment options" data-ha="Hanyoyin biyan kudi">Payment options</h2>
+          <h2 id="payments-title" data-en="Payment options" data-ha="Hanyoyin biyan kudi">Payment options</h2>
           <p
             data-en="Customers can choose the payment style they already trust, with clear status updates after every order."
             data-ha="Kwastomomi za su iya zabar hanyar biyan da suka saba amincewa da ita, tare da bayyanannen matsayin oda."
@@ -233,14 +237,14 @@
         <div class="payment-layout">
           <div class="payment-methods">
             <article>
-              <span>01</span>
+              <span aria-hidden="true">01</span>
               <h3 data-en="Card payment" data-ha="Biyan kati">Card payment</h3>
               <p data-en="Debit and credit cards with instant confirmation." data-ha="Katin banki tare da tabbatarwa nan take.">
                 Debit and credit cards with instant confirmation.
               </p>
             </article>
             <article>
-              <span>02</span>
+              <span aria-hidden="true">02</span>
               <h3 data-en="Bank transfer" data-ha="Tura kudi ta banki">Bank transfer</h3>
               <p
                 data-en="Transfer to a verified Kano Mart account with order matching."
@@ -250,21 +254,21 @@
               </p>
             </article>
             <article>
-              <span>03</span>
+              <span aria-hidden="true">03</span>
               <h3 data-en="USSD" data-ha="Lambar USSD">USSD</h3>
               <p data-en="Pay from any supported phone without internet banking." data-ha="Biya daga kowace waya da ke goyon baya ba tare da bankin yanar gizo ba.">
                 Pay from any supported phone without internet banking.
               </p>
             </article>
             <article>
-              <span>04</span>
+              <span aria-hidden="true">04</span>
               <h3 data-en="Wallet" data-ha="Aljihun kudi">Wallet</h3>
               <p data-en="Store balance for faster repeat purchases." data-ha="Ajiye kudi domin saurin sayayya a gaba.">
                 Store balance for faster repeat purchases.
               </p>
             </article>
             <article>
-              <span>05</span>
+              <span aria-hidden="true">05</span>
               <h3 data-en="Pay on delivery" data-ha="Biya idan an kawo">Pay on delivery</h3>
               <p
                 data-en="Useful for first-time customers who want extra confidence."
@@ -292,10 +296,10 @@
         </div>
       </section>
 
-      <section class="vendor-section" id="vendor">
+      <section class="vendor-section" id="vendor" aria-labelledby="vendor-title">
         <div class="section-heading">
           <p class="eyebrow" data-en="Vendor growth" data-ha="Ci gaban dillalai">Vendor growth</p>
-          <h2 data-en="Sell on Kano Mart" data-ha="Yi kasuwanci a Kano Mart">Sell on Kano Mart</h2>
+          <h2 id="vendor-title" data-en="Sell on Kano Mart" data-ha="Yi kasuwanci a Kano Mart">Sell on Kano Mart</h2>
           <p
             data-en="Vendors can register, list products, manage stock, receive orders, and update availability from one simple flow."
             data-ha="Dillalai za su iya yin rajista, saka kaya, kula da adadi, karbar oda, da sabunta samuwa cikin sauki."
@@ -335,15 +339,30 @@
             </article>
           </div>
 
-          <form class="vendor-form" id="vendorForm">
+          <form class="vendor-form" id="vendorForm" novalidate>
             <h3 data-en="Vendor registration" data-ha="Rajistar dan kasuwa">Vendor registration</h3>
             <label>
               <span data-en="Business name" data-ha="Sunan kasuwanci">Business name</span>
-              <input type="text" name="businessName" required />
+              <input
+                type="text"
+                name="businessName"
+                autocomplete="organization"
+                required
+                minlength="2"
+              />
             </label>
             <label>
               <span data-en="Phone number" data-ha="Lambar waya">Phone number</span>
-              <input type="tel" name="phone" required />
+              <input
+                type="tel"
+                name="phone"
+                autocomplete="tel"
+                required
+                pattern="^(\+234|0)[7-9][0-1]\d{8}$"
+                data-placeholder-en="e.g. 08012345678"
+                data-placeholder-ha="misali 08012345678"
+                placeholder="e.g. 08012345678"
+              />
             </label>
             <label>
               <span data-en="Market area" data-ha="Yankin kasuwa">Market area</span>
@@ -369,15 +388,15 @@
             <button type="submit" data-en="Submit vendor request" data-ha="Aika bukatar rajista">
               Submit vendor request
             </button>
-            <p class="form-message" id="vendorMessage" role="status"></p>
+            <p class="form-message" id="vendorMessage" role="status" aria-live="polite"></p>
           </form>
         </div>
       </section>
 
-      <section class="admin-section" id="admin">
+      <section class="admin-section" id="admin" aria-labelledby="admin-title">
         <div class="section-heading">
           <p class="eyebrow" data-en="Admin intelligence" data-ha="Bayanan admin">Admin intelligence</p>
-          <h2 data-en="Admin dashboard" data-ha="Allon admin">Admin dashboard</h2>
+          <h2 id="admin-title" data-en="Admin dashboard" data-ha="Allon admin">Admin dashboard</h2>
           <p
             data-en="The admin can review search history, popular searches, failed searches, user demand trends, vendor performance, order records, and payment status."
             data-ha="Admin zai iya duba tarihin bincike, shahararrun bincike, binciken da bai samu kaya ba, bukatun masu amfani, aikin dillalai, bayanan oda, da matsayin biyan kudi."
