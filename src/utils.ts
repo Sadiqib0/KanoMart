@@ -15,6 +15,14 @@ export function normalize(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+export function parsePrice(price: string): number {
+  return parseInt(price.replace(/[^0-9]/g, ""), 10) || 0;
+}
+
+export function formatPrice(amount: number): string {
+  return `NGN ${amount.toLocaleString("en-NG")}`;
+}
+
 export function getCopy(en: string, ha: string): string {
   return state.language === "ha" ? ha : en;
 }
@@ -61,4 +69,11 @@ export function setActiveLanguageButtons(language: Language): void {
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });
+}
+
+export function renderStars(rating: number): string {
+  const full = Math.round(rating);
+  return Array.from({ length: 5 }, (_, i) =>
+    `<span class="star${i < full ? " star-filled" : ""}" aria-hidden="true">★</span>`
+  ).join("");
 }

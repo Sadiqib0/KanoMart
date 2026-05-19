@@ -1,0 +1,176 @@
+import type { Product } from "./types";
+import { products, vendorProfiles } from "./data";
+import { state } from "./state";
+import { escapeHtml, getCopy, getLocalizedValue, renderStars } from "./utils";
+import { addToCart } from "./cart";
+import { toggleWishlist, isWishlisted, syncWishlistCount } from "./wishlist";
+import { getAverageRating, getProductReviews, addReview, renderReviewList, renderReviewForm } from "./reviews";
+import { showToast } from "./toast";
+
+let activeProductId: string | null = null;
+
+function buildVendorProfile(vendorName: string): string {
+  const profile = vendorProfiles[vendorName];
+  if (!profile) return "";
+  const stars = renderStars(profile.rating);
+  return `
+    <div class="vendor-profile-card">
+      <div class="vendor-profile-header">
+        <strong>${escapeHtml(profile.name)}</strong>
+        <span class="vendor-since">${getCopy(`Since ${profile.since}`, `Tun ${profile.since}`)}</span>
+      </div>
+      <div class="vendor-stats">
+        <span class="vendor-rating-stars">${stars} <strong>${profile.rating.toFixed(1)}</strong></span>
+        <span>${escapeHtml(String(profile.totalOrders))} ${getCopy("orders", "oda")}</span>
+        <span>${escapeHtml(String(profile.fulfillmentRate))}% ${getCopy("fulfilled", "an cika")}</span>
+      </div>
+      <p class="vendor-response">${getCopy("Response: ", "Amsa: ")}${escapeHtml(getLocalizedValue(profile.responseTime))}</p>
+    </div>
+  `;
+}
+
+function buildModalHtml(product: Product): string {
+  const name = product.name[state.language];
+  const subcategory = product.subcategory[state.language];
+  const availability = product.availability[state.language];
+  const avg = getAverageRating(product.id);
+  const reviewCount = getProductReviews(product.id).length;
+  const wished = isWishlisted(product.id);
+
+  return `
+    <div class="modal-backdrop" id="productModal" role="dialog" aria-modal="true" aria-labelledby="productModalName">
+      <div class="modal-box modal-box-wide">
+        <div class="modal-header">
+          <h2 id="productModalName">${escapeHtml(name)}</h2>
+          <button type="button" class="modal-close" aria-label="${getCopy("Close", "Rufe")}">×</button>
+        </div>
+
+        <div class="product-modal-body">
+          <div class="product-modal-thumb" style="--accent: ${product.accent}">
+            <span>${escapeHtml(subcategory)}</span>
+          </div>
+
+          <div class="product-modal-meta">
+            <p class="product-meta">
+              <span>${escapeHtml(product.category[state.language])}</span>
+              <span>${escapeHtml(product.vendor)}</span>
+              <span>${escapeHtml(product.area)}</span>
+            </p>
+            <p class="availability">${escapeHtml(availability)}</p>
+            ${reviewCount > 0 ? `
+              <div class="modal-review-summary">
+                ${renderStars(avg)} <span class="review-count-label">${avg.toFixed(1)} (${reviewCount} ${getCopy("reviews", "ra'ayoyi")})</span>
+              </div>
+            ` : ""}
+          </div>
+
+          <div class="product-modal-price">
+            <span class="price">${escapeHtml(product.price)}</span>
+          </div>
+
+          <div class="product-modal-actions">
+            <button type="button" class="btn-primary" id="modalAddToCart">
+              ${getCopy("Add to cart", "Saka a kwando")}
+            </button>
+            <button type="button" class="btn-wishlist${wished ? " is-wishlisted" : ""}" id="modalWishlist"
+              aria-pressed="${wished}" aria-label="${wished ? getCopy("Remove from wishlist", "Cire daga jerin da aka ajiye") : getCopy("Save to wishlist", "Ajiye zuwa jerin kaya")}">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
+                <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>
+              </svg>
+              ${wished ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}
+            </button>
+          </div>
+
+          ${buildVendorProfile(product.vendor)}
+
+          <section class="reviews-section">
+            <h3>${getCopy("Customer reviews", "Ra'ayoyin kwastomomi")}</h3>
+            <div id="modalReviewList">
+              ${reviewCount > 0 ? renderReviewList(product.id) : `<p class="muted">${getCopy("No reviews yet. Be the first!", "Babu ra'ayoyi tukuna. Ka fara!")}</p>`}
+            </div>
+            <div id="modalReviewForm">
+              ${renderReviewForm(product.id)}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function openProductModal(productId: string): void {
+  const product = products.find((p) => p.id === productId);
+  if (!product) return;
+
+  closeProductModal();
+  activeProductId = productId;
+
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = buildModalHtml(product);
+  const modal = wrapper.firstElementChild as HTMLElement;
+  document.body.appendChild(modal);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => modal.classList.add("modal-visible"));
+  });
+
+  modal.querySelector(".modal-close")?.addEventListener("click", closeProductModal);
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeProductModal(); });
+
+  modal.querySelector("#modalAddToCart")?.addEventListener("click", () => {
+    addToCart(productId);
+    const btn = modal.querySelector<HTMLButtonElement>("#modalAddToCart")!;
+    btn.textContent = getCopy("Added!", "An saka!");
+    window.setTimeout(() => {
+      btn.textContent = getCopy("Add to cart", "Saka a kwando");
+    }, 1400);
+  });
+
+  modal.querySelector("#modalWishlist")?.addEventListener("click", () => {
+    toggleWishlist(productId, product.name[state.language]);
+    syncWishlistCount();
+    const btn = modal.querySelector<HTMLButtonElement>("#modalWishlist")!;
+    const now = isWishlisted(productId);
+    btn.classList.toggle("is-wishlisted", now);
+    btn.setAttribute("aria-pressed", String(now));
+    btn.querySelector("svg")?.nextSibling?.replaceWith(
+      document.createTextNode(` ${now ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}`)
+    );
+  });
+
+  const reviewForm = modal.querySelector<HTMLFormElement>("#reviewForm");
+  reviewForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const data = new FormData(reviewForm);
+    const name = String(data.get("reviewerName") || "").trim();
+    const rating = Number(data.get("rating") || 0);
+    const comment = String(data.get("comment") || "").trim();
+
+    if (!name || !rating || !comment) return;
+
+    addReview(productId, name, rating, comment);
+    const msgEl = modal.querySelector<HTMLElement>("#reviewMessage")!;
+    msgEl.textContent = getCopy("Review submitted. Thank you!", "An aika ra'ayin. Na gode!");
+    reviewForm.reset();
+
+    const listEl = modal.querySelector<HTMLElement>("#modalReviewList")!;
+    listEl.innerHTML = renderReviewList(productId);
+    showToast({ message: getCopy("Review added!", "An saka ra'ayi!") });
+  });
+
+  document.addEventListener("keydown", handleModalKeydown);
+  modal.querySelector<HTMLElement>("#modalAddToCart")?.focus();
+}
+
+export function closeProductModal(): void {
+  const modal = document.getElementById("productModal");
+  if (!modal) return;
+  modal.classList.remove("modal-visible");
+  modal.addEventListener("transitionend", () => modal.remove(), { once: true });
+  document.removeEventListener("keydown", handleModalKeydown);
+  activeProductId = null;
+}
+
+function handleModalKeydown(e: KeyboardEvent): void {
+  if (e.key === "Escape") closeProductModal();
+}

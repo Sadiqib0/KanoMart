@@ -1,13 +1,20 @@
-import type { Product, LocalizedString, DemoOrder, DemoPayment } from "./types";
+import type { Product, LocalizedString, DemoOrder, DemoPayment, VendorProfile, Review } from "./types";
 
 export const storageKeys = {
   searches: "kanoMart.searchHistory",
   vendors: "kanoMart.vendorRequests",
-  cart: "kanoMart.cartCount",
+  cart: "kanoMart.cart",
+  orders: "kanoMart.orders",
+  reviews: "kanoMart.reviews",
+  wishlist: "kanoMart.wishlist",
+  session: "kanoMart.session",
+  adminSession: "kanoMart.adminSession",
   language: "kanoMart.language",
 } as const;
 
-// All keys are lowercase — use localizeCategory() to get display labels
+export const ADMIN_PIN = "0000";
+
+// All keys lowercase — use localizeCategory() for display
 export const categoryLabels: Record<string, LocalizedString> = {
   food: { en: "Food", ha: "Abinci" },
   fashion: { en: "Fashion", ha: "Kaya" },
@@ -15,6 +22,210 @@ export const categoryLabels: Record<string, LocalizedString> = {
   essentials: { en: "Essentials", ha: "Kayan yau da kullum" },
   "unmatched demand": { en: "Unmatched demand", ha: "Bukatar da ba a daidaita ba" },
 };
+
+export const orderStatusLabels: Record<string, LocalizedString> = {
+  placed: { en: "Order placed", ha: "An sanya oda" },
+  confirmed: { en: "Confirmed by vendor", ha: "Dan kasuwa ya tabbatar" },
+  packed: { en: "Packed", ha: "An hada kaya" },
+  dispatched: { en: "Out for delivery", ha: "Ana kai kaya" },
+  delivered: { en: "Delivered", ha: "An kai kaya" },
+  cancelled: { en: "Cancelled", ha: "An soke" },
+};
+
+export const vendorProfiles: Record<string, VendorProfile> = {
+  "Dan Marke Stores": {
+    name: "Dan Marke Stores",
+    area: "Sabon Gari",
+    rating: 4.7,
+    totalOrders: 1240,
+    fulfillmentRate: 97,
+    responseTime: { en: "Usually within 1 hour", ha: "Yawanci cikin sa'a 1" },
+    since: "2021",
+  },
+  "Hajiya Ladi Kitchen": {
+    name: "Hajiya Ladi Kitchen",
+    area: "Tarauni",
+    rating: 4.9,
+    totalOrders: 890,
+    fulfillmentRate: 96,
+    responseTime: { en: "Usually within 30 min", ha: "Yawanci cikin minti 30" },
+    since: "2022",
+  },
+  "Aminu Snacks": {
+    name: "Aminu Snacks",
+    area: "Kofar Ruwa",
+    rating: 4.5,
+    totalOrders: 620,
+    fulfillmentRate: 94,
+    responseTime: { en: "Usually within 1 hour", ha: "Yawanci cikin sa'a 1" },
+    since: "2023",
+  },
+  "Kantin Kwari Textiles": {
+    name: "Kantin Kwari Textiles",
+    area: "Kantin Kwari",
+    rating: 4.8,
+    totalOrders: 2100,
+    fulfillmentRate: 98,
+    responseTime: { en: "Usually within 2 hours", ha: "Yawanci cikin sa'a 2" },
+    since: "2020",
+  },
+  "Alhaji Musa Wears": {
+    name: "Alhaji Musa Wears",
+    area: "Fagge",
+    rating: 4.6,
+    totalOrders: 780,
+    fulfillmentRate: 95,
+    responseTime: { en: "Usually within 2 hours", ha: "Yawanci cikin sa'a 2" },
+    since: "2021",
+  },
+  "Rayyan Fragrance": {
+    name: "Rayyan Fragrance",
+    area: "Zoo Road",
+    rating: 4.7,
+    totalOrders: 450,
+    fulfillmentRate: 99,
+    responseTime: { en: "Usually within 1 hour", ha: "Yawanci cikin sa'a 1" },
+    since: "2022",
+  },
+  "Kano Footwear Hub": {
+    name: "Kano Footwear Hub",
+    area: "Naibawa",
+    rating: 4.4,
+    totalOrders: 560,
+    fulfillmentRate: 93,
+    responseTime: { en: "Usually within 3 hours", ha: "Yawanci cikin sa'a 3" },
+    since: "2021",
+  },
+  "Amina Boutique": {
+    name: "Amina Boutique",
+    area: "Farm Centre",
+    rating: 4.8,
+    totalOrders: 930,
+    fulfillmentRate: 97,
+    responseTime: { en: "Usually within 2 hours", ha: "Yawanci cikin sa'a 2" },
+    since: "2020",
+  },
+  "Safara Beauty": {
+    name: "Safara Beauty",
+    area: "Sheka",
+    rating: 4.6,
+    totalOrders: 340,
+    fulfillmentRate: 96,
+    responseTime: { en: "Usually within 1 hour", ha: "Yawanci cikin sa'a 1" },
+    since: "2023",
+  },
+  "Back To School Kano": {
+    name: "Back To School Kano",
+    area: "Hotoro",
+    rating: 4.5,
+    totalOrders: 1100,
+    fulfillmentRate: 94,
+    responseTime: { en: "Usually within 2 hours", ha: "Yawanci cikin sa'a 2" },
+    since: "2021",
+  },
+  "Bayero Bookshop": {
+    name: "Bayero Bookshop",
+    area: "Gwale",
+    rating: 4.7,
+    totalOrders: 860,
+    fulfillmentRate: 98,
+    responseTime: { en: "Usually within 1 hour", ha: "Yawanci cikin sa'a 1" },
+    since: "2019",
+  },
+  "Kano Learning Hub": {
+    name: "Kano Learning Hub",
+    area: "Bompai",
+    rating: 4.9,
+    totalOrders: 320,
+    fulfillmentRate: 100,
+    responseTime: { en: "Usually within 30 min", ha: "Yawanci cikin minti 30" },
+    since: "2022",
+  },
+};
+
+// Pre-seeded reviews for demo
+export const seedReviews: Review[] = [
+  {
+    id: "seed-r1",
+    productId: "food-rice",
+    reviewerName: "Aisha M.",
+    rating: 5,
+    comment: "Quality rice, delivered same day. Dan Marke never disappoints!",
+    createdAt: "2025-04-10T09:00:00Z",
+  },
+  {
+    id: "seed-r2",
+    productId: "food-rice",
+    reviewerName: "Bello K.",
+    rating: 4,
+    comment: "Good price and fresh stock. Will order again.",
+    createdAt: "2025-04-08T14:30:00Z",
+  },
+  {
+    id: "seed-r3",
+    productId: "food-tuwo",
+    reviewerName: "Fatima A.",
+    rating: 5,
+    comment: "Hajiya Ladi's miyan kuka is the best in Tarauni. Hot and fresh!",
+    createdAt: "2025-04-12T12:15:00Z",
+  },
+  {
+    id: "seed-r4",
+    productId: "fashion-fabric",
+    reviewerName: "Zainab U.",
+    rating: 5,
+    comment: "Beautiful Ankara, exactly as described. Fast delivery from Kantin Kwari.",
+    createdAt: "2025-04-09T11:00:00Z",
+  },
+  {
+    id: "seed-r5",
+    productId: "fashion-fabric",
+    reviewerName: "Maryam S.",
+    rating: 4,
+    comment: "Good quality fabric, colors are vibrant. Slightly delayed but worth it.",
+    createdAt: "2025-04-07T16:45:00Z",
+  },
+  {
+    id: "seed-r6",
+    productId: "fashion-jallabiya",
+    reviewerName: "Usman B.",
+    rating: 5,
+    comment: "Perfect fit. Alhaji Musa's quality is always top notch.",
+    createdAt: "2025-04-11T10:20:00Z",
+  },
+  {
+    id: "seed-r7",
+    productId: "children-bag",
+    reviewerName: "Hauwa I.",
+    rating: 4,
+    comment: "Durable bag, my son loves it. Good value for the price.",
+    createdAt: "2025-04-06T08:30:00Z",
+  },
+  {
+    id: "seed-r8",
+    productId: "children-books",
+    reviewerName: "Ibrahim D.",
+    rating: 5,
+    comment: "Bulk order for the new term. Bayero Bookshop always has everything ready.",
+    createdAt: "2025-04-05T15:00:00Z",
+  },
+  {
+    id: "seed-r9",
+    productId: "fashion-perfume",
+    reviewerName: "Sadiya R.",
+    rating: 5,
+    comment: "Amazing scent, long lasting. Best oil perfume in Kano!",
+    createdAt: "2025-04-13T09:45:00Z",
+  },
+  {
+    id: "seed-r10",
+    productId: "fashion-boutique",
+    reviewerName: "Khadija M.",
+    rating: 5,
+    comment: "Amina Boutique never disappoints. Modest and beautiful.",
+    createdAt: "2025-04-14T13:00:00Z",
+  },
+];
 
 export const products: Product[] = [
   {

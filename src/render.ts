@@ -11,24 +11,45 @@ import {
   groupByValue,
   sortEntries,
 } from "./utils";
+import { isWishlisted } from "./wishlist";
+import { getAverageRating, getProductReviews } from "./reviews";
+import { renderStars } from "./utils";
 
 export function renderProductCard(product: Product): string {
-  const primaryName = product.name[state.language];
+  const name = product.name[state.language];
   const category = product.category[state.language];
   const subcategory = product.subcategory[state.language];
   const availability = product.availability[state.language];
+  const wished = isWishlisted(product.id);
+  const avg = getAverageRating(product.id);
+  const reviewCount = getProductReviews(product.id).length;
 
   return `
-    <article class="product-card">
+    <article class="product-card" data-product-id="${escapeHtml(product.id)}">
       <div class="product-thumb" style="--accent: ${product.accent}">
         <span>${escapeHtml(subcategory)}</span>
+        <button type="button"
+          class="wish-btn${wished ? " is-wishlisted" : ""}"
+          data-wishlist="${escapeHtml(product.id)}"
+          aria-label="${wished ? getCopy("Remove from wishlist", "Cire daga jerin da aka ajiye") : getCopy("Save to wishlist", "Ajiye zuwa jerin kaya")}"
+          aria-pressed="${wished}">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="${wished ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2">
+            <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>
+          </svg>
+        </button>
       </div>
-      <h3>${escapeHtml(primaryName)}</h3>
+      <h3>${escapeHtml(name)}</h3>
       <p class="product-meta">
         <span>${escapeHtml(category)}</span>
         <span>${escapeHtml(product.vendor)}</span>
         <span>${escapeHtml(product.area)}</span>
       </p>
+      ${reviewCount > 0 ? `
+        <div class="card-rating">
+          ${renderStars(avg)}
+          <span class="rating-count">(${reviewCount})</span>
+        </div>
+      ` : ""}
       <p>${escapeHtml(availability)}</p>
       <footer>
         <span class="price">${escapeHtml(product.price)}</span>
@@ -65,7 +86,6 @@ export function renderRankList(
     container.innerHTML = `<p class="muted">${escapeHtml(emptyText)}</p>`;
     return;
   }
-
   container.innerHTML = entries
     .slice(0, 5)
     .map(

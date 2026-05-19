@@ -13,9 +13,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="preload" as="image" href="assets/kano-market-hero.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+
+    <!-- ═══ HEADER ═══ -->
     <header class="site-header">
       <a class="brand" href="#top" aria-label="Kano Mart home">
         <span class="brand-mark" aria-hidden="true">KM</span>
@@ -29,19 +32,31 @@
         <a href="#categories" data-en="Categories" data-ha="Rukunai">Categories</a>
         <a href="#payments" data-en="Payments" data-ha="Biya">Payments</a>
         <a href="#vendor" data-en="Vendors" data-ha="Dillalai">Vendors</a>
+        <a href="#my-orders" data-en="My Orders" data-ha="Odana">My Orders</a>
         <a href="#admin" data-en="Admin" data-ha="Admin">Admin</a>
       </nav>
 
       <div class="header-actions">
         <div class="language-toggle" role="group" aria-label="Choose language">
-          <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">
-            EN
-          </button>
-          <button class="language-option" type="button" data-language="ha" aria-pressed="false">
-            HA
-          </button>
+          <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">EN</button>
+          <button class="language-option" type="button" data-language="ha" aria-pressed="false">HA</button>
         </div>
 
+        <!-- Wishlist -->
+        <button
+          class="icon-button wishlist-button"
+          type="button"
+          aria-label="Wishlist"
+          data-aria-en="Wishlist"
+          data-aria-ha="Abubuwan da nake so"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>
+          </svg>
+          <span class="cart-count" data-wishlist-count aria-label="Wishlist count" hidden>0</span>
+        </button>
+
+        <!-- Cart -->
         <button
           class="icon-button cart-button"
           type="button"
@@ -57,13 +72,25 @@
           <span class="cart-count" data-cart-count aria-label="Cart item count">0</span>
         </button>
 
+        <!-- User / Sign in -->
+        <button class="user-button" type="button" id="userButton" aria-label="Sign in">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" focusable="false" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+          <span id="userButtonLabel" data-en="Sign in" data-ha="Shiga">Sign in</span>
+        </button>
+
         <a class="vendor-button" href="#vendor" data-en="Register vendor" data-ha="Yi rajistar dan kasuwa">
           Register vendor
         </a>
       </div>
     </header>
 
+    <!-- ═══ MAIN ═══ -->
     <main id="top">
+
+      <!-- Hero -->
       <section class="hero" aria-labelledby="hero-title">
         <img
           class="hero-image"
@@ -71,6 +98,7 @@
           alt="A Kano marketplace counter with groceries, fabrics, school supplies, and local essentials"
           data-alt-en="A Kano marketplace counter with groceries, fabrics, school supplies, and local essentials"
           data-alt-ha="Teburin kasuwar Kano mai kayan masarufi, yaduka, kayan makaranta, da abubuwan yau da kullum"
+          width="1920" height="1080" fetchpriority="high"
         />
         <div class="hero-shade" aria-hidden="true"></div>
 
@@ -111,28 +139,15 @@
           </form>
 
           <div class="quick-searches" role="group" aria-label="Popular quick searches">
-            <button type="button" data-query-en="rice" data-query-ha="shinkafa" data-en="Rice" data-ha="Shinkafa">
-              Rice
-            </button>
-            <button type="button" data-query-en="fabrics" data-query-ha="yaduka" data-en="Fabrics" data-ha="Yaduka">
-              Fabrics
-            </button>
-            <button
-              type="button"
-              data-query-en="school bags"
-              data-query-ha="jakunkunan makaranta"
-              data-en="School bags"
-              data-ha="Jakunkunan makaranta"
-            >
-              School bags
-            </button>
-            <button type="button" data-query-en="perfumes" data-query-ha="turare" data-en="Perfumes" data-ha="Turare">
-              Perfumes
-            </button>
+            <button type="button" data-query-en="rice" data-query-ha="shinkafa" data-en="Rice" data-ha="Shinkafa">Rice</button>
+            <button type="button" data-query-en="fabrics" data-query-ha="yaduka" data-en="Fabrics" data-ha="Yaduka">Fabrics</button>
+            <button type="button" data-query-en="school bags" data-query-ha="jakunkunan makaranta" data-en="School bags" data-ha="Jakunkunan makaranta">School bags</button>
+            <button type="button" data-query-en="perfumes" data-query-ha="turare" data-en="Perfumes" data-ha="Turare">Perfumes</button>
           </div>
         </div>
       </section>
 
+      <!-- Results -->
       <section class="results-section" id="results" aria-labelledby="resultsTitle">
         <div class="section-heading">
           <p class="eyebrow" data-en="Marketplace search" data-ha="Neman kaya">Marketplace search</p>
@@ -159,6 +174,7 @@
         </div>
       </section>
 
+      <!-- Categories -->
       <section class="categories-section" id="categories" aria-labelledby="categories-title">
         <div class="section-heading">
           <p class="eyebrow" data-en="Shop by need" data-ha="Saya bisa bukata">Shop by need</p>
@@ -222,6 +238,7 @@
         </div>
       </section>
 
+      <!-- Payments -->
       <section class="payment-section" id="payments" aria-labelledby="payments-title">
         <div class="section-heading">
           <p class="eyebrow" data-en="Simple and secure" data-ha="Sauki da tsaro">Simple and secure</p>
@@ -239,63 +256,42 @@
             <article>
               <span aria-hidden="true">01</span>
               <h3 data-en="Card payment" data-ha="Biyan kati">Card payment</h3>
-              <p data-en="Debit and credit cards with instant confirmation." data-ha="Katin banki tare da tabbatarwa nan take.">
-                Debit and credit cards with instant confirmation.
-              </p>
+              <p data-en="Debit and credit cards with instant confirmation." data-ha="Katin banki tare da tabbatarwa nan take.">Debit and credit cards with instant confirmation.</p>
             </article>
             <article>
               <span aria-hidden="true">02</span>
               <h3 data-en="Bank transfer" data-ha="Tura kudi ta banki">Bank transfer</h3>
-              <p
-                data-en="Transfer to a verified Kano Mart account with order matching."
-                data-ha="Tura kudi zuwa asusun Kano Mart da aka tabbatar tare da daidaita oda."
-              >
-                Transfer to a verified Kano Mart account with order matching.
-              </p>
+              <p data-en="Transfer to a verified Kano Mart account with order matching." data-ha="Tura kudi zuwa asusun Kano Mart da aka tabbatar tare da daidaita oda.">Transfer to a verified Kano Mart account with order matching.</p>
             </article>
             <article>
               <span aria-hidden="true">03</span>
               <h3 data-en="USSD" data-ha="Lambar USSD">USSD</h3>
-              <p data-en="Pay from any supported phone without internet banking." data-ha="Biya daga kowace waya da ke goyon baya ba tare da bankin yanar gizo ba.">
-                Pay from any supported phone without internet banking.
-              </p>
+              <p data-en="Pay from any supported phone without internet banking." data-ha="Biya daga kowace waya da ke goyon baya ba tare da bankin yanar gizo ba.">Pay from any supported phone without internet banking.</p>
             </article>
             <article>
               <span aria-hidden="true">04</span>
               <h3 data-en="Wallet" data-ha="Aljihun kudi">Wallet</h3>
-              <p data-en="Store balance for faster repeat purchases." data-ha="Ajiye kudi domin saurin sayayya a gaba.">
-                Store balance for faster repeat purchases.
-              </p>
+              <p data-en="Store balance for faster repeat purchases." data-ha="Ajiye kudi domin saurin sayayya a gaba.">Store balance for faster repeat purchases.</p>
             </article>
             <article>
               <span aria-hidden="true">05</span>
               <h3 data-en="Pay on delivery" data-ha="Biya idan an kawo">Pay on delivery</h3>
-              <p
-                data-en="Useful for first-time customers who want extra confidence."
-                data-ha="Yana taimaka wa sabbin kwastomomi su kara samun kwarin gwiwa."
-              >
-                Useful for first-time customers who want extra confidence.
-              </p>
+              <p data-en="Useful for first-time customers who want extra confidence." data-ha="Yana taimaka wa sabbin kwastomomi su kara samun kwarin gwiwa.">Useful for first-time customers who want extra confidence.</p>
             </article>
           </div>
 
           <aside class="trust-panel" aria-label="Payment trust features">
             <h3 data-en="Built for confidence" data-ha="An gina shi domin aminci">Built for confidence</h3>
             <ul>
-              <li data-en="Verified vendors and order receipts" data-ha="Tabbatattun dillalai da takardar oda">
-                Verified vendors and order receipts
-              </li>
-              <li data-en="Clear paid, pending, and failed status" data-ha="Bayyanannen matsayin an biya, yana jira, ko ya gaza">
-                Clear paid, pending, and failed status
-              </li>
-              <li data-en="Support for local delivery confirmation" data-ha="Tallafin tabbatar da isarwa a cikin gida">
-                Support for local delivery confirmation
-              </li>
+              <li data-en="Verified vendors and order receipts" data-ha="Tabbatattun dillalai da takardar oda">Verified vendors and order receipts</li>
+              <li data-en="Clear paid, pending, and failed status" data-ha="Bayyanannen matsayin an biya, yana jira, ko ya gaza">Clear paid, pending, and failed status</li>
+              <li data-en="Support for local delivery confirmation" data-ha="Tallafin tabbatar da isarwa a cikin gida">Support for local delivery confirmation</li>
             </ul>
           </aside>
         </div>
       </section>
 
+      <!-- Vendor -->
       <section class="vendor-section" id="vendor" aria-labelledby="vendor-title">
         <div class="section-heading">
           <p class="eyebrow" data-en="Vendor growth" data-ha="Ci gaban dillalai">Vendor growth</p>
@@ -312,30 +308,19 @@
           <div class="vendor-steps" aria-label="Vendor capabilities">
             <article>
               <h3 data-en="Register" data-ha="Rajista">Register</h3>
-              <p data-en="Submit business name, phone number, area, and product category." data-ha="Aika sunan kasuwanci, lambar waya, yanki, da rukunin kaya.">
-                Submit business name, phone number, area, and product category.
-              </p>
+              <p data-en="Submit business name, phone number, area, and product category." data-ha="Aika sunan kasuwanci, lambar waya, yanki, da rukunin kaya.">Submit business name, phone number, area, and product category.</p>
             </article>
             <article>
               <h3 data-en="List products" data-ha="Saka kaya">List products</h3>
-              <p
-                data-en="Add product names, price, photos, delivery area, and tags."
-                data-ha="Saka sunan kaya, farashi, hotuna, yankin kai kaya, da alamomin nema."
-              >
-                Add product names, price, photos, delivery area, and tags.
-              </p>
+              <p data-en="Add product names, price, photos, delivery area, and tags." data-ha="Saka sunan kaya, farashi, hotuna, yankin kai kaya, da alamomin nema.">Add product names, price, photos, delivery area, and tags.</p>
             </article>
             <article>
               <h3 data-en="Manage stock" data-ha="Kula da kaya">Manage stock</h3>
-              <p data-en="Update quantity, availability, and daily delivery readiness." data-ha="Sabunta adadi, samuwa, da shirin kai kaya na kullum.">
-                Update quantity, availability, and daily delivery readiness.
-              </p>
+              <p data-en="Update quantity, availability, and daily delivery readiness." data-ha="Sabunta adadi, samuwa, da shirin kai kaya na kullum.">Update quantity, availability, and daily delivery readiness.</p>
             </article>
             <article>
               <h3 data-en="Receive orders" data-ha="Karbar oda">Receive orders</h3>
-              <p data-en="See customer requests, payment state, and delivery handoff status." data-ha="Duba bukatun kwastoma, matsayin biya, da matsayin mika kaya.">
-                See customer requests, payment state, and delivery handoff status.
-              </p>
+              <p data-en="See customer requests, payment state, and delivery handoff status." data-ha="Duba bukatun kwastoma, matsayin biya, da matsayin mika kaya.">See customer requests, payment state, and delivery handoff status.</p>
             </article>
           </div>
 
@@ -343,13 +328,7 @@
             <h3 data-en="Vendor registration" data-ha="Rajistar dan kasuwa">Vendor registration</h3>
             <label>
               <span data-en="Business name" data-ha="Sunan kasuwanci">Business name</span>
-              <input
-                type="text"
-                name="businessName"
-                autocomplete="organization"
-                required
-                minlength="2"
-              />
+              <input type="text" name="businessName" autocomplete="organization" required minlength="2" />
             </label>
             <label>
               <span data-en="Phone number" data-ha="Lambar waya">Phone number</span>
@@ -359,9 +338,9 @@
                 autocomplete="tel"
                 required
                 pattern="^(\+234|0)[7-9][0-1]\d{8}$"
+                placeholder="e.g. 08012345678"
                 data-placeholder-en="e.g. 08012345678"
                 data-placeholder-ha="misali 08012345678"
-                placeholder="e.g. 08012345678"
               />
             </label>
             <label>
@@ -385,14 +364,32 @@
                 <option value="essentials" data-en="Essentials" data-ha="Kayan yau da kullum">Essentials</option>
               </select>
             </label>
-            <button type="submit" data-en="Submit vendor request" data-ha="Aika bukatar rajista">
-              Submit vendor request
-            </button>
+            <button type="submit" data-en="Submit vendor request" data-ha="Aika bukatar rajista">Submit vendor request</button>
             <p class="form-message" id="vendorMessage" role="status" aria-live="polite"></p>
           </form>
         </div>
       </section>
 
+      <!-- My Orders -->
+      <section class="my-orders-section" id="my-orders" aria-labelledby="my-orders-title">
+        <div class="section-heading">
+          <p class="eyebrow" data-en="Order tracking" data-ha="Bin diddigin oda">Order tracking</p>
+          <h2 id="my-orders-title" data-en="My Orders" data-ha="Odana">My Orders</h2>
+          <p
+            data-en="Track the status of your recent orders. Sign in with your phone number to see your order history."
+            data-ha="Duba matsayin odanku na kwanan nan. Shiga da lambar wayarka don ganin tarihin odanka."
+          >
+            Track the status of your recent orders. Sign in with your phone number to see your order history.
+          </p>
+        </div>
+        <div id="myOrdersList">
+          <p class="muted" data-en="Sign in to see your orders." data-ha="Shiga don ganin odanka.">
+            Sign in to see your orders.
+          </p>
+        </div>
+      </section>
+
+      <!-- Admin -->
       <section class="admin-section" id="admin" aria-labelledby="admin-title">
         <div class="section-heading">
           <p class="eyebrow" data-en="Admin intelligence" data-ha="Bayanan admin">Admin intelligence</p>
@@ -406,90 +403,142 @@
           </p>
         </div>
 
-        <div class="admin-metrics">
-          <article>
-            <span data-en="Total searches" data-ha="Jimillar bincike">Total searches</span>
-            <strong id="totalSearches">0</strong>
-          </article>
-          <article>
-            <span data-en="Failed searches" data-ha="Binciken da bai samu ba">Failed searches</span>
-            <strong id="failedSearches">0</strong>
-          </article>
-          <article>
-            <span data-en="Saved vendors" data-ha="Dillalan da aka ajiye">Saved vendors</span>
-            <strong id="savedVendors">0</strong>
-          </article>
-          <article>
-            <span data-en="Top demand" data-ha="Babbar bukata">Top demand</span>
-            <strong id="topDemand">None</strong>
-          </article>
+        <!-- PIN gate -->
+        <div id="adminGate" class="admin-pin-gate">
+          <p data-en="Admin access is PIN-protected." data-ha="Ana kare shiga admin da PIN.">Admin access is PIN-protected.</p>
+          <p class="muted" data-en="Default PIN for demo: 0000" data-ha="PIN na gwaji: 0000">Default PIN for demo: 0000</p>
+          <form id="adminPinForm" class="admin-pin-form" novalidate>
+            <input
+              type="password"
+              name="pin"
+              minlength="4" maxlength="4"
+              pattern="[0-9]{4}"
+              inputmode="numeric"
+              placeholder="0000"
+              data-placeholder-en="0000"
+              data-placeholder-ha="0000"
+              required
+              aria-label="Admin PIN"
+            />
+            <button type="submit" data-en="Unlock" data-ha="Buɗe">Unlock</button>
+          </form>
+          <p class="form-message" id="adminPinError" role="alert"></p>
         </div>
 
-        <div class="admin-actions">
-          <button type="button" id="exportSearches" data-en="Export searches" data-ha="Fitar da bincike">
-            Export searches
-          </button>
-          <button type="button" id="clearSearches" class="secondary-action" data-en="Clear prototype data" data-ha="Goge bayanan gwaji">
-            Clear prototype data
-          </button>
-        </div>
+        <!-- Dashboard content (hidden until PIN entered) -->
+        <div id="adminContent" hidden>
+          <div class="admin-metrics">
+            <article>
+              <span data-en="Total searches" data-ha="Jimillar bincike">Total searches</span>
+              <strong id="totalSearches">0</strong>
+            </article>
+            <article>
+              <span data-en="Failed searches" data-ha="Binciken da bai samu ba">Failed searches</span>
+              <strong id="failedSearches">0</strong>
+            </article>
+            <article>
+              <span data-en="Saved vendors" data-ha="Dillalan da aka ajiye">Saved vendors</span>
+              <strong id="savedVendors">0</strong>
+            </article>
+            <article>
+              <span data-en="Top demand" data-ha="Babbar bukata">Top demand</span>
+              <strong id="topDemand">None</strong>
+            </article>
+          </div>
 
-        <div class="admin-grid">
-          <article class="admin-panel">
-            <h3 data-en="Popular searches" data-ha="Shahararrun bincike">Popular searches</h3>
-            <div id="popularSearches" class="rank-list"></div>
-          </article>
+          <div class="admin-actions">
+            <button type="button" id="exportSearches" data-en="Export searches" data-ha="Fitar da bincike">Export searches</button>
+            <button type="button" id="clearSearches" class="secondary-action" data-en="Clear prototype data" data-ha="Goge bayanan gwaji">Clear prototype data</button>
+          </div>
 
-          <article class="admin-panel">
-            <h3 data-en="Failed searches" data-ha="Binciken da bai samu ba">Failed searches</h3>
-            <div id="failedSearchList" class="rank-list"></div>
-          </article>
+          <div class="admin-grid">
+            <article class="admin-panel">
+              <h3 data-en="Popular searches" data-ha="Shahararrun bincike">Popular searches</h3>
+              <div id="popularSearches" class="rank-list"></div>
+            </article>
 
-          <article class="admin-panel demand-panel">
-            <h3 data-en="User demand trends" data-ha="Yanayin bukatun masu amfani">User demand trends</h3>
-            <div id="demandTrends" class="trend-list"></div>
-          </article>
+            <article class="admin-panel">
+              <h3 data-en="Failed searches" data-ha="Binciken da bai samu ba">Failed searches</h3>
+              <div id="failedSearchList" class="rank-list"></div>
+            </article>
 
-          <article class="admin-panel">
-            <h3 data-en="Vendor performance" data-ha="Aikin dillalai">Vendor performance</h3>
-            <div class="record-list" id="vendorPerformance"></div>
-          </article>
+            <article class="admin-panel demand-panel">
+              <h3 data-en="User demand trends" data-ha="Yanayin bukatun masu amfani">User demand trends</h3>
+              <div id="demandTrends" class="trend-list"></div>
+            </article>
 
-          <article class="admin-panel">
-            <h3 data-en="Order records" data-ha="Bayanan oda">Order records</h3>
-            <div class="record-list" id="orderRecords"></div>
-          </article>
+            <article class="admin-panel">
+              <h3 data-en="Vendor performance" data-ha="Aikin dillalai">Vendor performance</h3>
+              <div class="record-list" id="vendorPerformance"></div>
+            </article>
 
-          <article class="admin-panel">
-            <h3 data-en="Payment status" data-ha="Matsayin biyan kudi">Payment status</h3>
-            <div class="record-list" id="paymentStatus"></div>
-          </article>
-        </div>
+            <article class="admin-panel">
+              <h3 data-en="Order records" data-ha="Bayanan oda">Order records</h3>
+              <div class="record-list" id="orderRecords"></div>
+            </article>
 
-        <div class="search-table-wrap">
-          <table>
-            <caption data-en="Search history" data-ha="Tarihin bincike">Search history</caption>
-            <thead>
-              <tr>
-                <th scope="col" data-en="Query" data-ha="Bincike">Query</th>
-                <th scope="col" data-en="Results" data-ha="Sakamako">Results</th>
-                <th scope="col" data-en="Category" data-ha="Rukuni">Category</th>
-                <th scope="col" data-en="Status" data-ha="Matsayi">Status</th>
-                <th scope="col" data-en="Time" data-ha="Lokaci">Time</th>
-              </tr>
-            </thead>
-            <tbody id="searchHistoryTable"></tbody>
-          </table>
+            <article class="admin-panel">
+              <h3 data-en="Payment status" data-ha="Matsayin biyan kudi">Payment status</h3>
+              <div class="record-list" id="paymentStatus"></div>
+            </article>
+          </div>
+
+          <div class="search-table-wrap">
+            <table>
+              <caption data-en="Search history" data-ha="Tarihin bincike">Search history</caption>
+              <thead>
+                <tr>
+                  <th scope="col" data-en="Query" data-ha="Bincike">Query</th>
+                  <th scope="col" data-en="Results" data-ha="Sakamako">Results</th>
+                  <th scope="col" data-en="Category" data-ha="Rukuni">Category</th>
+                  <th scope="col" data-en="Status" data-ha="Matsayi">Status</th>
+                  <th scope="col" data-en="Time" data-ha="Lokaci">Time</th>
+                </tr>
+              </thead>
+              <tbody id="searchHistoryTable"></tbody>
+            </table>
+          </div>
         </div>
       </section>
+
     </main>
 
+    <!-- ═══ FOOTER ═══ -->
     <footer class="site-footer">
       <strong>Kano Mart</strong>
       <span data-en="A trusted local marketplace for Kano." data-ha="Amintacciyar kasuwar yanar gizo ta Kano.">
         A trusted local marketplace for Kano.
       </span>
     </footer>
+
+    <!-- ═══ CART PANEL ═══ -->
+    <div class="cart-overlay" id="cartOverlay" hidden></div>
+    <aside class="cart-panel" id="cartPanel" aria-label="Shopping cart" hidden>
+      <div class="cart-panel-header">
+        <h2 data-en="Your cart" data-ha="Kwandona">Your cart</h2>
+        <button type="button" class="cart-close icon-button" aria-label="Close cart">
+          <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <path d="M18 6 6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="cart-items-list" id="cartItems"></div>
+      <div class="cart-empty-state" id="cartEmptyState">
+        <p data-en="Your cart is empty." data-ha="Babu kaya a kwandona.">Your cart is empty.</p>
+      </div>
+      <footer class="cart-panel-footer">
+        <div class="cart-subtotal-row">
+          <span data-en="Subtotal" data-ha="Jimillar farashi">Subtotal</span>
+          <strong id="cartSubtotal">NGN 0</strong>
+        </div>
+        <button type="button" id="checkoutButton" class="checkout-btn" disabled>
+          <span data-en="Checkout" data-ha="Biyan kudi">Checkout</span>
+        </button>
+      </footer>
+    </aside>
+
+    <!-- ═══ TOAST CONTAINER ═══ -->
+    <div id="toastContainer" class="toast-container" aria-live="assertive" aria-atomic="false"></div>
 
     <script src="dist/app.js"></script>
   </body>

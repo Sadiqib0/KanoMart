@@ -1,9 +1,11 @@
 import type { SearchRecord } from "./types";
 import { storageKeys } from "./data";
-import { getStoredList, setStoredList } from "./storage";
+import { getStoredList } from "./storage";
 import { state, elements } from "./state";
 import { getCopy } from "./utils";
 import { renderAdminDashboard } from "./render";
+import { syncCart } from "./cart";
+import { syncWishlistCount } from "./wishlist";
 
 export function exportSearchHistory(): void {
   const history = getStoredList<SearchRecord>(storageKeys.searches);
@@ -41,20 +43,26 @@ export function exportSearchHistory(): void {
 export function clearPrototypeData(): void {
   const ok = window.confirm(
     getCopy(
-      "Clear saved prototype search and vendor data?",
-      "A goge bayanan bincike da dillalai na gwaji?"
+      "Clear all saved prototype data? This includes searches, vendors, cart, orders, wishlist, and reviews.",
+      "A goge dukkan bayanan gwaji? Wannan ya hada da bincike, dillalai, kwando, oda, jerin bukata, da ra'ayoyi."
     )
   );
 
   if (!ok) return;
 
-  localStorage.removeItem(storageKeys.searches);
-  localStorage.removeItem(storageKeys.vendors);
-  localStorage.removeItem(storageKeys.cart);
+  [
+    storageKeys.searches,
+    storageKeys.vendors,
+    storageKeys.cart,
+    storageKeys.orders,
+    storageKeys.reviews,
+    storageKeys.wishlist,
+  ].forEach((key) => localStorage.removeItem(key));
 
   state.cartCount = 0;
-  localStorage.setItem(storageKeys.cart, "0");
-  elements.cartCount.textContent = "0";
+  elements.cartCountEl.textContent = "0";
 
+  syncCart();
+  syncWishlistCount();
   renderAdminDashboard();
 }
