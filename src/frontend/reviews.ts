@@ -1,9 +1,10 @@
-import type { Review } from "./types";
-import { storageKeys, seedReviews } from "./data";
-import { getStoredList, setStoredList, createId } from "./storage";
+import type { Review } from "../backend/types";
+import { storageKeys, seedReviews, products } from "../backend/data";
+import { getStoredList, setStoredList, createId } from "../backend/storage";
 import { escapeHtml, getCopy, formatDate, renderStars } from "./utils";
+import { createNotification } from "../backend/notifications";
 
-function getAllReviews(): Review[] {
+export function getAllReviews(): Review[] {
   const stored = getStoredList<Review>(storageKeys.reviews);
   // Merge seed reviews that aren't already overridden
   const storedIds = new Set(stored.map((r) => r.id));
@@ -13,6 +14,7 @@ function getAllReviews(): Review[] {
 
 export function getProductReviews(productId: string): Review[] {
   return getAllReviews()
+    .filter((r) => !r.hidden)
     .filter((r) => r.productId === productId)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -25,15 +27,38 @@ export function getAverageRating(productId: string): number {
 
 export function addReview(productId: string, reviewerName: string, rating: number, comment: string): void {
   const stored = getStoredList<Review>(storageKeys.reviews);
-  stored.unshift({
+  const product = products.find((item) => item.id === productId);
+  const review: Review = {
     id: createId(),
     productId,
+    vendor: product?.vendor,
     reviewerName,
     rating,
     comment,
     createdAt: new Date().toISOString(),
-  });
+  };
+  stored.unshift(review);
   setStoredList(storageKeys.reviews, stored);
+  if (product) {
+    createNotification({
+      audience: "vendor",
+      recipient: product.vendor,
+      title: "New product review",
+      message: `${product.name.en} received a ${review.rating}-star review.`,
+      type: "review",
+    });
+  }
+}
+
+export function hideReview(reviewId: string, adminNote = "Removed by admin"): Review | null {
+  const stored = getStoredList<Review>(storageKeys.reviews);
+  const seeded = seedReviews.find((review) => review.id === reviewId);
+  const review = stored.find((item) => item.id === reviewId) || (seeded ? { ...seeded } : null);
+  if (!review) return null;
+  review.hidden = true;
+  review.adminNote = adminNote;
+  setStoredList(storageKeys.reviews, [review, ...stored.filter((item) => item.id !== reviewId)]);
+  return review;
 }
 
 export function renderReviewSummary(productId: string): string {

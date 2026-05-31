@@ -1,15 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import type { Product } from "../src/types";
+import type { Product } from "../src/backend/types";
 
-vi.mock("../src/state", () => ({
+vi.mock("../src/frontend/state", () => ({
   state: { language: "en", lastQuery: "", lastResults: [], cartCount: 0, adminAuthenticated: false, currentUser: null },
   elements: {},
 }));
 
-vi.mock("../src/data", () => ({
+vi.mock("../src/backend/data", () => ({
   storageKeys: {
     language: "language", cart: "cart", orders: "orders", reviews: "reviews",
     wishlist: "wishlist", searches: "searches", vendors: "vendors",
+    productModeration: "productModeration", payments: "payments", walletLedger: "walletLedger",
     session: "session", adminSession: "adminSession",
   },
   categoryLabels: {},
@@ -59,14 +60,14 @@ vi.mock("../src/data", () => ({
   vendorProfiles: {},
 }));
 
-vi.mock("../src/storage", () => ({
+vi.mock("../src/backend/storage", () => ({
   getStoredList: () => [],
   setStoredList: () => {},
   createId: () => "test-id",
 }));
 
-import { getSearchResults, inferDemandCategory, getProductText } from "../src/search";
-import { products } from "../src/data";
+import { getSearchResults, inferDemandCategory, getProductText } from "../src/frontend/search";
+import { products } from "../src/backend/data";
 
 const p1 = products[0] as Product;
 

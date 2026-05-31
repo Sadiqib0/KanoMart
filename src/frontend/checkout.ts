@@ -4,6 +4,8 @@ import { getCartItems, getCartProduct, getCartSubtotal } from "./cart";
 import { placeOrder } from "./orders";
 import { showToast } from "./toast";
 
+const DEFAULT_DELIVERY_FEE = 1200;
+
 function buildCheckoutModal(): HTMLElement {
   const el = document.createElement("div");
   el.className = "modal-backdrop";
@@ -37,9 +39,10 @@ function buildCheckoutModal(): HTMLElement {
       <div id="checkoutFormView">
         <div class="checkout-summary">
           ${itemsHtml}
+          <div class="checkout-item"><span>${getCopy("Estimated delivery fee", "Kudin kai kaya")}</span><span>${escapeHtml(formatPrice(DEFAULT_DELIVERY_FEE))}</span></div>
           <div class="checkout-total">
             <strong>${getCopy("Total", "Jimla")}</strong>
-            <strong>${escapeHtml(formatPrice(subtotal))}</strong>
+            <strong>${escapeHtml(formatPrice(subtotal + DEFAULT_DELIVERY_FEE))}</strong>
           </div>
         </div>
         <form id="checkoutForm" class="checkout-form" novalidate>
@@ -54,6 +57,18 @@ function buildCheckoutModal(): HTMLElement {
               placeholder="08012345678" />
           </label>
           <label>
+            <span>${getCopy("Delivery or pickup", "Kai kaya ko dauka")}</span>
+            <select name="deliveryOption" required>
+              <option value="delivery">${getCopy("Delivery", "Kai kaya")}</option>
+              <option value="pickup">${getCopy("Pickup", "Dauka")}</option>
+            </select>
+          </label>
+          <label>
+            <span>${getCopy("Delivery address", "Adireshin kai kaya")}</span>
+            <input type="text" name="deliveryAddress" value="${escapeHtml(user?.deliveryAddress || "")}"
+              placeholder="${getCopy("Street, house number, landmark", "Titi, lambar gida, alama")}" />
+          </label>
+          <label>
             <span>${getCopy("Delivery area", "Yankin isarwa")}</span>
             <input type="text" name="deliveryArea" required
               placeholder="${getCopy("e.g. Sabon Gari, Tarauni", "misali Sabon Gari, Tarauni")}" />
@@ -62,11 +77,11 @@ function buildCheckoutModal(): HTMLElement {
             <span>${getCopy("Payment method", "Hanyar biya")}</span>
             <select name="paymentMethod" required>
               <option value="" disabled selected>${getCopy("Choose", "Zaba")}</option>
-              <option value="card">${getCopy("Card payment", "Biyan kati")}</option>
-              <option value="transfer">${getCopy("Bank transfer", "Tura kudi ta banki")}</option>
-              <option value="ussd">${getCopy("USSD", "USSD")}</option>
-              <option value="wallet">${getCopy("Wallet", "Aljihun kudi")}</option>
               <option value="delivery">${getCopy("Pay on delivery", "Biya idan an kawo")}</option>
+              <option value="transfer">${getCopy("Manual bank transfer", "Tura kudi ta banki")}</option>
+              <option value="card">${getCopy("Card payment (later online gateway)", "Biyan kati daga baya")}</option>
+              <option value="ussd">${getCopy("USSD (later online gateway)", "USSD daga baya")}</option>
+              <option value="wallet">${getCopy("Wallet (later)", "Wallet daga baya")}</option>
             </select>
           </label>
           <button type="submit" class="checkout-submit">${getCopy("Place order", "Sanya oda")}</button>
@@ -107,7 +122,10 @@ export function openCheckoutModal(): void {
       String(data.get("customerName") || ""),
       String(data.get("customerPhone") || ""),
       String(data.get("deliveryArea") || ""),
-      String(data.get("paymentMethod") || "")
+      String(data.get("paymentMethod") || ""),
+      String(data.get("deliveryOption") || "delivery") === "pickup" ? "pickup" : "delivery",
+      String(data.get("deliveryAddress") || ""),
+      String(data.get("deliveryOption") || "delivery") === "pickup" ? 0 : DEFAULT_DELIVERY_FEE
     );
 
     if (!order) {
@@ -119,7 +137,10 @@ export function openCheckoutModal(): void {
     const successView = modal.querySelector<HTMLElement>("#checkoutSuccessView")!;
     successView.hidden = false;
     modal.querySelector<HTMLElement>("#checkoutOrderId")!.textContent =
-      getCopy(`Order ID: ${order.id}`, `Lambar oda: ${order.id}`);
+      getCopy(
+        `Order ID: ${order.id} - Payment ${order.paymentStatus}`,
+        `Lambar oda: ${order.id} - Biya ${order.paymentStatus}`
+      );
   });
 
   modal.querySelector(".checkout-done")?.addEventListener("click", () => closeCheckoutModal());

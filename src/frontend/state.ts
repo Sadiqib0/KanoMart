@@ -1,5 +1,6 @@
-import type { AppState, UserSession } from "./types";
-import { storageKeys } from "./data";
+import type { AppState, UserSession } from "../backend/types";
+import { storageKeys } from "../backend/data";
+import { migrateSession } from "../backend/users";
 
 const savedLanguage = localStorage.getItem(storageKeys.language);
 const savedSession = localStorage.getItem(storageKeys.session);
@@ -7,7 +8,7 @@ const savedAdminSession = localStorage.getItem(storageKeys.adminSession);
 
 function loadSession(): UserSession | null {
   try {
-    return savedSession ? (JSON.parse(savedSession) as UserSession) : null;
+    return savedSession ? migrateSession(JSON.parse(savedSession) as Partial<UserSession>) : null;
   } catch {
     return null;
   }
@@ -18,6 +19,7 @@ export const state: AppState = {
   cartCount: 0,
   lastQuery: "",
   lastResults: [],
+  visibleProductCount: 8,
   currentUser: loadSession(),
   adminAuthenticated: !!savedAdminSession,
 };
@@ -30,8 +32,14 @@ export const elements = {
   resultsIntro: document.querySelector<HTMLElement>("#resultsIntro")!,
   resultStatus: document.querySelector<HTMLElement>("#resultStatus")!,
   emptyState: document.querySelector<HTMLElement>("#emptyState")!,
+  loadMoreProducts: document.querySelector<HTMLButtonElement>("#loadMoreProducts")!,
   quickSearches: document.querySelector<HTMLElement>(".quick-searches")!,
   languageButtons: document.querySelectorAll<HTMLButtonElement>("[data-language]"),
+  appSidebar: document.querySelector<HTMLElement>("#appSidebar")!,
+  sidebarOpen: document.querySelector<HTMLButtonElement>("#sidebarOpen")!,
+  sidebarClose: document.querySelector<HTMLButtonElement>("#sidebarClose")!,
+  sidebarCollapse: document.querySelector<HTMLButtonElement>("#sidebarCollapse")!,
+  sidebarOverlay: document.querySelector<HTMLElement>("#sidebarOverlay")!,
   cartCountEl: document.querySelector<HTMLElement>("[data-cart-count]")!,
   wishlistCountEl: document.querySelector<HTMLElement>("[data-wishlist-count]")!,
   cartPanel: document.querySelector<HTMLElement>("#cartPanel")!,
@@ -49,9 +57,13 @@ export const elements = {
   popularSearches: document.querySelector<HTMLElement>("#popularSearches")!,
   failedSearchList: document.querySelector<HTMLElement>("#failedSearchList")!,
   demandTrends: document.querySelector<HTMLElement>("#demandTrends")!,
+  vendorApprovals: document.querySelector<HTMLElement>("#vendorApprovals")!,
+  productModeration: document.querySelector<HTMLElement>("#productModeration")!,
+  withdrawalQueue: document.querySelector<HTMLElement>("#withdrawalQueue")!,
   vendorPerformance: document.querySelector<HTMLElement>("#vendorPerformance")!,
   orderRecords: document.querySelector<HTMLElement>("#orderRecords")!,
   paymentStatus: document.querySelector<HTMLElement>("#paymentStatus")!,
+  reviewModeration: document.querySelector<HTMLElement>("#reviewModeration")!,
   searchHistoryTable: document.querySelector<HTMLElement>("#searchHistoryTable")!,
   exportSearches: document.querySelector<HTMLButtonElement>("#exportSearches")!,
   clearSearches: document.querySelector<HTMLButtonElement>("#clearSearches")!,

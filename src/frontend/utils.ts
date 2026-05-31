@@ -1,5 +1,5 @@
-import type { Language, LocalizedString } from "./types";
-import { categoryLabels } from "./data";
+import type { Language, LocalizedString } from "../backend/types";
+import { categoryLabels } from "../backend/data";
 import { state } from "./state";
 
 export function escapeHtml(value: string): string {
@@ -9,6 +9,15 @@ export function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;");
+}
+
+export function sanitizePlainText(value: string, maxLength = 160): string {
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
 }
 
 export function normalize(value: string): string {

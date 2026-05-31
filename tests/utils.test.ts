@@ -1,15 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock state and data imports so utils/search can load in jsdom without full DOM
-vi.mock("../src/state", () => ({
+vi.mock("../src/frontend/state", () => ({
   state: { language: "en", lastQuery: "", lastResults: [], cartCount: 0, adminAuthenticated: false, currentUser: null },
   elements: {},
 }));
 
-vi.mock("../src/data", () => ({
+vi.mock("../src/backend/data", () => ({
   storageKeys: {
     language: "language", cart: "cart", orders: "orders", reviews: "reviews",
     wishlist: "wishlist", searches: "searches", vendors: "vendors",
+    productModeration: "productModeration", payments: "payments", walletLedger: "walletLedger",
     session: "session", adminSession: "adminSession",
   },
   categoryLabels: {
@@ -26,7 +27,7 @@ vi.mock("../src/data", () => ({
   vendorProfiles: {},
 }));
 
-import { escapeHtml, normalize, parsePrice, formatPrice, renderStars } from "../src/utils";
+import { escapeHtml, normalize, parsePrice, formatPrice, renderStars, sanitizePlainText } from "../src/frontend/utils";
 
 describe("escapeHtml", () => {
   it("escapes ampersand", () => {
@@ -65,6 +66,16 @@ describe("normalize", () => {
 
   it("trims leading and trailing whitespace", () => {
     expect(normalize("  rice ")).toBe("rice");
+  });
+});
+
+describe("sanitizePlainText", () => {
+  it("removes angle brackets and control characters", () => {
+    expect(sanitizePlainText("<b>Kano\u0000 Mart</b>")).toBe("bKano Mart/b");
+  });
+
+  it("collapses whitespace and limits length", () => {
+    expect(sanitizePlainText("  Kano    Mart  ", 6)).toBe("Kano M");
   });
 });
 

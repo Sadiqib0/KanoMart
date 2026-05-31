@@ -5,14 +5,27 @@ export const storageKeys = {
   vendors: "kanoMart.vendorRequests",
   cart: "kanoMart.cart",
   orders: "kanoMart.orders",
+  payments: "kanoMart.payments",
+  walletLedger: "kanoMart.walletLedger",
+  withdrawals: "kanoMart.withdrawals",
   reviews: "kanoMart.reviews",
+  notifications: "kanoMart.notifications",
   wishlist: "kanoMart.wishlist",
+  productModeration: "kanoMart.productModeration",
+  vendorProducts: "kanoMart.vendorProducts",
+  categories: "kanoMart.categories",
+  users: "kanoMart.users",
+  commissionSettings: "kanoMart.commissionSettings",
+  vendorSubscriptions: "kanoMart.vendorSubscriptions",
+  promotions: "kanoMart.promotions",
+  productMetrics: "kanoMart.productMetrics",
   session: "kanoMart.session",
   adminSession: "kanoMart.adminSession",
   language: "kanoMart.language",
 } as const;
 
 export const ADMIN_PIN = "0000";
+export const ADMIN_MOBILE_NUMBER = "08000000000";
 
 // All keys lowercase — use localizeCategory() for display
 export const categoryLabels: Record<string, LocalizedString> = {
@@ -24,10 +37,11 @@ export const categoryLabels: Record<string, LocalizedString> = {
 };
 
 export const orderStatusLabels: Record<string, LocalizedString> = {
-  placed: { en: "Order placed", ha: "An sanya oda" },
-  confirmed: { en: "Confirmed by vendor", ha: "Dan kasuwa ya tabbatar" },
-  packed: { en: "Packed", ha: "An hada kaya" },
-  dispatched: { en: "Out for delivery", ha: "Ana kai kaya" },
+  awaiting_confirmation: { en: "Awaiting confirmation", ha: "Ana jiran tabbatarwa" },
+  preparing_order: { en: "Preparing order", ha: "Ana shirya oda" },
+  ready_for_pickup: { en: "Ready for pickup", ha: "A shirye domin dauka" },
+  assigned_to_rider: { en: "Assigned to rider", ha: "An bai wa mai kai kaya" },
+  out_for_delivery: { en: "Out for delivery", ha: "Ana kai kaya" },
   delivered: { en: "Delivered", ha: "An kai kaya" },
   cancelled: { en: "Cancelled", ha: "An soke" },
 };

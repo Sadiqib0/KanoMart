@@ -1,8 +1,9 @@
-import type { Product, SearchRecord } from "./types";
-import { products, storageKeys } from "./data";
-import { getStoredList, setStoredList, createId } from "./storage";
+import type { Product, SearchRecord } from "../backend/types";
+import { storageKeys } from "../backend/data";
+import { getStoredList, setStoredList, createId } from "../backend/storage";
 import { state } from "./state";
 import { normalize } from "./utils";
+import { getCatalogProducts } from "../backend/products";
 
 export function getProductText(product: Product): string {
   return normalize(
@@ -53,7 +54,7 @@ export function getSearchResults(query: string): Product[] {
   const cleanQuery = normalize(query);
   const terms = cleanQuery.split(" ").filter(Boolean);
 
-  return products.filter((product) => {
+  return getCatalogProducts().filter((product) => {
     const text = getProductText(product);
     if (text.includes(cleanQuery)) return true;
     return terms.every((term) => fuzzyMatchesTerm(text, term));

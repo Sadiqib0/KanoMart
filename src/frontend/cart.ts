@@ -1,16 +1,17 @@
-import type { CartItem, Product } from "./types";
-import { storageKeys, products } from "./data";
-import { getStoredList, setStoredList } from "./storage";
+import type { CartItem, Product } from "../backend/types";
+import { storageKeys } from "../backend/data";
+import { getStoredList, setStoredList } from "../backend/storage";
 import { state, elements } from "./state";
 import { escapeHtml, getCopy, parsePrice, formatPrice } from "./utils";
 import { showToast } from "./toast";
+import { getProductById } from "../backend/products";
 
 export function getCartItems(): CartItem[] {
   return getStoredList<CartItem>(storageKeys.cart);
 }
 
 export function getCartProduct(productId: string): Product | undefined {
-  return products.find((p) => p.id === productId);
+  return getProductById(productId);
 }
 
 export function getCartCount(): number {
@@ -25,6 +26,15 @@ export function getCartSubtotal(): number {
 }
 
 export function addToCart(productId: string): void {
+  const product = getCartProduct(productId);
+  if (!product) {
+    showToast({
+      message: getCopy("This product is not available for purchase.", "Wannan kaya ba ya samuwa yanzu."),
+      type: "error",
+    });
+    return;
+  }
+
   const items = getCartItems();
   const existing = items.find((i) => i.productId === productId);
   if (existing) {
@@ -35,10 +45,7 @@ export function addToCart(productId: string): void {
   setStoredList(storageKeys.cart, items);
   syncCart();
 
-  const product = getCartProduct(productId);
-  if (product) {
-    showToast({ message: getCopy(`Added: ${product.name.en}`, `An saka: ${product.name.ha}`) });
-  }
+  showToast({ message: getCopy(`Added: ${product.name.en}`, `An saka: ${product.name.ha}`) });
 }
 
 export function updateQuantity(productId: string, delta: number): void {
@@ -66,6 +73,7 @@ export function syncCart(): void {
   const count = getCartCount();
   state.cartCount = count;
   elements.cartCountEl.textContent = String(count);
+  document.querySelector<HTMLElement>("#sidebarCartCount")?.replaceChildren(String(count));
   renderCartPanel();
 }
 

@@ -1,6 +1,6 @@
-import type { SearchRecord } from "./types";
-import { storageKeys } from "./data";
-import { getStoredList } from "./storage";
+import type { SearchRecord } from "../backend/types";
+import { storageKeys } from "../backend/data";
+import { getStoredList } from "../backend/storage";
 import { state, elements } from "./state";
 import { getCopy } from "./utils";
 import { renderAdminDashboard } from "./render";
@@ -55,14 +55,24 @@ export function clearPrototypeData(): void {
     storageKeys.vendors,
     storageKeys.cart,
     storageKeys.orders,
+    storageKeys.payments,
+    storageKeys.walletLedger,
+    storageKeys.withdrawals,
     storageKeys.reviews,
     storageKeys.wishlist,
+    storageKeys.vendorProducts,
+    storageKeys.users,
+    storageKeys.session,
+    storageKeys.adminSession,
   ].forEach((key) => localStorage.removeItem(key));
 
   state.cartCount = 0;
+  state.currentUser = null;
+  state.adminAuthenticated = false;
   elements.cartCountEl.textContent = "0";
 
   syncCart();
   syncWishlistCount();
   renderAdminDashboard();
+  window.dispatchEvent(new CustomEvent("kanoMart:signed-out"));
 }

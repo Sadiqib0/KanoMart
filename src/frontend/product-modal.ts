@@ -1,11 +1,12 @@
-import type { Product } from "./types";
-import { products, vendorProfiles } from "./data";
+import type { Product } from "../backend/types";
+import { vendorProfiles } from "../backend/data";
 import { state } from "./state";
 import { escapeHtml, getCopy, getLocalizedValue, renderStars } from "./utils";
 import { addToCart } from "./cart";
 import { toggleWishlist, isWishlisted, syncWishlistCount } from "./wishlist";
 import { getAverageRating, getProductReviews, addReview, renderReviewList, renderReviewForm } from "./reviews";
 import { showToast } from "./toast";
+import { getProductById } from "../backend/products";
 
 let activeProductId: string | null = null;
 
@@ -47,6 +48,7 @@ function buildModalHtml(product: Product): string {
 
         <div class="product-modal-body">
           <div class="product-modal-thumb" style="--accent: ${product.accent}">
+            ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : ""}
             <span>${escapeHtml(subcategory)}</span>
           </div>
 
@@ -57,6 +59,8 @@ function buildModalHtml(product: Product): string {
               <span>${escapeHtml(product.area)}</span>
             </p>
             <p class="availability">${escapeHtml(availability)}</p>
+            ${product.description?.[state.language] ? `<p>${escapeHtml(product.description[state.language])}</p>` : ""}
+            <p>${getCopy("Stock", "Adadi")}: ${escapeHtml(String(product.quantityAvailable ?? "Available"))}</p>
             ${reviewCount > 0 ? `
               <div class="modal-review-summary">
                 ${renderStars(avg)} <span class="review-count-label">${avg.toFixed(1)} (${reviewCount} ${getCopy("reviews", "ra'ayoyi")})</span>
@@ -99,7 +103,7 @@ function buildModalHtml(product: Product): string {
 }
 
 export function openProductModal(productId: string): void {
-  const product = products.find((p) => p.id === productId);
+  const product = getProductById(productId);
   if (!product) return;
 
   closeProductModal();

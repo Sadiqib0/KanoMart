@@ -1,4 +1,4 @@
-import type { ToastOptions } from "./types";
+import type { ToastOptions } from "../backend/types";
 import { elements } from "./state";
 
 export function showToast({ message, type = "success", duration = 3000 }: ToastOptions): void {
