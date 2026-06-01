@@ -27,6 +27,24 @@ export type ApiAuthResponse = {
   expiresAt?: string;
 };
 
+export type ApiProduct = {
+  id: string;
+  vendorUserId?: string;
+  vendorName?: string;
+  vendorPhone?: string;
+  name: { en?: string; ha?: string };
+  description?: { en?: string; ha?: string };
+  category: string;
+  price: number;
+  currency?: "NGN";
+  quantityAvailable?: number;
+  area?: string;
+  imageUrl?: string;
+  tags?: string[];
+  listingStatus?: "active" | "out_of_stock" | "taken_down";
+  moderationStatus?: "pending" | "approved" | "hidden" | "rejected";
+};
+
 function getApiBaseUrl(): string {
   const configured = globalThis.localStorage?.getItem("kanoMart.apiBaseUrl")?.trim();
   return configured || DEFAULT_API_BASE_URL;
@@ -67,7 +85,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 export const api = {
   health: () => apiRequest<{ status: string }>("/health"),
   me: () => apiRequest<{ user: ApiUser }>("/me"),
-  products: (query = "") => apiRequest<{ products: unknown[] }>(`/products${query ? `?q=${encodeURIComponent(query)}` : ""}`),
+  products: (query = "") => apiRequest<{ products: ApiProduct[] }>(`/products${query ? `?q=${encodeURIComponent(query)}` : ""}`),
   login: (identifier: string, password: string) =>
     apiRequest<ApiAuthResponse>("/auth/login", {
       body: { identifier, password },

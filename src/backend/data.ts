@@ -13,6 +13,7 @@ export const storageKeys = {
   wishlist: "kanoMart.wishlist",
   productModeration: "kanoMart.productModeration",
   vendorProducts: "kanoMart.vendorProducts",
+  liveProducts: "kanoMart.liveProducts",
   categories: "kanoMart.categories",
   users: "kanoMart.users",
   commissionSettings: "kanoMart.commissionSettings",

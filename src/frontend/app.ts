@@ -41,6 +41,7 @@ import { recordProductView } from "../backend/analytics";
 import { createPromotion } from "../backend/promotions";
 import { saveCommissionSettings, setVendorSubscription } from "../backend/marketplace-settings";
 import type { PromotionType, VendorPlanId } from "../backend/types";
+import { refreshLiveProducts } from "./live-api";
 
 const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin"]);
 const SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
@@ -235,6 +236,23 @@ function renderCatalogPreview(resetPage = true): void {
   elements.resultStatus.hidden = false;
   elements.resultStatus.textContent = getCopy(`${catalog.length} live products`, `Kaya ${catalog.length} a fili`);
   renderProductResults(catalog);
+}
+
+async function refreshLiveCatalog(): Promise<void> {
+  try {
+    await refreshLiveProducts();
+    if (state.lastQuery) {
+      const results = getSearchResults(state.lastQuery);
+      state.lastResults = results;
+      updateResultCopy(state.lastQuery, results);
+      renderProductResults(results);
+    } else {
+      renderCatalogPreview(false);
+    }
+    renderAdminDashboard();
+  } catch {
+    // The local catalog remains usable if the API is unavailable during testing.
+  }
 }
 
 function performSearch(rawQuery: string): void {
@@ -892,6 +910,7 @@ syncRoleNavigation();
 setRoute();
 setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
 syncSidebarLabels();
+void refreshLiveCatalog();
 
 const scheduleEnhancements =
   "requestIdleCallback" in window

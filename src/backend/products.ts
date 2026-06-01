@@ -43,8 +43,24 @@ export function getVendorProducts(): Product[] {
   }));
 }
 
+export function getLiveProducts(): Product[] {
+  return getStoredList<Product>(storageKeys.liveProducts).map((product) => ({
+    ...product,
+    listingStatus: product.listingStatus ?? "active",
+  }));
+}
+
+export function setLiveProducts(nextProducts: Product[]): void {
+  setStoredList(storageKeys.liveProducts, nextProducts);
+}
+
 export function getAllProducts(): Product[] {
-  return [...products, ...getVendorProducts()];
+  const seen = new Set<string>();
+  return [...products, ...getLiveProducts(), ...getVendorProducts()].filter((product) => {
+    if (seen.has(product.id)) return false;
+    seen.add(product.id);
+    return true;
+  });
 }
 
 export function getProductModerationRecords(): ProductModerationRecord[] {

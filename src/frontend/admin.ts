@@ -61,6 +61,7 @@ export function clearPrototypeData(): void {
     storageKeys.reviews,
     storageKeys.wishlist,
     storageKeys.vendorProducts,
+    storageKeys.liveProducts,
     storageKeys.users,
     storageKeys.session,
     storageKeys.adminSession,
