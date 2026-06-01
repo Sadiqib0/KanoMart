@@ -78,7 +78,7 @@ export interface ProductMetric {
   lastViewedAt: string;
 }
 
-export type ProductModerationStatus = "approved" | "hidden" | "rejected";
+export type ProductModerationStatus = "pending" | "approved" | "hidden" | "rejected";
 
 export interface ProductModerationRecord {
   productId: string;

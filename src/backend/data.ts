@@ -3,6 +3,7 @@ import type { Product, LocalizedString, DemoOrder, DemoPayment, VendorProfile, R
 export const storageKeys = {
   searches: "kanoMart.searchHistory",
   vendors: "kanoMart.vendorRequests",
+  liveVendors: "kanoMart.liveVendorRequests",
   cart: "kanoMart.cart",
   orders: "kanoMart.orders",
   payments: "kanoMart.payments",

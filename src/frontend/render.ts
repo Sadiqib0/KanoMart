@@ -461,7 +461,7 @@ export function renderVendorApprovals(vendors: VendorRequest[]): void {
 }
 
 export function renderProductModeration(): void {
-  const productStatusWeight = { hidden: 0, rejected: 1, approved: 2 };
+  const productStatusWeight = { pending: 0, hidden: 1, rejected: 2, approved: 3 };
   const visibleProducts = [...getAllProducts()]
     .sort((a, b) => productStatusWeight[getProductStatus(a.id)] - productStatusWeight[getProductStatus(b.id)])
     .slice(0, 8);
@@ -476,9 +476,11 @@ export function renderProductModeration(): void {
       const statusLabel =
         status === "approved"
           ? getCopy("Approved", "An amince")
-          : status === "hidden"
-            ? getCopy("Hidden", "An boye")
-            : getCopy("Rejected", "An ki");
+          : status === "pending"
+            ? getCopy("Pending", "Ana dubawa")
+            : status === "hidden"
+              ? getCopy("Hidden", "An boye")
+              : getCopy("Rejected", "An ki");
       const isVisible = status === "approved";
 
       return `
@@ -503,6 +505,9 @@ export function renderProductModeration(): void {
                 : `
                   <button type="button" data-product-id="${escapeHtml(product.id)}" data-product-action="approved">
                     ${getCopy("Approve", "Amince")}
+                  </button>
+                  <button type="button" class="secondary-action" data-product-id="${escapeHtml(product.id)}" data-product-action="rejected">
+                    ${getCopy("Reject", "Ki")}
                   </button>
                 `
             }

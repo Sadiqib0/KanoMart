@@ -8,6 +8,7 @@ import {
   createSessionForPhone,
   findUserProfileByEmail,
   findUserProfileByPhone,
+  isAdminPhone,
   requiresSignup,
   resetUserPassword,
   saveUserProfile,
@@ -284,12 +285,16 @@ function wireAuthModal(modal: HTMLElement): void {
     needsSignup = requiresSignup(pendingPhone);
     setSignupRequired(needsSignup);
     const loginPasswordWrap = modal.querySelector<HTMLElement>("#authLoginPasswordWrap");
-    if (loginPasswordWrap) loginPasswordWrap.hidden = needsSignup || !findUserProfileByPhone(pendingPhone)?.passwordHash;
+    if (loginPasswordWrap) loginPasswordWrap.hidden = needsSignup || (!findUserProfileByPhone(pendingPhone)?.passwordHash && !isAdminPhone(pendingPhone));
     otpHint.textContent = getCopy(
-      needsSignup
+      isAdminPhone(pendingPhone)
+        ? `A demo code has been sent to ${pendingPhone}. Use: ${MOCK_OTP}. Enter an admin password of at least 8 characters.`
+        : needsSignup
         ? `A demo code has been sent to ${pendingPhone}. Use: ${MOCK_OTP}. Complete the first-time profile after the code.`
         : `A demo code has been sent to ${pendingPhone}. Use: ${MOCK_OTP}`,
-      needsSignup
+      isAdminPhone(pendingPhone)
+        ? `An aika lambar gwaji zuwa ${pendingPhone}. Yi amfani da: ${MOCK_OTP}. Shigar da kalmar admin akalla haruffa 8.`
+        : needsSignup
         ? `An aika lambar gwaji zuwa ${pendingPhone}. Yi amfani da: ${MOCK_OTP}. Kammala bayanan farko bayan lambar.`
         : `An aika lambar gwaji zuwa ${pendingPhone}. Yi amfani da: ${MOCK_OTP}`
     );
@@ -373,11 +378,31 @@ function wireAuthModal(modal: HTMLElement): void {
     } else {
       const profile = findUserProfileByPhone(pendingPhone);
       const password = (modal.querySelector<HTMLInputElement>("#authLoginPassword")?.value || "").trim();
+      if (isAdminPhone(pendingPhone) && password.length < 8) {
+        otpError.textContent = getCopy("Enter an admin password of at least 8 characters.", "Shigar da kalmar admin akalla haruffa 8.");
+        return;
+      }
       if (profile?.passwordHash && !verifyPassword(pendingPhone, password)) {
         otpError.textContent = getCopy("Incorrect password.", "Kalmar sirri ba daidai ba.");
         return;
       }
       apiSession = await syncApiLogin(pendingPhone, password);
+      if (!apiSession && isAdminPhone(pendingPhone)) {
+        try {
+          apiSession = await syncApiRegistration({
+            phone: pendingPhone,
+            firstName: "Admin",
+            lastName: "User",
+            password,
+            role: "customer",
+          });
+        } catch {
+          showToast({
+            message: getCopy("Signed in locally. Live admin sync is unavailable.", "An shiga a gida. Haɗin admin live bai samu ba."),
+            type: "info",
+          });
+        }
+      }
       if (!apiSession && profile && password.length >= 8) {
         try {
           apiSession = await syncApiRegistration({

@@ -53,6 +53,7 @@ export function clearPrototypeData(): void {
   [
     storageKeys.searches,
     storageKeys.vendors,
+    storageKeys.liveVendors,
     storageKeys.cart,
     storageKeys.orders,
     storageKeys.payments,

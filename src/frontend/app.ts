@@ -41,7 +41,7 @@ import { recordProductView } from "../backend/analytics";
 import { createPromotion } from "../backend/promotions";
 import { saveCommissionSettings, setVendorSubscription } from "../backend/marketplace-settings";
 import type { PromotionType, VendorPlanId } from "../backend/types";
-import { refreshLiveProducts } from "./live-api";
+import { refreshLiveAdminQueues, refreshLiveProducts } from "./live-api";
 import { api } from "./api-client";
 
 const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin"]);
@@ -253,6 +253,23 @@ async function refreshLiveCatalog(): Promise<void> {
     renderAdminDashboard();
   } catch {
     // The local catalog remains usable if the API is unavailable during testing.
+  }
+}
+
+async function refreshLiveAdminDashboard(): Promise<void> {
+  if (state.currentUser?.role !== "admin" || !state.currentUser.token) return;
+  try {
+    await refreshLiveAdminQueues();
+    if (state.lastQuery) {
+      state.lastResults = getSearchResults(state.lastQuery);
+      updateResultCopy(state.lastQuery, state.lastResults);
+      renderProductResults();
+    } else {
+      renderCatalogPreview(false);
+    }
+    renderAdminDashboard();
+  } catch {
+    // The local admin dashboard remains usable if live admin sync is unavailable.
   }
 }
 
@@ -570,6 +587,61 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
   }
 }
 
+function applyLocalVendorDecision(id: string, action: "approved" | "rejected"): boolean {
+  const vendor = reviewVendorRequest(
+    id,
+    action,
+    action === "approved"
+      ? "Approved from prototype admin dashboard"
+      : "Rejected from prototype admin dashboard"
+  );
+  if (!vendor) return false;
+  createNotification({
+    audience: "vendor",
+    recipient: vendor.businessName,
+    title: action === "approved" ? "Vendor approved" : "Vendor rejected",
+    message: `${vendor.businessName} was ${action}.`,
+    type: "vendor",
+  });
+
+  renderAdminDashboard();
+  showToast({
+    message:
+      action === "approved"
+        ? getCopy(`${vendor.businessName} approved.`, `An amince da ${vendor.businessName}.`)
+        : getCopy(`${vendor.businessName} rejected.`, `An ki ${vendor.businessName}.`),
+    type: action === "approved" ? "success" : "info",
+  });
+  return true;
+}
+
+function applyLocalProductDecision(productId: string, productAction: "approved" | "hidden" | "rejected"): boolean {
+  const record = moderateProduct(productId, productAction, "Updated from prototype admin dashboard");
+  if (!record) return false;
+  createNotification({
+    audience: "vendor",
+    title: productAction === "approved" ? "Product approved" : "Product review updated",
+    message: `Product ${productId} is now ${productAction}.`,
+    type: "product",
+  });
+
+  if (state.lastQuery) {
+    state.lastResults = getSearchResults(state.lastQuery);
+    updateResultCopy(state.lastQuery, state.lastResults);
+    renderProductResults();
+  } else {
+    renderCatalogPreview();
+  }
+
+  renderAdminDashboard();
+  renderVendorCommerce();
+  showToast({
+    message: getCopy("Product moderation updated.", "An sabunta duba kayan."),
+    type: productAction === "approved" ? "success" : "info",
+  });
+  return true;
+}
+
 // — Event wiring —
 
 elements.searchForm.addEventListener("submit", (event) => {
@@ -780,30 +852,29 @@ elements.adminContent.addEventListener("click", (event) => {
     const action = button.dataset.vendorAction;
     if (!id || (action !== "approved" && action !== "rejected")) return;
 
-    const vendor = reviewVendorRequest(
-      id,
-      action,
-      action === "approved"
-        ? "Approved from prototype admin dashboard"
-        : "Rejected from prototype admin dashboard"
-    );
-    if (!vendor) return;
-    createNotification({
-      audience: "vendor",
-      recipient: vendor.businessName,
-      title: action === "approved" ? "Vendor approved" : "Vendor rejected",
-      message: `${vendor.businessName} was ${action}.`,
-      type: "vendor",
-    });
+    if (state.currentUser?.role === "admin" && state.currentUser.token) {
+      button.disabled = true;
+      api.updateVendorApplication(id, {
+        status: action,
+        adminNote: `Updated from Kano Mart live admin dashboard`,
+      })
+        .then(async () => {
+          await refreshLiveAdminDashboard();
+          showToast({
+            message: action === "approved" ? getCopy("Live vendor approved.", "An amince da dillali live.") : getCopy("Live vendor rejected.", "An ki dillali live."),
+            type: action === "approved" ? "success" : "info",
+          });
+        })
+        .catch(() => {
+          applyLocalVendorDecision(id, action);
+        })
+        .finally(() => {
+          button.disabled = false;
+        });
+      return;
+    }
 
-    renderAdminDashboard();
-    showToast({
-      message:
-        action === "approved"
-          ? getCopy(`${vendor.businessName} approved.`, `An amince da ${vendor.businessName}.`)
-          : getCopy(`${vendor.businessName} rejected.`, `An ki ${vendor.businessName}.`),
-      type: action === "approved" ? "success" : "info",
-    });
+    applyLocalVendorDecision(id, action);
     return;
   }
 
@@ -877,29 +948,29 @@ elements.adminContent.addEventListener("click", (event) => {
   const productAction = productButton.dataset.productAction;
   if (!productId || (productAction !== "approved" && productAction !== "hidden" && productAction !== "rejected")) return;
 
-  const record = moderateProduct(productId, productAction, "Updated from prototype admin dashboard");
-  if (!record) return;
-  createNotification({
-    audience: "vendor",
-    title: productAction === "approved" ? "Product approved" : "Product review updated",
-    message: `Product ${productId} is now ${productAction}.`,
-    type: "product",
-  });
-
-  if (state.lastQuery) {
-    state.lastResults = getSearchResults(state.lastQuery);
-    updateResultCopy(state.lastQuery, state.lastResults);
-    renderProductResults();
-  } else {
-    renderCatalogPreview();
+  if (state.currentUser?.role === "admin" && state.currentUser.token) {
+    productButton.disabled = true;
+    api.updateAdminProduct(productId, {
+      status: productAction,
+      reviewNote: "Updated from Kano Mart live admin dashboard",
+    })
+      .then(async () => {
+        await refreshLiveAdminDashboard();
+        showToast({
+          message: getCopy("Live product moderation updated.", "An sabunta duba kayan live."),
+          type: productAction === "approved" ? "success" : "info",
+        });
+      })
+      .catch(() => {
+        applyLocalProductDecision(productId, productAction);
+      })
+      .finally(() => {
+        productButton.disabled = false;
+      });
+    return;
   }
 
-  renderAdminDashboard();
-  renderVendorCommerce();
-  showToast({
-    message: getCopy("Product moderation updated.", "An sabunta duba kayan."),
-    type: productAction === "approved" ? "success" : "info",
-  });
+  applyLocalProductDecision(productId, productAction);
 });
 // User / auth
 elements.userButton.addEventListener("click", openUserPanel);
@@ -910,6 +981,7 @@ window.addEventListener("kanoMart:signed-in", () => {
   renderVendorCommerce();
   renderAdminGate();
   renderAdminDashboard();
+  void refreshLiveAdminDashboard();
   const nextRoute = getDefaultRouteForRole();
   window.history.replaceState(null, "", `#${nextRoute}`);
   setRoute(nextRoute);
@@ -942,6 +1014,7 @@ setRoute();
 setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
 syncSidebarLabels();
 void refreshLiveCatalog();
+void refreshLiveAdminDashboard();
 
 const scheduleEnhancements =
   "requestIdleCallback" in window

@@ -71,7 +71,7 @@ describe("product moderation", () => {
   it("counts product moderation statuses for admin metrics", () => {
     moderateProduct("p1", "rejected");
 
-    expect(getProductStatusCounts()).toEqual({ approved: 1, hidden: 0, rejected: 1 });
+    expect(getProductStatusCounts()).toEqual({ pending: 0, approved: 1, hidden: 0, rejected: 1 });
   });
 
   it("adds vendor products to the active catalog", () => {

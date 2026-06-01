@@ -45,6 +45,21 @@ export type ApiProduct = {
   moderationStatus?: "pending" | "approved" | "hidden" | "rejected";
 };
 
+export type ApiVendorApplication = {
+  id: string;
+  userId: string;
+  user?: ApiUser;
+  businessName: string;
+  phone: string;
+  area: string;
+  category: string;
+  status: "pending" | "approved" | "rejected";
+  adminNote?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
 export type ApiUpload = {
   id: string;
   url: string;
@@ -101,6 +116,18 @@ export const api = {
   logout: () => apiRequest<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   uploadVendorImage: (body: unknown) => apiRequest<{ upload: ApiUpload }>("/vendor/uploads", { body }),
   createVendorProduct: (body: unknown) => apiRequest<{ product: ApiProduct }>("/vendor/products", { body }),
+  adminVendorApplications: () => apiRequest<{ applications: ApiVendorApplication[] }>("/admin/vendor-applications"),
+  updateVendorApplication: (id: string, body: unknown) =>
+    apiRequest<{ application: ApiVendorApplication }>(`/admin/vendor-applications/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body,
+    }),
+  adminProducts: () => apiRequest<{ products: ApiProduct[] }>("/admin/products"),
+  updateAdminProduct: (id: string, body: unknown) =>
+    apiRequest<{ product: ApiProduct }>(`/admin/products/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body,
+    }),
   cart: () => apiRequest<{ cart: unknown }>("/cart"),
   addCartItem: (productId: string, quantity: number) =>
     apiRequest<{ cart: unknown }>("/cart/items", {

@@ -1,6 +1,7 @@
 import type { Product } from "../backend/types";
-import { setLiveProducts } from "../backend/products";
-import { api, type ApiProduct } from "./api-client";
+import { moderateProduct, setLiveProducts } from "../backend/products";
+import { setLiveVendorRequests } from "../backend/vendors";
+import { api, type ApiProduct, type ApiVendorApplication } from "./api-client";
 
 const categoryLabels: Record<string, Product["category"]> = {
   food: { en: "Food", ha: "Abinci" },
@@ -53,4 +54,29 @@ export async function refreshLiveProducts(query = ""): Promise<Product[]> {
   const products = response.products.map(mapApiProduct);
   setLiveProducts(products);
   return products;
+}
+
+function mapApiVendorApplication(application: ApiVendorApplication) {
+  return {
+    id: application.id,
+    businessName: application.businessName,
+    phone: application.phone,
+    area: application.area,
+    category: application.category,
+    status: application.status,
+    reviewedAt: application.reviewedAt,
+    reviewNote: application.adminNote,
+    createdAt: application.createdAt,
+  };
+}
+
+export async function refreshLiveAdminQueues(): Promise<void> {
+  const [vendors, products] = await Promise.all([api.adminVendorApplications(), api.adminProducts()]);
+  setLiveVendorRequests(vendors.applications.map(mapApiVendorApplication));
+  setLiveProducts(products.products.map(mapApiProduct));
+  for (const product of products.products) {
+    if (product.moderationStatus) {
+      moderateProduct(product.id, product.moderationStatus, "Synced from live admin API");
+    }
+  }
 }

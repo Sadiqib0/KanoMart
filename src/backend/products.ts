@@ -190,6 +190,6 @@ export function getProductStatusCounts(): Record<ProductModerationStatus, number
       counts[getProductStatus(product.id)] += 1;
       return counts;
     },
-    { approved: 0, hidden: 0, rejected: 0 } as Record<ProductModerationStatus, number>
+    { pending: 0, approved: 0, hidden: 0, rejected: 0 } as Record<ProductModerationStatus, number>
   );
 }

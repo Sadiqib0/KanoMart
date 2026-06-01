@@ -11,7 +11,18 @@ export function normalizeVendorRequest(request: VendorRequest): VendorRequest {
 }
 
 export function getVendorRequests(): VendorRequest[] {
-  return getStoredList<VendorRequest>(storageKeys.vendors).map(normalizeVendorRequest);
+  const seen = new Set<string>();
+  return [...getStoredList<VendorRequest>(storageKeys.liveVendors), ...getStoredList<VendorRequest>(storageKeys.vendors)]
+    .map(normalizeVendorRequest)
+    .filter((vendor) => {
+      if (seen.has(vendor.id)) return false;
+      seen.add(vendor.id);
+      return true;
+    });
+}
+
+export function setLiveVendorRequests(nextVendors: VendorRequest[]): void {
+  setStoredList(storageKeys.liveVendors, nextVendors);
 }
 
 export function saveVendorRequest(input: {
