@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build && node scripts/build-vercel-output.mjs",
+  "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": "/api/server.mjs"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/server.mjs"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = "http://localhost:8787";
+const DEFAULT_API_BASE_URL = "/api";
 
 type RequestOptions = {
   token?: string;

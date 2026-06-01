@@ -2437,6 +2437,17 @@ export function startServer(options = {}) {
   return { app, server };
 }
 
+const vercelApp = createApp({
+  allowedOrigin: process.env.CORS_ORIGIN ?? "*",
+});
+
+export default function handler(request, response) {
+  if (request.url?.startsWith("/api")) {
+    request.url = request.url.slice(4) || "/";
+  }
+  return vercelApp.handle(request, response);
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { server } = startServer();
   server.on("listening", () => {
