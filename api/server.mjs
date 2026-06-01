@@ -1491,6 +1491,7 @@ export function createApp(options = {}) {
   const adminPhone = options.adminPhone ?? process.env.KANO_ADMIN_PHONE ?? DEFAULT_ADMIN_PHONE;
   const allowedOrigin = options.allowedOrigin ?? process.env.CORS_ORIGIN ?? "http://localhost:4173,http://localhost:63342";
   const rateLimiter = options.rateLimiter ?? createRateLimiter(options.rateLimit);
+  const publicApiBasePath = options.publicApiBasePath ?? process.env.API_PUBLIC_BASE_PATH ?? "";
   const persist = options.persist;
 
   async function handle(request, response) {
@@ -1726,7 +1727,7 @@ export function createApp(options = {}) {
           fileName: parsed.value.fileName,
           mimeType: parsed.value.mimeType,
           dataUrl: parsed.value.dataUrl,
-          url: `/uploads/${uploadId}`,
+          url: `${publicApiBasePath}/uploads/${uploadId}`,
           createdAt: new Date().toISOString(),
         };
         store.uploads.set(upload.id, upload);
@@ -2501,6 +2502,7 @@ let vercelAppPromise;
 export default async function handler(request, response) {
   vercelAppPromise ??= createRemoteStoreApp({
     allowedOrigin: process.env.CORS_ORIGIN ?? "*",
+    publicApiBasePath: "/api",
   });
   const vercelApp = await vercelAppPromise;
   if (request.url?.startsWith("/api")) {

@@ -45,6 +45,13 @@ export type ApiProduct = {
   moderationStatus?: "pending" | "approved" | "hidden" | "rejected";
 };
 
+export type ApiUpload = {
+  id: string;
+  url: string;
+  fileName: string;
+  mimeType: string;
+};
+
 function getApiBaseUrl(): string {
   const configured = globalThis.localStorage?.getItem("kanoMart.apiBaseUrl")?.trim();
   return configured || DEFAULT_API_BASE_URL;
@@ -92,6 +99,8 @@ export const api = {
     }),
   register: (body: unknown) => apiRequest<ApiAuthResponse>("/auth/register", { body }),
   logout: () => apiRequest<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  uploadVendorImage: (body: unknown) => apiRequest<{ upload: ApiUpload }>("/vendor/uploads", { body }),
+  createVendorProduct: (body: unknown) => apiRequest<{ product: ApiProduct }>("/vendor/products", { body }),
   cart: () => apiRequest<{ cart: unknown }>("/cart"),
   addCartItem: (productId: string, quantity: number) =>
     apiRequest<{ cart: unknown }>("/cart/items", {

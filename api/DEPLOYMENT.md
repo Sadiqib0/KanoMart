@@ -25,6 +25,7 @@ API_DATA_FILE=./data/kano-mart-api.json
 API_STORE_REST_URL=https://your-upstash-rest-url
 API_STORE_REST_TOKEN=your-upstash-token
 API_STORE_KEY=kano-mart:api-store:v1
+API_PUBLIC_BASE_PATH=/api
 KANO_ADMIN_PHONE=08000000000
 ```
 

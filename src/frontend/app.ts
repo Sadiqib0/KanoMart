@@ -42,6 +42,7 @@ import { createPromotion } from "../backend/promotions";
 import { saveCommissionSettings, setVendorSubscription } from "../backend/marketplace-settings";
 import type { PromotionType, VendorPlanId } from "../backend/types";
 import { refreshLiveProducts } from "./live-api";
+import { api } from "./api-client";
 
 const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin"]);
 const SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
@@ -510,7 +511,7 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
   try {
     const imageDataUrl = await readImageAsDataUrl(image);
     const vendor = findVendorByPhone(user.phone);
-    saveVendorProduct({
+    const productInput = {
       vendor: vendor?.businessName || user.name,
       vendorPhone: user.phone,
       area: vendor?.area || "Kano",
@@ -522,9 +523,39 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
       quantityAvailable: Number(data.get("quantityAvailable") || 0),
       category: String(data.get("productCategory") || "essentials"),
       imageDataUrl,
-    });
+    };
+    saveVendorProduct(productInput);
+
+    let liveMessage = "";
+    if (user.token) {
+      try {
+        const upload = await api.uploadVendorImage({
+          fileName: image.name,
+          mimeType: image.type,
+          dataUrl: imageDataUrl,
+        });
+        await api.createVendorProduct({
+          name: { en: productInput.name, ha: productInput.nameHa || productInput.name },
+          description: { en: productInput.descriptionEn, ha: productInput.descriptionHa || productInput.descriptionEn },
+          category: productInput.category,
+          price: productInput.priceValue,
+          quantityAvailable: productInput.quantityAvailable,
+          area: productInput.area,
+          imageUrl: upload.upload.url,
+          tags: [productInput.name, productInput.category, productInput.area],
+        });
+        await refreshLiveCatalog();
+        liveMessage = getCopy(" Submitted to live backend for admin approval.", " An tura zuwa backend domin admin ya amince.");
+      } catch (error) {
+        liveMessage = getCopy(
+          " Saved locally. Live submission needs approved vendor access.",
+          " An ajiye a gida. Tura live na bukatar amincewar dillali."
+        );
+      }
+    }
+
     form.reset();
-    if (message) message.textContent = getCopy("Product added to your active catalog.", "An saka kaya a kasuwarka.");
+    if (message) message.textContent = getCopy("Product added to your active catalog.", "An saka kaya a kasuwarka.") + liveMessage;
     renderVendorProducts();
     renderVendorCommerce();
     renderCatalogPreview();
