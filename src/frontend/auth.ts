@@ -10,7 +10,6 @@ import {
   findUserProfileByPhone,
   isAdminPhone,
   requiresSignup,
-  resetUserPassword,
   saveUserProfile,
   updateUserProfile,
   verifyPassword,
@@ -212,7 +211,6 @@ function buildAuthModal(): HTMLElement {
           <p class="form-message" id="authOtpError" role="alert"></p>
         </form>
         <button type="button" class="link-button" id="authBack">${getCopy("← Change number", "← Canza lambar")}</button>
-        <button type="button" class="link-button" id="authResetPassword">${getCopy("Reset password", "Sake kalmar sirri")}</button>
       </div>
     </div>
   `;
@@ -445,14 +443,6 @@ function wireAuthModal(modal: HTMLElement): void {
     modal.querySelector<HTMLInputElement>("#authPhone")?.focus();
   });
 
-  modal.querySelector("#authResetPassword")?.addEventListener("click", () => {
-    const nextPassword = window.prompt(getCopy("Enter a new password for this number.", "Shigar da sabuwar kalmar sirri."));
-    if (!nextPassword) return;
-    const ok = resetUserPassword(pendingPhone, nextPassword);
-    otpError.textContent = ok
-      ? getCopy("Password reset. Continue signing in.", "An sake kalmar sirri. Ci gaba da shiga.")
-      : getCopy("No account found for this number.", "Ba a samu asusu da wannan lamba ba.");
-  });
 }
 
 // — User panel (orders/account) —

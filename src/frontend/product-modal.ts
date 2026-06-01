@@ -7,6 +7,7 @@ import { toggleWishlist, isWishlisted, syncWishlistCount } from "./wishlist";
 import { getAverageRating, getProductReviews, addReview, renderReviewList, renderReviewForm } from "./reviews";
 import { showToast } from "./toast";
 import { getProductById } from "../backend/products";
+import { openAuthModal } from "./auth";
 
 let activeProductId: string | null = null;
 
@@ -122,6 +123,7 @@ export function openProductModal(productId: string): void {
   modal.addEventListener("click", (e) => { if (e.target === modal) closeProductModal(); });
 
   modal.querySelector("#modalAddToCart")?.addEventListener("click", () => {
+    if (!state.currentUser) { closeProductModal(); openAuthModal(); return; }
     addToCart(productId);
     const btn = modal.querySelector<HTMLButtonElement>("#modalAddToCart")!;
     btn.textContent = getCopy("Added!", "An saka!");
@@ -131,6 +133,7 @@ export function openProductModal(productId: string): void {
   });
 
   modal.querySelector("#modalWishlist")?.addEventListener("click", () => {
+    if (!state.currentUser) { closeProductModal(); openAuthModal(); return; }
     toggleWishlist(productId, product.name[state.language]);
     syncWishlistCount();
     const btn = modal.querySelector<HTMLButtonElement>("#modalWishlist")!;

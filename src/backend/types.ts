@@ -26,6 +26,7 @@ export interface Product {
   area: string;
   availability: LocalizedString;
   listingStatus?: "active" | "out_of_stock" | "taken_down";
+  moderationStatus?: "pending" | "approved" | "hidden" | "rejected";
   accent: string;
   tags: string[];
 }

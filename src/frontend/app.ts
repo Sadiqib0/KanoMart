@@ -17,7 +17,7 @@ import {
 import { openCheckoutModal } from "./checkout";
 import { openProductModal } from "./product-modal";
 import { openWishlistPanel, toggleWishlist, syncWishlistCount, syncAllWishlistButtons } from "./wishlist";
-import { openUserPanel, saveSession, syncUserButton } from "./auth";
+import { openAuthModal, openUserPanel, saveSession, syncUserButton } from "./auth";
 import { renderAdminGate } from "./admin-gate";
 import { reviewVendorRequest, saveVendorRequest as persistVendorRequest } from "../backend/vendors";
 import { showToast } from "./toast";
@@ -41,7 +41,7 @@ import { recordProductView } from "../backend/analytics";
 import { createPromotion } from "../backend/promotions";
 import { saveCommissionSettings, setVendorSubscription } from "../backend/marketplace-settings";
 import type { PromotionType, VendorPlanId } from "../backend/types";
-import { refreshLiveAdminQueues, refreshLiveProducts } from "./live-api";
+import { refreshLiveAdminQueues, refreshLiveProducts, refreshLiveVendorProducts } from "./live-api";
 import { api } from "./api-client";
 
 const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin"]);
@@ -273,6 +273,16 @@ async function refreshLiveAdminDashboard(): Promise<void> {
   }
 }
 
+async function refreshLiveVendorDashboard(): Promise<void> {
+  if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
+  try {
+    await refreshLiveVendorProducts();
+    renderVendorProducts();
+  } catch {
+    // Local vendor dashboard remains usable if live sync is unavailable.
+  }
+}
+
 function performSearch(rawQuery: string): void {
   const query = rawQuery.trim();
   if (!query) return;
@@ -398,13 +408,47 @@ function renderVendorProducts(): void {
 
   list.innerHTML = vendorProducts
     .map((product) => {
-      const status = product.listingStatus ?? "active";
-      const statusLabel =
-        status === "active"
-          ? getCopy("Active", "Yana aiki")
-          : status === "out_of_stock"
-            ? getCopy("Out of stock", "Ya kare")
-            : getCopy("Taken down", "An cire");
+      const modStatus = product.moderationStatus;
+      const listStatus = product.listingStatus ?? "active";
+
+      const moderationBadge =
+        modStatus === "pending"
+          ? `<span class="status-pill status-pending-review">${getCopy("Awaiting review", "Ana duba")}</span>`
+          : modStatus === "rejected"
+            ? `<span class="status-pill status-rejected">${getCopy("Rejected", "An ki")}</span>`
+            : modStatus === "hidden"
+              ? `<span class="status-pill status-hidden">${getCopy("Hidden by admin", "Admin ya ɓoye")}</span>`
+              : null;
+
+      const listingBadge = moderationBadge
+        ? ""
+        : (() => {
+            const label =
+              listStatus === "active"
+                ? getCopy("Active", "Yana aiki")
+                : listStatus === "out_of_stock"
+                  ? getCopy("Out of stock", "Ya kare")
+                  : getCopy("Taken down", "An cire");
+            return `<span class="status-pill status-${escapeHtml(listStatus)}">${escapeHtml(label)}</span>`;
+          })();
+
+      const actions = moderationBadge
+        ? `<span class="muted small">${getCopy("Pending admin approval", "Admin yana duba tukuna")}</span>`
+        : listStatus === "active"
+          ? `
+            <button type="button" data-vendor-product-action="out_of_stock" data-vendor-product-id="${escapeHtml(product.id)}">
+              ${getCopy("Out of stock", "Ya kare")}
+            </button>
+            <button type="button" data-vendor-product-action="taken_down" data-vendor-product-id="${escapeHtml(product.id)}">
+              ${getCopy("Take down", "Cire")}
+            </button>
+          `
+          : `
+            <button type="button" data-vendor-product-action="active" data-vendor-product-id="${escapeHtml(product.id)}">
+              ${getCopy("Restore", "Mayar")}
+            </button>
+          `;
+
       return `
         <article class="vendor-product-row">
           <div class="vendor-product-thumb" style="--accent: ${product.accent}">
@@ -414,25 +458,8 @@ function renderVendorProducts(): void {
             <strong>${escapeHtml(product.name[state.language])}</strong>
             <span>${escapeHtml(product.price)} - ${escapeHtml(product.category[state.language])}</span>
           </div>
-          <span class="status-pill status-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
-          <div class="vendor-product-actions">
-            ${
-              status === "active"
-                ? `
-                  <button type="button" data-vendor-product-action="out_of_stock" data-vendor-product-id="${escapeHtml(product.id)}">
-                    ${getCopy("Out of stock", "Ya kare")}
-                  </button>
-                  <button type="button" data-vendor-product-action="taken_down" data-vendor-product-id="${escapeHtml(product.id)}">
-                    ${getCopy("Take down", "Cire")}
-                  </button>
-                `
-                : `
-                  <button type="button" data-vendor-product-action="active" data-vendor-product-id="${escapeHtml(product.id)}">
-                    ${getCopy("Restore", "Mayar")}
-                  </button>
-                `
-            }
-          </div>
+          ${moderationBadge ?? listingBadge}
+          <div class="vendor-product-actions">${actions}</div>
         </article>
       `;
     })
@@ -561,8 +588,8 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
           imageUrl: upload.upload.url,
           tags: [productInput.name, productInput.category, productInput.area],
         });
-        await refreshLiveCatalog();
-        liveMessage = getCopy(" Submitted to live backend for admin approval.", " An tura zuwa backend domin admin ya amince.");
+        await Promise.all([refreshLiveCatalog(), refreshLiveVendorDashboard()]);
+        liveMessage = getCopy(" Submitted for admin review — visible in catalog once approved.", " An tura wa admin — zai bayyana a kasuwa bayan amincewar admin.");
       } catch (error) {
         liveMessage = getCopy(
           " Saved locally. Live submission needs approved vendor access.",
@@ -690,6 +717,7 @@ elements.resultsGrid.addEventListener("click", (event) => {
 
   const wishBtn = target?.closest<HTMLButtonElement>("[data-wishlist]");
   if (wishBtn) {
+    if (!state.currentUser) { openAuthModal(); return; }
     const id = wishBtn.dataset.wishlist!;
     const product = state.lastResults.find((p) => p.id === id);
     toggleWishlist(id, product?.name[state.language] ?? id);
@@ -700,6 +728,7 @@ elements.resultsGrid.addEventListener("click", (event) => {
 
   const addBtn = target?.closest<HTMLButtonElement>("[data-add-to-cart]");
   if (addBtn) {
+    if (!state.currentUser) { openAuthModal(); return; }
     addToCart(addBtn.dataset.addToCart!);
     elements.cartCountEl.textContent = String(state.cartCount);
     syncRoleNavigation();
@@ -740,6 +769,7 @@ document.querySelectorAll<HTMLElement>(".wishlist-button").forEach((button) => {
 elements.cartOverlay.addEventListener("click", closeCart);
 document.querySelector<HTMLButtonElement>(".cart-close")?.addEventListener("click", closeCart);
 elements.checkoutButton.addEventListener("click", () => {
+  if (!state.currentUser) { openAuthModal(); return; }
   closeCart();
   openCheckoutModal();
 });
@@ -1015,6 +1045,7 @@ setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
 syncSidebarLabels();
 void refreshLiveCatalog();
 void refreshLiveAdminDashboard();
+void refreshLiveVendorDashboard();
 
 const scheduleEnhancements =
   "requestIdleCallback" in window

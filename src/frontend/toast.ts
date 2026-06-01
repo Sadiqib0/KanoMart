@@ -1,7 +1,7 @@
 import type { ToastOptions } from "../backend/types";
 import { elements } from "./state";
 
-export function showToast({ message, type = "success", duration = 3000 }: ToastOptions): void {
+export function showToast({ message, type = "success", duration = 2000 }: ToastOptions): void {
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
   toast.setAttribute("role", "status");

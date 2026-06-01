@@ -985,6 +985,15 @@ td {
   color: #7a540f;
 }
 
+.status-pending-review {
+  background: #fff8e6;
+  color: #7a540f;
+}
+
+.small {
+  font-size: 0.78rem;
+}
+
 .vendor-approval-panel,
 .product-moderation-panel {
   grid-column: span 1;
@@ -1741,7 +1750,14 @@ td {
   font-weight: 700;
   box-shadow: 0 8px 28px rgba(23, 33, 29, 0.22);
   pointer-events: auto;
-  animation: toast-in 0.2s ease;
+  opacity: 0;
+  transform: translateY(10px) scale(0.96);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .toast-success {
@@ -1754,11 +1770,6 @@ td {
 
 .toast-info {
   background: var(--teal);
-}
-
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* ═══════════════════════════════════════════════

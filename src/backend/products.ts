@@ -54,6 +54,10 @@ export function setLiveProducts(nextProducts: Product[]): void {
   setStoredList(storageKeys.liveProducts, nextProducts);
 }
 
+export function setLiveVendorProducts(nextProducts: Product[]): void {
+  setStoredList(storageKeys.vendorProducts, nextProducts);
+}
+
 export function getAllProducts(): Product[] {
   const seen = new Set<string>();
   return [...products, ...getLiveProducts(), ...getVendorProducts()].filter((product) => {

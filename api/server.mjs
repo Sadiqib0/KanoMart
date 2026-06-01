@@ -137,6 +137,26 @@ function getRemoteSnapshotConfig(env = process.env) {
   };
 }
 
+async function checkRedisAuthRateLimit(config, ip) {
+  if (!config) return true;
+  const window = 15 * 60;
+  const max = 10;
+  const key = `rate:auth:${ip}`;
+  const incrRes = await fetch(`${config.url}/incr/${encodeURIComponent(key)}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${config.token}` },
+  });
+  if (!incrRes.ok) return true;
+  const count = (await incrRes.json()).result;
+  if (count === 1) {
+    fetch(`${config.url}/expire/${encodeURIComponent(key)}/${window}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${config.token}` },
+    }).catch(() => {});
+  }
+  return count <= max;
+}
+
 async function readRemoteSnapshot(config) {
   const response = await fetch(`${config.url}/get/${encodeURIComponent(config.key)}`, {
     headers: { authorization: `Bearer ${config.token}` },
@@ -173,6 +193,7 @@ export async function createRemoteStoreApp(options = {}) {
   return createApp({
     ...options,
     store,
+    remoteStoreConfig: config,
     persist: (nextStore) => writeRemoteSnapshot(config, nextStore),
   });
 }
@@ -1491,6 +1512,7 @@ export function createApp(options = {}) {
   const adminPhone = options.adminPhone ?? process.env.KANO_ADMIN_PHONE ?? DEFAULT_ADMIN_PHONE;
   const allowedOrigin = options.allowedOrigin ?? process.env.CORS_ORIGIN ?? "http://localhost:4173,http://localhost:63342";
   const rateLimiter = options.rateLimiter ?? createRateLimiter(options.rateLimit);
+  const remoteStoreConfig = options.remoteStoreConfig ?? null;
   const publicApiBasePath = options.publicApiBasePath ?? process.env.API_PUBLIC_BASE_PATH ?? "";
   const persist = options.persist;
 
@@ -1535,6 +1557,11 @@ export function createApp(options = {}) {
       }
 
       if (method === "POST" && requestUrl.pathname === "/auth/register") {
+        const clientIp = request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ?? request.socket?.remoteAddress ?? "local";
+        if (!await checkRedisAuthRateLimit(remoteStoreConfig, clientIp)) {
+          sendError(response, 429, "rate_limited", "Too many attempts. Try again later.");
+          return;
+        }
         const body = await readJson(request);
         const parsed = validateSignup(body);
         if (!parsed.valid) {
@@ -1563,6 +1590,11 @@ export function createApp(options = {}) {
       }
 
       if (method === "POST" && requestUrl.pathname === "/auth/login") {
+        const clientIp = request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ?? request.socket?.remoteAddress ?? "local";
+        if (!await checkRedisAuthRateLimit(remoteStoreConfig, clientIp)) {
+          sendError(response, 429, "rate_limited", "Too many attempts. Try again later.");
+          return;
+        }
         const body = await readJson(request);
         const identifier = String(body.identifier ?? body.phone ?? body.email ?? "").trim();
         const password = String(body.password ?? "");

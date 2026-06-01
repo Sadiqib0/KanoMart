@@ -115,6 +115,7 @@ export const api = {
   register: (body: unknown) => apiRequest<ApiAuthResponse>("/auth/register", { body }),
   logout: () => apiRequest<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   uploadVendorImage: (body: unknown) => apiRequest<{ upload: ApiUpload }>("/vendor/uploads", { body }),
+  vendorProducts: () => apiRequest<{ products: ApiProduct[] }>("/vendor/products"),
   createVendorProduct: (body: unknown) => apiRequest<{ product: ApiProduct }>("/vendor/products", { body }),
   adminVendorApplications: () => apiRequest<{ applications: ApiVendorApplication[] }>("/admin/vendor-applications"),
   updateVendorApplication: (id: string, body: unknown) =>

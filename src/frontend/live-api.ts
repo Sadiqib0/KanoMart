@@ -1,5 +1,5 @@
 import type { Product } from "../backend/types";
-import { moderateProduct, setLiveProducts } from "../backend/products";
+import { moderateProduct, setLiveProducts, setLiveVendorProducts } from "../backend/products";
 import { setLiveVendorRequests } from "../backend/vendors";
 import { api, type ApiProduct, type ApiVendorApplication } from "./api-client";
 
@@ -42,6 +42,7 @@ function mapApiProduct(product: ApiProduct): Product {
         ? { en: "Available now", ha: "Akwai yanzu" }
         : { en: "Out of stock", ha: "Ya kare" },
     listingStatus: product.listingStatus ?? "active",
+    moderationStatus: product.moderationStatus,
     accent: "#176b4d",
     tags: [nameEn, nameHa, product.category, product.vendorName, product.area, ...(product.tags ?? [])]
       .filter(Boolean)
@@ -68,6 +69,13 @@ function mapApiVendorApplication(application: ApiVendorApplication) {
     reviewNote: application.adminNote,
     createdAt: application.createdAt,
   };
+}
+
+export async function refreshLiveVendorProducts(): Promise<Product[]> {
+  const response = await api.vendorProducts();
+  const products = response.products.map(mapApiProduct);
+  setLiveVendorProducts(products);
+  return products;
 }
 
 export async function refreshLiveAdminQueues(): Promise<void> {
