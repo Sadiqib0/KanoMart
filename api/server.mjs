@@ -126,6 +126,57 @@ function persistStore(filePath, store) {
   renameSync(tmpPath, filePath);
 }
 
+function getRemoteSnapshotConfig(env = process.env) {
+  const url = env.API_STORE_REST_URL ?? env.UPSTASH_REDIS_REST_URL;
+  const token = env.API_STORE_REST_TOKEN ?? env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  return {
+    url: String(url).replace(/\/$/, ""),
+    token,
+    key: env.API_STORE_KEY ?? "kano-mart:api-store:v1",
+  };
+}
+
+async function readRemoteSnapshot(config) {
+  const response = await fetch(`${config.url}/get/${encodeURIComponent(config.key)}`, {
+    headers: { authorization: `Bearer ${config.token}` },
+  });
+  if (!response.ok) throw new Error(`Remote API store read failed with ${response.status}`);
+  const payload = await response.json();
+  const value = payload.result;
+  if (!value) return createMemoryStore();
+  const parsed = typeof value === "string" ? JSON.parse(value) : value;
+  return hydrateStore(parsed.data ?? parsed);
+}
+
+async function writeRemoteSnapshot(config, store) {
+  const snapshot = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    data: serializeStore(store),
+  };
+  const response = await fetch(`${config.url}/set/${encodeURIComponent(config.key)}`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${config.token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(snapshot),
+  });
+  if (!response.ok) throw new Error(`Remote API store write failed with ${response.status}`);
+}
+
+export async function createRemoteStoreApp(options = {}) {
+  const config = options.remoteStoreConfig ?? getRemoteSnapshotConfig(options.env);
+  if (!config) return createApp(options);
+  const store = options.store ?? (await readRemoteSnapshot(config));
+  return createApp({
+    ...options,
+    store,
+    persist: (nextStore) => writeRemoteSnapshot(config, nextStore),
+  });
+}
+
 function normalizePhone(value = "") {
   const digits = String(value).replace(/\D/g, "");
   if (!digits) return "";
@@ -1440,6 +1491,7 @@ export function createApp(options = {}) {
   const adminPhone = options.adminPhone ?? process.env.KANO_ADMIN_PHONE ?? DEFAULT_ADMIN_PHONE;
   const allowedOrigin = options.allowedOrigin ?? process.env.CORS_ORIGIN ?? "http://localhost:4173,http://localhost:63342";
   const rateLimiter = options.rateLimiter ?? createRateLimiter(options.rateLimit);
+  const persist = options.persist;
 
   async function handle(request, response) {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
@@ -1447,6 +1499,7 @@ export function createApp(options = {}) {
     const headers = corsHeaders(request, allowedOrigin);
     const originalEnd = response.end.bind(response);
     response.end = (payload = "") => {
+      const finish = () => originalEnd(payload);
       if (dataFile && method !== "OPTIONS") {
         try {
           persistStore(dataFile, store);
@@ -1454,7 +1507,13 @@ export function createApp(options = {}) {
           console.error("Failed to persist API data", error);
         }
       }
-      originalEnd(payload);
+      if (persist && method !== "OPTIONS") {
+        Promise.resolve(persist(store))
+          .catch((error) => console.error("Failed to persist remote API data", error))
+          .finally(finish);
+        return;
+      }
+      finish();
     };
 
     if (method === "OPTIONS") {
@@ -2437,11 +2496,13 @@ export function startServer(options = {}) {
   return { app, server };
 }
 
-const vercelApp = createApp({
-  allowedOrigin: process.env.CORS_ORIGIN ?? "*",
-});
+let vercelAppPromise;
 
-export default function handler(request, response) {
+export default async function handler(request, response) {
+  vercelAppPromise ??= createRemoteStoreApp({
+    allowedOrigin: process.env.CORS_ORIGIN ?? "*",
+  });
+  const vercelApp = await vercelAppPromise;
   if (request.url?.startsWith("/api")) {
     request.url = request.url.slice(4) || "/";
   }

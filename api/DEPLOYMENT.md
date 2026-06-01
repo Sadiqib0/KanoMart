@@ -22,12 +22,20 @@ PORT=8787
 NODE_ENV=production
 CORS_ORIGIN=https://your-frontend-domain.example
 API_DATA_FILE=./data/kano-mart-api.json
+API_STORE_REST_URL=https://your-upstash-rest-url
+API_STORE_REST_TOKEN=your-upstash-token
+API_STORE_KEY=kano-mart:api-store:v1
 KANO_ADMIN_PHONE=08000000000
 ```
 
 `API_DATA_FILE` enables durable JSON persistence for the no-database phase. It is
 good enough for demos and controlled pilots, but PostgreSQL should replace it
 before public launch.
+
+On serverless hosts such as Vercel, use `API_STORE_REST_URL` and
+`API_STORE_REST_TOKEN` instead of `API_DATA_FILE`. The API stores a full JSON
+snapshot in that remote key-value store after each request. Upstash Redis works
+for this test phase and can be connected from the Vercel dashboard.
 
 ## Run
 
@@ -43,7 +51,9 @@ node api/server.mjs
 
 ## Current Persistence
 
-The API now persists all in-memory stores to `API_DATA_FILE`:
+The API persists all in-memory stores to `API_DATA_FILE` on long-running Node
+hosts, or to the remote REST snapshot store when `API_STORE_REST_URL` and
+`API_STORE_REST_TOKEN` are configured:
 
 - users and sessions
 - vendors and approvals

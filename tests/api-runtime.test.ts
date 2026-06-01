@@ -1,8 +1,8 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createApp, createMemoryStore, inject } from "../api/server.mjs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createApp, createMemoryStore, createRemoteStoreApp, inject } from "../api/server.mjs";
 
 let app: ReturnType<typeof createApp>;
 let originalBodyLimit: string | undefined;
@@ -61,6 +61,8 @@ beforeEach(() => {
 afterEach(() => {
   if (originalBodyLimit === undefined) delete process.env.API_BODY_LIMIT_BYTES;
   else process.env.API_BODY_LIMIT_BYTES = originalBodyLimit;
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("Kano Mart API runtime readiness", () => {
@@ -86,6 +88,47 @@ describe("Kano Mart API runtime readiness", () => {
 
     expect(login.status).toBe(200);
     expect(login.body.user).toMatchObject({ name: "Aisha Bello", role: "customer" });
+  });
+
+  it("persists API data to a remote snapshot store and reloads it", async () => {
+    let storedSnapshot = "";
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("/get/")) {
+        return new Response(JSON.stringify({ result: storedSnapshot || null }), { status: 200 });
+      }
+      if (requestUrl.includes("/set/")) {
+        storedSnapshot = String(init?.body ?? "");
+        return new Response(JSON.stringify({ result: "OK" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const remoteStoreConfig = {
+      url: "https://store.kano.test",
+      token: "test-token",
+      key: "kano:test",
+    };
+
+    app = await createRemoteStoreApp({ allowedOrigin: "*", remoteStoreConfig });
+    await registerUser({
+      phone: "08012345679",
+      firstName: "Maryam",
+      lastName: "Sani",
+      role: "customer",
+    });
+
+    expect(JSON.parse(storedSnapshot).data.users).toHaveLength(1);
+
+    app = await createRemoteStoreApp({ allowedOrigin: "*", remoteStoreConfig });
+    const login = await requestJson("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ identifier: "08012345679", password: "password123" }),
+    });
+
+    expect(login.status).toBe(200);
+    expect(login.body.user).toMatchObject({ name: "Maryam Sani", role: "customer" });
   });
 
   it("rate-limits excessive requests", async () => {
