@@ -15,11 +15,67 @@ import {
   verifyPassword,
 } from "../backend/users";
 import { normalizePhone } from "../backend/phone";
+import { api, type ApiAuthResponse, clearApiToken, saveApiToken } from "./api-client";
 
 const MOCK_OTP = "123456";
 
+function sessionFromApi(response: ApiAuthResponse): UserSession {
+  const user = response.user;
+  return {
+    id: user.id,
+    token: response.token,
+    phone: user.phone,
+    email: user.email,
+    firstName: user.firstName || "",
+    lastName: user.lastName || "",
+    name: user.name || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.phone,
+    role: user.role,
+    vendorStatus: user.vendorStatus,
+    deliveryAddress: user.deliveryAddress,
+    preferredLanguage: user.preferredLanguage,
+    createdAt: user.createdAt || new Date().toISOString(),
+  };
+}
+
+async function syncApiLogin(identifier: string, password: string): Promise<UserSession | null> {
+  if (!password) return null;
+  try {
+    const response = await api.login(identifier, password);
+    saveApiToken(response.token);
+    return sessionFromApi(response);
+  } catch {
+    return null;
+  }
+}
+
+async function syncApiRegistration(input: {
+  phone: string;
+  email?: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  role: "customer" | "vendor";
+  deliveryAddress?: string;
+  preferredLanguage?: "en" | "ha";
+  businessName?: string;
+  area?: string;
+  category?: string;
+}): Promise<UserSession | null> {
+  if (input.password.length < 8) return null;
+  try {
+    const response = await api.register(input);
+    saveApiToken(response.token);
+    return sessionFromApi(response);
+  } catch (error) {
+    const existing = await syncApiLogin(input.phone, input.password);
+    if (existing) return existing;
+    throw error;
+  }
+}
+
 export function saveSession(session: UserSession): void {
   state.currentUser = session;
+  if (session.token) saveApiToken(session.token);
   state.adminAuthenticated = session.role === "admin";
   localStorage.setItem(storageKeys.session, JSON.stringify(session));
   if (session.role === "admin") {
@@ -32,8 +88,10 @@ export function saveSession(session: UserSession): void {
 }
 
 export function signOut(): void {
+  void api.logout().catch(() => undefined);
   state.currentUser = null;
   state.adminAuthenticated = false;
+  clearApiToken();
   localStorage.removeItem(storageKeys.session);
   localStorage.removeItem(storageKeys.adminSession);
   syncUserButton();
@@ -109,7 +167,7 @@ function buildAuthModal(): HTMLElement {
             </label>
             <label>
               <span>${getCopy("Password", "Kalmar sirri")}</span>
-              <input type="password" id="authPassword" name="password" minlength="6" autocomplete="new-password" />
+              <input type="password" id="authPassword" name="password" minlength="8" autocomplete="new-password" />
             </label>
             <label>
               <span>${getCopy("Delivery address", "Adireshin isarwa")}</span>
@@ -245,17 +303,22 @@ function wireAuthModal(modal: HTMLElement): void {
   });
 
   otpForm.addEventListener("submit", (e) => {
+    void handleOtpSubmit(e);
+  });
+
+  async function handleOtpSubmit(e: SubmitEvent): Promise<void> {
     e.preventDefault();
     const otp = (modal.querySelector<HTMLInputElement>("#authOtp")?.value || "").trim();
     if (otp !== MOCK_OTP) {
       otpError.textContent = getCopy("Invalid code. Try: 123456", "Lambar ba daidai ba. Gwada: 123456");
       return;
     }
+    let apiSession: UserSession | null = null;
     if (needsSignup) {
       const firstName = (modal.querySelector<HTMLInputElement>("#authFirstName")?.value || "").trim();
       const lastName = (modal.querySelector<HTMLInputElement>("#authLastName")?.value || "").trim();
       const email = (modal.querySelector<HTMLInputElement>("#authEmail")?.value || "").trim();
-      const password = (modal.querySelector<HTMLInputElement>("#authLoginPassword")?.value || "").trim();
+      const password = (modal.querySelector<HTMLInputElement>("#authPassword")?.value || "").trim();
       const deliveryAddress = (modal.querySelector<HTMLInputElement>("#authDeliveryAddress")?.value || "").trim();
       const preferredLanguage =
         modal.querySelector<HTMLSelectElement>("#authPreferredLanguage")?.value === "ha" ? "ha" : "en";
@@ -268,6 +331,10 @@ function wireAuthModal(modal: HTMLElement): void {
           "Complete the required sign-up details.",
           "Kammala muhimman bayanan rajista."
         );
+        return;
+      }
+      if (password.length < 8) {
+        otpError.textContent = getCopy("Password must be at least 8 characters.", "Kalmar sirri ta kasance akalla haruffa 8.");
         return;
       }
       saveUserProfile({
@@ -283,16 +350,56 @@ function wireAuthModal(modal: HTMLElement): void {
         area,
         category,
       });
+      try {
+        apiSession = await syncApiRegistration({
+          phone: pendingPhone,
+          firstName,
+          lastName,
+          email,
+          password,
+          role: selectedType,
+          deliveryAddress,
+          preferredLanguage,
+          businessName,
+          area,
+          category,
+        });
+      } catch {
+        showToast({
+          message: getCopy("Signed in locally. Live account sync needs backend storage.", "An shiga a gida. Ana bukatar ajiyar backend."),
+          type: "info",
+        });
+      }
     } else {
       const profile = findUserProfileByPhone(pendingPhone);
-      const password = (modal.querySelector<HTMLInputElement>("#authPassword")?.value || "").trim();
+      const password = (modal.querySelector<HTMLInputElement>("#authLoginPassword")?.value || "").trim();
       if (profile?.passwordHash && !verifyPassword(pendingPhone, password)) {
         otpError.textContent = getCopy("Incorrect password.", "Kalmar sirri ba daidai ba.");
         return;
       }
+      apiSession = await syncApiLogin(pendingPhone, password);
+      if (!apiSession && profile && password.length >= 8) {
+        try {
+          apiSession = await syncApiRegistration({
+            phone: pendingPhone,
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+            email: profile.email,
+            password,
+            role: profile.role,
+            deliveryAddress: profile.deliveryAddress,
+            preferredLanguage: profile.preferredLanguage,
+          });
+        } catch {
+          showToast({
+            message: getCopy("Signed in locally. Live account sync is unavailable.", "An shiga a gida. Haɗin asusun live bai samu ba."),
+            type: "info",
+          });
+        }
+      }
     }
     otpError.textContent = "";
-    const session = createSessionForPhone(pendingPhone);
+    const session = apiSession ?? createSessionForPhone(pendingPhone);
     saveSession(session);
     closeAuthModal();
     const roleCopy =
@@ -302,7 +409,7 @@ function wireAuthModal(modal: HTMLElement): void {
           ? getCopy("Vendor account detected.", "An gano asusun dan kasuwa.")
           : getCopy("Signed in successfully!", "An shiga cikin nasara!");
     showToast({ message: roleCopy });
-  });
+  }
 
   modal.querySelector("#authBack")?.addEventListener("click", () => {
     phonePhase.hidden = false;

@@ -231,6 +231,8 @@ export interface UserProfile {
 }
 
 export interface UserSession {
+  id?: string;
+  token?: string;
   phone: string;
   email?: string;
   firstName: string;
