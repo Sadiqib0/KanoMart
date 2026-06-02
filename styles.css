@@ -3719,6 +3719,52 @@ body::before {
   font-weight: 800;
 }
 
+.global-language-toggle {
+  justify-self: end;
+  display: inline-grid;
+  grid-template-columns: auto repeat(2, minmax(38px, auto));
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  backdrop-filter: blur(12px);
+}
+
+.global-language-label {
+  padding: 0 8px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.global-language-toggle .language-option {
+  min-width: 38px;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.global-language-toggle .language-option:hover,
+.global-language-toggle .language-option:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.global-language-toggle .language-option.is-active {
+  background: #fff;
+  color: var(--green);
+}
+
 .sidebar-nav {
   display: grid;
   gap: 5px;
@@ -3899,7 +3945,7 @@ body::before {
 }
 
 .app-main-shell .site-header {
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
 }
 
@@ -6318,6 +6364,22 @@ body.is-auth-route .site-footer {
   display: none !important;
 }
 body.is-auth-route .site-header {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex !important;
+  justify-content: flex-end;
+  padding: 16px;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body.is-auth-route .site-header .sidebar-open,
+body.is-auth-route .site-header .mobile-brand {
   display: none !important;
 }
 /* On desktop the shell is a CSS Grid; flatten it on auth routes */
@@ -7362,36 +7424,102 @@ body.is-auth-route .site-header {
 .sidebar-lang {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 0 12px;
-  margin-bottom: 4px;
+  gap: 8px;
+  padding: 10px;
+  margin: 2px 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(247, 212, 139, 0.12), rgba(255, 255, 255, 0.035)),
+    rgba(255, 255, 255, 0.06);
+}
+
+.sidebar-lang-label {
+  grid-column: 1 / -1;
+  color: rgba(247, 251, 247, 0.68);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .sidebar-lang .language-option {
-  min-height: 34px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 10px;
   border-radius: 7px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.07);
-  color: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: background 0.13s, color 0.13s;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: background 0.13s, color 0.13s, border-color 0.13s, transform 0.13s;
+}
+
+.sidebar-lang .language-option span {
+  display: grid;
+  min-width: 28px;
+  min-height: 26px;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.sidebar-lang .language-option strong {
+  overflow: hidden;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-lang .language-option:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
   color: #fff;
+  transform: translateY(-1px);
 }
 
 .sidebar-lang .language-option.is-active {
+  background: #f7fbf7;
+  color: #0d0f0e;
+  border-color: rgba(247, 251, 247, 0.9);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar-lang .language-option.is-active span {
   background: var(--green);
   color: #fff;
-  border-color: transparent;
 }
 
 /* When sidebar is collapsed, hide the language text (icon-only mode) */
 body.sidebar-collapsed .sidebar-lang {
-  padding: 0 6px;
+  gap: 5px;
+  padding: 7px 5px;
+}
+
+body.sidebar-collapsed .sidebar-lang-label,
+body.sidebar-collapsed .sidebar-lang .language-option strong {
+  display: none;
+}
+
+body.sidebar-collapsed .sidebar-lang .language-option {
+  grid-template-columns: 1fr;
+  min-height: 34px;
+  padding: 0;
+}
+
+body.sidebar-collapsed .sidebar-lang .language-option span {
+  min-width: 0;
+  width: 100%;
 }
 
 /* Hide sidebar-quick-stats everywhere (removed from HTML, CSS safety rule) */
@@ -7462,6 +7590,13 @@ body.sidebar-collapsed .sidebar-lang {
   background: rgba(255, 255, 255, 0.18);
 }
 
+body.on-home .global-language-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  justify-self: auto;
+}
+
 /* Hero must start at top: remove any top offset caused by header */
 .hero {
   margin-top: 0 !important;
@@ -7499,38 +7634,36 @@ body:not(.on-home) .site-header .sidebar-open {
   background: #fff;
 }
 
-/* ── Hero language toggle ── */
-.hero-lang {
-  position: absolute;
-  top: 20px;
-  left: 16px;
-  display: flex;
-  gap: 4px;
-  z-index: 2;
-}
-
-.hero-lang .language-option {
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(8px);
-  transition: background 0.13s, color 0.13s;
-}
-
-.hero-lang .language-option:hover {
-  background: rgba(255, 255, 255, 0.25);
-  color: #fff;
-}
-
-.hero-lang .language-option.is-active {
+body:not(.on-home) .global-language-toggle,
+body.is-auth-route .global-language-toggle {
+  border-color: var(--line);
   background: #fff;
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+
+body:not(.on-home) .global-language-label,
+body.is-auth-route .global-language-label {
+  color: var(--muted);
+}
+
+body:not(.on-home) .global-language-toggle .language-option,
+body.is-auth-route .global-language-toggle .language-option {
+  color: var(--muted);
+}
+
+body:not(.on-home) .global-language-toggle .language-option:hover,
+body:not(.on-home) .global-language-toggle .language-option:focus-visible,
+body.is-auth-route .global-language-toggle .language-option:hover,
+body.is-auth-route .global-language-toggle .language-option:focus-visible {
+  background: #eef6f0;
   color: var(--green);
-  border-color: transparent;
+}
+
+body:not(.on-home) .global-language-toggle .language-option.is-active,
+body.is-auth-route .global-language-toggle .language-option.is-active {
+  background: var(--green);
+  color: #fff;
 }
 
 /* On desktop, the absolute header won't affect the sidebar grid layout */
@@ -7546,13 +7679,22 @@ body:not(.on-home) .site-header .sidebar-open {
     padding-top: 80px !important;
   }
 
-  .hero-lang {
-    left: 24px;
+  body.on-home .global-language-toggle {
+    right: 24px;
   }
+
 }
 
 @media (max-width: 767px) {
   .hero-content {
     padding-top: 80px !important;
+  }
+
+  .global-language-toggle {
+    grid-template-columns: repeat(2, minmax(38px, auto));
+  }
+
+  .global-language-label {
+    display: none;
   }
 }

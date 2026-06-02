@@ -3041,8 +3041,8 @@ function wirePasswordToggles(root) {
       btn.classList.toggle("is-showing", !showing);
       const eyeOpen = btn.querySelector(".eye-open");
       const eyeClosed = btn.querySelector(".eye-closed");
-      if (eyeOpen) eyeOpen.hidden = !showing;
-      if (eyeClosed) eyeClosed.hidden = showing;
+      eyeOpen?.toggleAttribute("hidden", !showing);
+      eyeClosed?.toggleAttribute("hidden", showing);
     });
   });
 }
@@ -3247,6 +3247,7 @@ function setRoute(route = getCurrentRoute()) {
     }
   });
   document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
+  document.body.classList.toggle("on-home", nextRoute === "home");
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
 }
@@ -3448,6 +3449,32 @@ function renderCustomerDashboard() {
     </div>
   `).join("");
 }
+function renderOrdersPage() {
+  const ordersList = document.querySelector("#myOrdersList");
+  if (!ordersList) return;
+  if (!state.currentUser) {
+    ordersList.innerHTML = `
+      <p class="muted" data-en="Sign in to see your orders." data-ha="Shiga don ganin odanka.">
+        ${getCopy("Sign in to see your orders.", "Shiga don ganin odanka.")}
+      </p>
+    `;
+    return;
+  }
+  ordersList.innerHTML = renderOrdersPanel();
+}
+function renderLanguageSensitiveViews() {
+  syncUserButton();
+  syncRoleNavigation();
+  renderCustomerDashboard();
+  renderOrdersPage();
+  renderCartPanel();
+  renderVendorProducts();
+  renderVendorCommerce();
+  renderAdminDashboard();
+  const userOrdersList = document.querySelector("#userOrdersList");
+  if (userOrdersList) userOrdersList.innerHTML = renderOrdersPanel();
+  if (document.querySelector("#wishlistModal")) openWishlistPanel();
+}
 async function refreshLiveVendorDashboard() {
   if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
   try {
@@ -3507,10 +3534,7 @@ function setLanguage(language) {
   } else {
     renderCatalogPreview();
   }
-  syncUserButton();
-  renderVendorProducts();
-  renderVendorCommerce();
-  renderAdminDashboard();
+  renderLanguageSensitiveViews();
 }
 function handleVendorRequestSubmit(event) {
   event.preventDefault();
@@ -4127,6 +4151,7 @@ window.addEventListener("kanoMart:signed-in", () => {
   renderAdminGate();
   renderAdminDashboard();
   renderCustomerDashboard();
+  renderOrdersPage();
   void refreshLiveAdminDashboard();
   void refreshLiveVendorDashboard();
   void fetchLiveNotifications();
@@ -4139,6 +4164,7 @@ window.addEventListener("kanoMart:signed-out", () => {
   renderVendorProducts();
   renderVendorCommerce();
   renderAdminGate();
+  renderOrdersPage();
   setRoute("home");
 });
 document.addEventListener("keydown", (e) => {
@@ -4153,6 +4179,7 @@ renderAdminGate();
 renderAdminDashboard();
 renderVendorProducts();
 renderVendorCommerce();
+renderOrdersPage();
 syncRoleNavigation();
 setRoute();
 setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
@@ -4167,6 +4194,7 @@ void fetchLiveCategories();
 initLoginPage();
 initSignupPage();
 renderCustomerDashboard();
+renderOrdersPage();
 var scheduleEnhancements = "requestIdleCallback" in window ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 }) : (callback) => window.setTimeout(callback, 350);
 scheduleEnhancements(() => {
   import("./frontend-enhancements-GHCFJLLH.js").then(({ initFrontendEnhancements }) => {

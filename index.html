@@ -112,21 +112,32 @@
           </a>
         </nav>
 
-        <div class="sidebar-lang" role="group" aria-label="Choose language">
-          <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">EN</button>
-          <button class="language-option" type="button" data-language="ha" aria-pressed="false">HA</button>
+        <div
+          class="sidebar-lang"
+          role="group"
+          aria-label="Choose language"
+          data-aria-en="Choose language"
+          data-aria-ha="Zaɓi yare"
+        >
+          <span class="sidebar-lang-label sidebar-text" data-en="Language" data-ha="Yare">Language</span>
+          <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">
+            <span>EN</span>
+            <strong>English</strong>
+          </button>
+          <button class="language-option" type="button" data-language="ha" aria-pressed="false">
+            <span>HA</span>
+            <strong>Hausa</strong>
+          </button>
         </div>
 
         <div class="sidebar-footer">
-          <a class="vendor-button sidebar-vendor-cta" href="#signup/vendor" data-route="signup" data-roles="guest" data-en="Become a vendor" data-ha="Zama dillali">
-            <span class="sidebar-text">Become a vendor</span>
-            <span class="nav-glyph sidebar-cta-glyph" aria-hidden="true">+</span>
-          </a>
-          <button class="sidebar-account" type="button" id="sidebarAccountAction">
+          <!-- Account button — only shown once logged in -->
+          <button class="sidebar-account" type="button" id="sidebarAccountAction"
+            data-roles="customer vendor admin">
             <span class="sidebar-account-avatar" id="sidebarAccountAvatar" aria-hidden="true">?</span>
             <span class="sidebar-text">
-              <strong id="sidebarAccountName">Guest</strong>
-              <small id="sidebarAccountMeta">Sign in with mobile number</small>
+              <strong id="sidebarAccountName">Account</strong>
+              <small id="sidebarAccountMeta"></small>
             </span>
           </button>
         </div>
@@ -146,6 +157,18 @@
             <span>
               <strong>Kano Mart</strong>
             </span>
+          </div>
+
+          <div
+            class="global-language-toggle"
+            role="group"
+            aria-label="Choose language"
+            data-aria-en="Choose language"
+            data-aria-ha="Zaɓi yare"
+          >
+            <span class="global-language-label" data-en="Language" data-ha="Yare">Language</span>
+            <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">EN</button>
+            <button class="language-option" type="button" data-language="ha" aria-pressed="false">HA</button>
           </div>
 
           <!-- Hidden JS anchors — required by state.ts, not visible to users -->
@@ -173,12 +196,6 @@
         <div class="hero-shade" aria-hidden="true"></div>
 
         <div class="hero-content">
-          <!-- Language toggle — top-left of hero -->
-          <div class="hero-lang" role="group" aria-label="Choose language">
-            <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">EN</button>
-            <button class="language-option" type="button" data-language="ha" aria-pressed="false">HA</button>
-          </div>
-
           <p class="eyebrow" data-en="Trusted local vendors across Kano" data-ha="Amintattun dillalai a fadin Kano">
             Trusted local vendors across Kano
           </p>

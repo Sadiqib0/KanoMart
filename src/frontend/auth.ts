@@ -3,7 +3,6 @@ import { storageKeys } from "../backend/data";
 import { state, elements } from "./state";
 import { getCopy, escapeHtml } from "./utils";
 import { showToast } from "./toast";
-import { renderOrdersPanel } from "./orders";
 import {
   createSessionForPhone,
   findUserProfileByEmail,

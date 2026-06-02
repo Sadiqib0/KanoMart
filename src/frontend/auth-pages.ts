@@ -114,8 +114,8 @@ function wirePasswordToggles(root: HTMLElement): void {
       // Update icon
       const eyeOpen = btn.querySelector<SVGElement>(".eye-open");
       const eyeClosed = btn.querySelector<SVGElement>(".eye-closed");
-      if (eyeOpen) eyeOpen.hidden = !showing;
-      if (eyeClosed) eyeClosed.hidden = showing;
+      eyeOpen?.toggleAttribute("hidden", !showing);
+      eyeClosed?.toggleAttribute("hidden", showing);
     });
   });
 }

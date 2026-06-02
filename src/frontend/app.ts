@@ -29,7 +29,7 @@ import {
   setVendorProductListingStatus,
 } from "../backend/products";
 import { getCachedSearchResults, paginateProducts, PRODUCT_PAGE_SIZE, renderProductSkeletons } from "./frontend-data";
-import { advanceOrderStatus, getOrders } from "./orders";
+import { advanceOrderStatus, getOrders, renderOrdersPanel } from "./orders";
 import { approveWithdrawal, rejectWithdrawal, requestWithdrawal } from "../backend/withdrawals";
 import { getVendorWalletSummaries } from "../backend/wallet";
 import { createSessionForPhone, findVendorByPhone } from "../backend/users";
@@ -343,6 +343,35 @@ function renderCustomerDashboard(): void {
   `).join("");
 }
 
+function renderOrdersPage(): void {
+  const ordersList = document.querySelector<HTMLElement>("#myOrdersList");
+  if (!ordersList) return;
+  if (!state.currentUser) {
+    ordersList.innerHTML = `
+      <p class="muted" data-en="Sign in to see your orders." data-ha="Shiga don ganin odanka.">
+        ${getCopy("Sign in to see your orders.", "Shiga don ganin odanka.")}
+      </p>
+    `;
+    return;
+  }
+  ordersList.innerHTML = renderOrdersPanel();
+}
+
+function renderLanguageSensitiveViews(): void {
+  syncUserButton();
+  syncRoleNavigation();
+  renderCustomerDashboard();
+  renderOrdersPage();
+  renderCartPanel();
+  renderVendorProducts();
+  renderVendorCommerce();
+  renderAdminDashboard();
+
+  const userOrdersList = document.querySelector<HTMLElement>("#userOrdersList");
+  if (userOrdersList) userOrdersList.innerHTML = renderOrdersPanel();
+  if (document.querySelector("#wishlistModal")) openWishlistPanel();
+}
+
 async function refreshLiveVendorDashboard(): Promise<void> {
   if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
   try {
@@ -415,10 +444,7 @@ function setLanguage(language: Language): void {
     renderCatalogPreview();
   }
 
-  syncUserButton();
-  renderVendorProducts();
-  renderVendorCommerce();
-  renderAdminDashboard();
+  renderLanguageSensitiveViews();
 }
 
 // — Vendor form —
@@ -1154,6 +1180,7 @@ window.addEventListener("kanoMart:signed-in", () => {
   renderAdminGate();
   renderAdminDashboard();
   renderCustomerDashboard();
+  renderOrdersPage();
   void refreshLiveAdminDashboard();
   void refreshLiveVendorDashboard();
   void fetchLiveNotifications();
@@ -1166,6 +1193,7 @@ window.addEventListener("kanoMart:signed-out", () => {
   renderVendorProducts();
   renderVendorCommerce();
   renderAdminGate();
+  renderOrdersPage();
   setRoute("home");
 });
 
@@ -1184,6 +1212,7 @@ renderAdminGate();
 renderAdminDashboard();
 renderVendorProducts();
 renderVendorCommerce();
+renderOrdersPage();
 syncRoleNavigation();
 setRoute();
 setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
@@ -1206,6 +1235,7 @@ initSignupPage();
 
 // Render role dashboards for users already logged in (page reload)
 renderCustomerDashboard();
+renderOrdersPage();
 
 const scheduleEnhancements =
   "requestIdleCallback" in window
