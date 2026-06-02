@@ -57,7 +57,7 @@ async function captureException(error, context = {}) {
   }
 }
 
-const DEFAULT_ADMIN_PHONE = "08000000000";
+const DEFAULT_ADMIN_PHONE = "07015070004";
 const SESSION_COOKIE = "kano_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 const DEFAULT_BODY_LIMIT_BYTES = 1_000_000;

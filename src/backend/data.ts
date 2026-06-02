@@ -27,7 +27,7 @@ export const storageKeys = {
 } as const;
 
 export const ADMIN_PIN = "0000";
-export const ADMIN_MOBILE_NUMBER = "08000000000";
+export const ADMIN_MOBILE_NUMBER = "07015070004";
 
 // All keys lowercase — use localizeCategory() for display
 export const categoryLabels: Record<string, LocalizedString> = {
