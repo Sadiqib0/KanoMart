@@ -3601,6 +3601,20 @@ function readImageAsDataUrl(file) {
     reader.readAsDataURL(file);
   });
 }
+function renderVendorDashHeader() {
+  const user = state.currentUser;
+  if (!user || user.role !== "vendor") return;
+  const vendor = findVendorByPhone(user.phone);
+  const businessName = vendor?.businessName || user.name;
+  const status = user.vendorStatus ?? "pending";
+  const nameEl = document.querySelector("#vendorDashBusinessName");
+  if (nameEl) nameEl.textContent = businessName;
+  const badge = document.querySelector("#vendorStatusBadge");
+  if (badge) {
+    badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    badge.dataset.status = status;
+  }
+}
 function renderVendorProducts() {
   const list = document.querySelector("#vendorProductsList");
   if (!list) return;
@@ -3609,6 +3623,7 @@ function renderVendorProducts() {
     list.innerHTML = "";
     return;
   }
+  renderVendorDashHeader();
   const vendorProducts = getProductsForVendor(user.phone);
   if (vendorProducts.length === 0) {
     list.innerHTML = `<p class="muted">${getCopy("No vendor products yet.", "Babu kayan dillali tukuna.")}</p>`;
@@ -4190,6 +4205,30 @@ window.addEventListener("kanoMart:signed-out", () => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeCart();
   if (e.key === "Escape") closeSidebar();
+});
+document.querySelector("#adminContent")?.addEventListener("click", (e) => {
+  const btn = e.target?.closest("[data-admin-tab]");
+  if (!btn) return;
+  const tab = btn.dataset.adminTab;
+  document.querySelectorAll(".admin-tab-btn").forEach((b) => {
+    b.classList.toggle("is-active", b.dataset.adminTab === tab);
+    b.setAttribute("aria-selected", String(b.dataset.adminTab === tab));
+  });
+  document.querySelectorAll(".admin-tab-panel").forEach((panel) => {
+    panel.hidden = panel.dataset.adminPanel !== tab;
+  });
+});
+document.querySelector(".vendor-dashboard")?.addEventListener("click", (e) => {
+  const btn = e.target?.closest("[data-vendor-tab]");
+  if (!btn) return;
+  const tab = btn.dataset.vendorTab;
+  document.querySelectorAll(".vendor-tab-btn").forEach((b) => {
+    b.classList.toggle("is-active", b.dataset.vendorTab === tab);
+    b.setAttribute("aria-selected", String(b.dataset.vendorTab === tab));
+  });
+  document.querySelectorAll(".vendor-tab-panel").forEach((panel) => {
+    panel.hidden = panel.dataset.vendorPanel !== tab;
+  });
 });
 syncCart();
 syncWishlistCount();

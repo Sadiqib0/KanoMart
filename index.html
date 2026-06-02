@@ -601,173 +601,164 @@
 
       <!-- Vendor -->
       <section class="vendor-section app-page" id="vendor" data-page="vendor" aria-labelledby="vendor-title">
-        <div class="section-heading">
-          <p class="eyebrow" data-en="Vendor growth" data-ha="Ci gaban dillalai">Vendor growth</p>
-          <h2 id="vendor-title" data-en="Sell on Kano Mart" data-ha="Yi kasuwanci a Kano Mart">Sell on Kano Mart</h2>
-          <p
-            data-en="Vendors can register, list products, manage stock, receive orders, and update availability from one simple flow."
-            data-ha="Dillalai za su iya yin rajista, saka kaya, kula da adadi, karbar oda, da sabunta samuwa cikin sauki."
-          >
-            Vendors can register, list products, manage stock, receive orders, and update availability from one simple flow.
-          </p>
-        </div>
 
-        <div class="vendor-layout">
-          <div class="vendor-steps mobile-carousel" aria-label="Vendor capabilities" data-reveal-group>
-            <article data-reveal>
-              <h3 data-en="Register" data-ha="Rajista">Register</h3>
-              <p data-en="Submit business name, phone number, area, and product category." data-ha="Aika sunan kasuwanci, lambar waya, yanki, da rukunin kaya.">Submit business name, phone number, area, and product category.</p>
-            </article>
-            <article data-reveal>
-              <h3 data-en="List products" data-ha="Saka kaya">List products</h3>
-              <p data-en="Add product names, price, photos, delivery area, and tags." data-ha="Saka sunan kaya, farashi, hotuna, yankin kai kaya, da alamomin nema.">Add product names, price, photos, delivery area, and tags.</p>
-            </article>
-            <article data-reveal>
-              <h3 data-en="Manage stock" data-ha="Kula da kaya">Manage stock</h3>
-              <p data-en="Update quantity, availability, and daily delivery readiness." data-ha="Sabunta adadi, samuwa, da shirin kai kaya na kullum.">Update quantity, availability, and daily delivery readiness.</p>
-            </article>
-            <article data-reveal>
-              <h3 data-en="Receive orders" data-ha="Karbar oda">Receive orders</h3>
-              <p data-en="See customer requests, payment state, and delivery handoff status." data-ha="Duba bukatun kwastoma, matsayin biya, da matsayin mika kaya.">See customer requests, payment state, and delivery handoff status.</p>
-            </article>
+        <!-- ── PUBLIC VIEW (guests & customers) ── -->
+        <div class="vendor-public-info" data-roles="guest customer">
+          <div class="section-heading">
+            <p class="eyebrow" data-en="Vendor growth" data-ha="Ci gaban dillalai">Vendor growth</p>
+            <h2 id="vendor-title" data-en="Sell on Kano Mart" data-ha="Yi kasuwanci a Kano Mart">Sell on Kano Mart</h2>
+            <p data-en="Register, list products, manage stock, receive orders, and update availability from one simple flow." data-ha="Yi rajista, saka kaya, kula da adadi, karbar oda, da sabunta samuwa cikin sauki.">
+              Register, list products, manage stock, receive orders, and update availability from one simple flow.
+            </p>
           </div>
-
-          <div class="dashboard-row-grid entity-dashboard-grid vendor-dashboard-grid" data-roles="vendor" hidden>
-            <a class="dashboard-row" href="#catalog" data-route="catalog">
-              <span class="dashboard-row-icon" aria-hidden="true">P</span>
-              <span>
-                <strong data-en="Manage products" data-ha="Kula da kaya">Manage products</strong>
-                <small data-en="Review live catalog items, moderation state, and product performance." data-ha="Duba kayan kasuwa, matsayin dubawa, da aikin kaya.">Review live catalog items, moderation state, and product performance.</small>
-              </span>
-            </a>
-            <a class="dashboard-row" href="#payments" data-route="payments">
-              <span class="dashboard-row-icon" aria-hidden="true">W</span>
-              <span>
-                <strong data-en="Wallet and settlement" data-ha="Wallet da biyan dillali">Wallet and settlement</strong>
-                <small data-en="Track pending balance, available balance, commission, and withdrawals." data-ha="Bi kudin jira, kudin da ake iya cirewa, kwamishan, da cire kudi.">Track pending balance, available balance, commission, and withdrawals.</small>
-              </span>
-            </a>
-            <article class="dashboard-row">
-              <span class="dashboard-row-icon" aria-hidden="true">O</span>
-              <span>
-                <strong data-en="Fulfillment queue" data-ha="Jerin isarwa">Fulfillment queue</strong>
-                <small data-en="Prepare orders, update fulfillment status, and watch low-stock risk." data-ha="Shirya oda, sabunta matsayin isarwa, da lura da karancin kaya.">Prepare orders, update fulfillment status, and watch low-stock risk.</small>
-              </span>
-            </article>
-          </div>
-
-          <section class="vendor-commerce-panel" data-roles="vendor" hidden aria-labelledby="vendor-commerce-title">
-            <div class="vendor-product-heading">
-              <div>
-                <span data-en="Payments and fulfillment" data-ha="Biya da isarwa">Payments and fulfillment</span>
-                <h3 id="vendor-commerce-title" data-en="Orders, payment state, and payouts" data-ha="Ododi, matsayin biya, da fitar kudi">Orders, payment state, and payouts</h3>
-              </div>
-              <p data-en="Vendors can see paid orders, pending payment orders, delivery readiness, and payout history." data-ha="Dillalai na ganin ododin da aka biya, wadanda ke jiran biya, shirin kai kaya, da tarihin fitar kudi.">
-                Vendors can see paid orders, pending payment orders, delivery readiness, and payout history.
-              </p>
+          <div class="vendor-layout">
+            <div class="vendor-steps mobile-carousel" aria-label="Vendor capabilities" data-reveal-group>
+              <article data-reveal>
+                <h3 data-en="Register" data-ha="Rajista">Register</h3>
+                <p data-en="Submit business name, phone number, area, and product category." data-ha="Aika sunan kasuwanci, lambar waya, yanki, da rukunin kaya.">Submit business name, phone number, area, and product category.</p>
+              </article>
+              <article data-reveal>
+                <h3 data-en="List products" data-ha="Saka kaya">List products</h3>
+                <p data-en="Add product names, price, photos, delivery area, and tags." data-ha="Saka sunan kaya, farashi, hotuna, yankin kai kaya, da alamomin nema.">Add product names, price, photos, delivery area, and tags.</p>
+              </article>
+              <article data-reveal>
+                <h3 data-en="Manage stock" data-ha="Kula da kaya">Manage stock</h3>
+                <p data-en="Update quantity, availability, and daily delivery readiness." data-ha="Sabunta adadi, samuwa, da shirin kai kaya na kullum.">Update quantity, availability, and daily delivery readiness.</p>
+              </article>
+              <article data-reveal>
+                <h3 data-en="Receive orders" data-ha="Karbar oda">Receive orders</h3>
+                <p data-en="See customer requests, payment state, and delivery handoff status." data-ha="Duba bukatun kwastoma, matsayin biya, da matsayin mika kaya.">See customer requests, payment state, and delivery handoff status.</p>
+              </article>
             </div>
-            <div class="vendor-commerce-list" id="vendorCommerceList" aria-live="polite"></div>
-          </section>
-
-          <section class="vendor-product-manager" data-roles="vendor" hidden aria-labelledby="vendor-products-title">
-            <div class="vendor-product-heading">
-              <div>
-                <span data-en="Seller catalog" data-ha="Kayayyakin dillali">Seller catalog</span>
-                <h3 id="vendor-products-title" data-en="Add and manage products" data-ha="Saka da kula da kaya">Add and manage products</h3>
-              </div>
-              <p data-en="Products you add appear in the catalog while active. Take them down when stock runs out." data-ha="Kayayyakin da ka saka suna bayyana a kasuwa idan suna aiki. Cire su idan kaya ya kare.">
-                Products you add appear in the catalog while active. Take them down when stock runs out.
-              </p>
-            </div>
-
-            <form class="vendor-product-form" id="vendorProductForm" novalidate>
+            <form class="vendor-form" id="vendorForm" novalidate>
+              <h3 data-en="Vendor registration" data-ha="Rajistar dan kasuwa">Vendor registration</h3>
               <label>
-                <span data-en="Product name (English)" data-ha="Sunan kaya (Turanci)">Product name (English)</span>
-                <input type="text" name="productName" minlength="2" maxlength="90" required placeholder="e.g. Plain black jallabiya" />
+                <span data-en="Business name" data-ha="Sunan kasuwanci">Business name</span>
+                <input type="text" name="businessName" autocomplete="organization" required minlength="2" />
               </label>
               <label>
-                <span data-en="Product name (Hausa)" data-ha="Sunan kaya (Hausa)">Product name (Hausa)</span>
-                <input type="text" name="productNameHa" minlength="2" maxlength="90" placeholder="misali Jallabiya baki" />
+                <span data-en="Phone number" data-ha="Lambar waya">Phone number</span>
+                <input type="tel" name="phone" autocomplete="tel" required pattern="^(\+234|0)[7-9][0-1]\d{8}$"
+                  placeholder="e.g. 08012345678" data-placeholder-en="e.g. 08012345678" data-placeholder-ha="misali 08012345678" />
               </label>
               <label>
-                <span data-en="Description (English)" data-ha="Bayani (Turanci)">Description (English)</span>
-                <input type="text" name="descriptionEn" maxlength="240" placeholder="Short product description" />
+                <span data-en="Market area" data-ha="Yankin kasuwa">Market area</span>
+                <input type="text" name="area" placeholder="Kantin Kwari, Tarauni, Sabon Gari..."
+                  data-placeholder-en="Kantin Kwari, Tarauni, Sabon Gari..." data-placeholder-ha="Kantin Kwari, Tarauni, Sabon Gari..." required />
               </label>
               <label>
-                <span data-en="Description (Hausa)" data-ha="Bayani (Hausa)">Description (Hausa)</span>
-                <input type="text" name="descriptionHa" maxlength="240" placeholder="Takaitaccen bayanin kaya" />
-              </label>
-              <label>
-                <span data-en="Value / price" data-ha="Kima / farashi">Value / price</span>
-                <input type="text" inputmode="numeric" name="productValue" required placeholder="e.g. 15000" autocomplete="off" />
-              </label>
-              <label>
-                <span data-en="Quantity available" data-ha="Adadin da ake da shi">Quantity available</span>
-                <input type="number" name="quantityAvailable" min="0" step="1" required placeholder="10" />
-              </label>
-              <label>
-                <span data-en="Category" data-ha="Rukuni">Category</span>
-                <select name="productCategory" required>
+                <span data-en="Main category" data-ha="Babban rukuni">Main category</span>
+                <select name="category" required>
+                  <option value="" data-en="Choose" data-ha="Zaba">Choose</option>
                   <option value="food" data-en="Food" data-ha="Abinci">Food</option>
                   <option value="fashion" data-en="Fashion" data-ha="Kaya">Fashion</option>
                   <option value="children" data-en="Children" data-ha="Yara">Children</option>
                   <option value="essentials" data-en="Essentials" data-ha="Kayan yau da kullum">Essentials</option>
                 </select>
               </label>
-              <label>
-                <span data-en="Product picture" data-ha="Hoton kaya">Product picture</span>
-                <input type="file" name="productImage" accept="image/png,image/jpeg,image/webp" required />
-              </label>
-              <button type="submit" data-en="Add product" data-ha="Saka kaya">Add product</button>
-              <p class="form-message" id="vendorProductMessage" role="status" aria-live="polite"></p>
+              <button type="submit" data-en="Submit vendor request" data-ha="Aika bukatar rajista">Submit vendor request</button>
+              <p class="form-message" id="vendorMessage" role="status" aria-live="polite"></p>
             </form>
+          </div>
+        </div>
 
-            <div class="vendor-products-list" id="vendorProductsList" aria-live="polite"></div>
-          </section>
+        <!-- ── VENDOR DASHBOARD (authenticated vendors) ── -->
+        <div class="vendor-dashboard" data-roles="vendor" hidden>
 
-          <form class="vendor-form" id="vendorForm" data-roles="guest customer" novalidate>
-            <h3 data-en="Vendor registration" data-ha="Rajistar dan kasuwa">Vendor registration</h3>
-            <label>
-              <span data-en="Business name" data-ha="Sunan kasuwanci">Business name</span>
-              <input type="text" name="businessName" autocomplete="organization" required minlength="2" />
-            </label>
-            <label>
-              <span data-en="Phone number" data-ha="Lambar waya">Phone number</span>
-              <input
-                type="tel"
-                name="phone"
-                autocomplete="tel"
-                required
-                pattern="^(\+234|0)[7-9][0-1]\d{8}$"
-                placeholder="e.g. 08012345678"
-                data-placeholder-en="e.g. 08012345678"
-                data-placeholder-ha="misali 08012345678"
-              />
-            </label>
-            <label>
-              <span data-en="Market area" data-ha="Yankin kasuwa">Market area</span>
-              <input
-                type="text"
-                name="area"
-                placeholder="Kantin Kwari, Tarauni, Sabon Gari..."
-                data-placeholder-en="Kantin Kwari, Tarauni, Sabon Gari..."
-                data-placeholder-ha="Kantin Kwari, Tarauni, Sabon Gari..."
-                required
-              />
-            </label>
-            <label>
-              <span data-en="Main category" data-ha="Babban rukuni">Main category</span>
-              <select name="category" required>
-                <option value="" data-en="Choose" data-ha="Zaba">Choose</option>
-                <option value="food" data-en="Food" data-ha="Abinci">Food</option>
-                <option value="fashion" data-en="Fashion" data-ha="Kaya">Fashion</option>
-                <option value="children" data-en="Children" data-ha="Yara">Children</option>
-                <option value="essentials" data-en="Essentials" data-ha="Kayan yau da kullum">Essentials</option>
-              </select>
-            </label>
-            <button type="submit" data-en="Submit vendor request" data-ha="Aika bukatar rajista">Submit vendor request</button>
-            <p class="form-message" id="vendorMessage" role="status" aria-live="polite"></p>
-          </form>
+          <!-- Vendor page header -->
+          <div class="vendor-dash-header">
+            <div class="vendor-dash-title">
+              <p class="eyebrow" data-en="Vendor workspace" data-ha="Wurin dillali">Vendor workspace</p>
+              <h2 id="vendorDashBusinessName" data-en="My Store" data-ha="Shagona">My Store</h2>
+            </div>
+            <span class="vendor-status-badge" id="vendorStatusBadge">Active</span>
+          </div>
+
+          <!-- Tab navigation -->
+          <nav class="vendor-tab-nav" aria-label="Vendor sections">
+            <button type="button" class="vendor-tab-btn is-active" data-vendor-tab="products" aria-selected="true">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73L13 2.27a2 2 0 0 0-2 0L4 6.27A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              <span data-en="Products" data-ha="Kaya">Products</span>
+            </button>
+            <button type="button" class="vendor-tab-btn" data-vendor-tab="orders" aria-selected="false">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3h10l2 3v15H5V6l2-3Z"/><path d="M8 10h8"/><path d="M8 14h5"/></svg>
+              <span data-en="Orders &amp; Wallet" data-ha="Ododi &amp; Wallet">Orders &amp; Wallet</span>
+            </button>
+          </nav>
+
+          <!-- ── PRODUCTS TAB ── -->
+          <div class="vendor-tab-panel" data-vendor-panel="products">
+            <section class="vendor-product-manager" aria-labelledby="vendor-products-title">
+              <div class="vendor-product-heading">
+                <div>
+                  <span data-en="Seller catalog" data-ha="Kayayyakin dillali">Seller catalog</span>
+                  <h3 id="vendor-products-title" data-en="Add and manage products" data-ha="Saka da kula da kaya">Add and manage products</h3>
+                </div>
+                <p data-en="Products you add appear in the catalog while active. Take them down when stock runs out." data-ha="Kayayyakin da ka saka suna bayyana a kasuwa idan suna aiki. Cire su idan kaya ya kare.">
+                  Products you add appear in the catalog while active. Take them down when stock runs out.
+                </p>
+              </div>
+              <form class="vendor-product-form" id="vendorProductForm" novalidate>
+                <label>
+                  <span data-en="Product name (English)" data-ha="Sunan kaya (Turanci)">Product name (English)</span>
+                  <input type="text" name="productName" minlength="2" maxlength="90" required placeholder="e.g. Plain black jallabiya" />
+                </label>
+                <label>
+                  <span data-en="Product name (Hausa)" data-ha="Sunan kaya (Hausa)">Product name (Hausa)</span>
+                  <input type="text" name="productNameHa" minlength="2" maxlength="90" placeholder="misali Jallabiya baki" />
+                </label>
+                <label>
+                  <span data-en="Description (English)" data-ha="Bayani (Turanci)">Description (English)</span>
+                  <input type="text" name="descriptionEn" maxlength="240" placeholder="Short product description" />
+                </label>
+                <label>
+                  <span data-en="Description (Hausa)" data-ha="Bayani (Hausa)">Description (Hausa)</span>
+                  <input type="text" name="descriptionHa" maxlength="240" placeholder="Takaitaccen bayanin kaya" />
+                </label>
+                <label>
+                  <span data-en="Value / price" data-ha="Kima / farashi">Value / price</span>
+                  <input type="text" inputmode="numeric" name="productValue" required placeholder="e.g. 15000" autocomplete="off" />
+                </label>
+                <label>
+                  <span data-en="Quantity available" data-ha="Adadin da ake da shi">Quantity available</span>
+                  <input type="number" name="quantityAvailable" min="0" step="1" required placeholder="10" />
+                </label>
+                <label>
+                  <span data-en="Category" data-ha="Rukuni">Category</span>
+                  <select name="productCategory" required>
+                    <option value="food" data-en="Food" data-ha="Abinci">Food</option>
+                    <option value="fashion" data-en="Fashion" data-ha="Kaya">Fashion</option>
+                    <option value="children" data-en="Children" data-ha="Yara">Children</option>
+                    <option value="essentials" data-en="Essentials" data-ha="Kayan yau da kullum">Essentials</option>
+                  </select>
+                </label>
+                <label>
+                  <span data-en="Product picture" data-ha="Hoton kaya">Product picture</span>
+                  <input type="file" name="productImage" accept="image/png,image/jpeg,image/webp" required />
+                </label>
+                <button type="submit" data-en="Add product" data-ha="Saka kaya">Add product</button>
+                <p class="form-message" id="vendorProductMessage" role="status" aria-live="polite"></p>
+              </form>
+              <div class="vendor-products-list" id="vendorProductsList" aria-live="polite"></div>
+            </section>
+          </div>
+
+          <!-- ── ORDERS & WALLET TAB ── -->
+          <div class="vendor-tab-panel" data-vendor-panel="orders" hidden>
+            <section class="vendor-commerce-panel" aria-labelledby="vendor-commerce-title">
+              <div class="vendor-product-heading">
+                <div>
+                  <span data-en="Payments and fulfillment" data-ha="Biya da isarwa">Payments and fulfillment</span>
+                  <h3 id="vendor-commerce-title" data-en="Orders, payment state, and payouts" data-ha="Ododi, matsayin biya, da fitar kudi">Orders, payment state, and payouts</h3>
+                </div>
+                <p data-en="See paid orders, pending payment orders, delivery readiness, and payout balance." data-ha="Duba ododin da aka biya, wadanda ke jiran biya, shirin kai kaya, da kudin cirewa.">
+                  See paid orders, pending payment orders, delivery readiness, and payout balance.
+                </p>
+              </div>
+              <div class="vendor-commerce-list" id="vendorCommerceList" aria-live="polite"></div>
+            </section>
+          </div>
+
         </div>
       </section>
 
@@ -792,223 +783,201 @@
 
       <!-- Admin -->
       <section class="admin-section app-page" id="admin" data-page="admin" aria-labelledby="admin-title">
-        <div class="section-heading">
-          <p class="eyebrow" data-en="Admin intelligence" data-ha="Bayanan admin">Admin intelligence</p>
-          <h2 id="admin-title" data-en="Admin dashboard" data-ha="Allon admin">Admin dashboard</h2>
-          <p
-            data-en="The admin can review search history, popular searches, failed searches, user demand trends, vendor performance, order records, and payment status."
-            data-ha="Admin zai iya duba tarihin bincike, shahararrun bincike, binciken da bai samu kaya ba, bukatun masu amfani, aikin dillalai, bayanan oda, da matsayin biyan kudi."
-          >
-            The admin can review search history, popular searches, failed searches, user demand trends, vendor performance,
-            order records, and payment status.
-          </p>
-        </div>
 
         <div id="adminGate" class="admin-pin-gate" hidden>
           <p data-en="Admin access is available only from the authorized mobile number." data-ha="Ana samun admin ne kawai daga lambar wayar da aka amince da ita.">Admin access is available only from the authorized mobile number.</p>
           <form id="adminPinForm" class="admin-pin-form" novalidate>
-            <input
-              type="password"
-              name="pin"
-              minlength="4" maxlength="4"
-              pattern="[0-9]{4}"
-              inputmode="numeric"
-              placeholder="0000"
-              data-placeholder-en="0000"
-              data-placeholder-ha="0000"
-              required
-              aria-label="Admin PIN"
-            />
+            <input type="password" name="pin" minlength="4" maxlength="4" pattern="[0-9]{4}"
+              inputmode="numeric" placeholder="0000" required aria-label="Admin PIN" />
             <button type="submit" data-en="Unlock" data-ha="Buɗe">Unlock</button>
           </form>
           <p class="form-message" id="adminPinError" role="alert"></p>
         </div>
 
-        <!-- Dashboard content (hidden until PIN entered) -->
         <div id="adminContent" class="admin-dashboard" hidden>
-          <div class="admin-toolbar">
-            <div>
-              <span class="admin-kicker" data-en="Marketplace control room" data-ha="Cibiyar kula da kasuwa">Marketplace control room</span>
-              <h3 data-en="Operations dashboard" data-ha="Allon kula da aiki">Operations dashboard</h3>
+
+          <!-- Page header -->
+          <div class="admin-page-header">
+            <div class="admin-page-title">
+              <p class="eyebrow" data-en="Marketplace control room" data-ha="Cibiyar kula da kasuwa">Marketplace control room</p>
+              <h2 id="admin-title" data-en="Admin dashboard" data-ha="Allon admin">Admin dashboard</h2>
             </div>
             <div class="admin-actions">
               <button type="button" id="exportSearches" data-en="Export searches" data-ha="Fitar da bincike">Export searches</button>
-              <button type="button" id="clearSearches" class="secondary-action" data-en="Clear prototype data" data-ha="Goge bayanan gwaji">Clear prototype data</button>
+              <button type="button" id="clearSearches" class="secondary-action" data-en="Clear data" data-ha="Goge bayanan">Clear data</button>
             </div>
           </div>
 
-          <div class="admin-metrics">
-            <article data-tone="demand">
-              <span data-en="Total customers" data-ha="Jimillar kwastomomi">Total customers</span>
-              <strong id="totalSearches">0</strong>
+          <!-- KPI row -->
+          <div class="admin-kpi-row">
+            <article class="admin-kpi-card" data-tone="demand">
+              <span class="admin-kpi-icon" aria-hidden="true">👥</span>
+              <span class="admin-kpi-label" data-en="Total customers" data-ha="Jimillar kwastomomi">Total customers</span>
+              <strong class="admin-kpi-value" id="totalSearches">0</strong>
             </article>
-            <article data-tone="risk">
-              <span data-en="Total vendors" data-ha="Jimillar dillalai">Total vendors</span>
-              <strong id="failedSearches">0</strong>
+            <article class="admin-kpi-card" data-tone="risk">
+              <span class="admin-kpi-icon" aria-hidden="true">🏪</span>
+              <span class="admin-kpi-label" data-en="Total vendors" data-ha="Jimillar dillalai">Total vendors</span>
+              <strong class="admin-kpi-value" id="failedSearches">0</strong>
             </article>
-            <article data-tone="queue">
-              <span data-en="Pending vendors" data-ha="Dillalan da ake dubawa">Pending vendors</span>
-              <strong id="savedVendors">0</strong>
+            <article class="admin-kpi-card" data-tone="queue">
+              <span class="admin-kpi-icon" aria-hidden="true">⏳</span>
+              <span class="admin-kpi-label" data-en="Pending approvals" data-ha="Dillalan da ake dubawa">Pending approvals</span>
+              <strong class="admin-kpi-value" id="savedVendors">0</strong>
             </article>
-            <article data-tone="catalog">
-              <span data-en="Products / orders" data-ha="Kaya / ododi">Products / orders</span>
-              <strong id="topDemand">None</strong>
+            <article class="admin-kpi-card" data-tone="catalog">
+              <span class="admin-kpi-icon" aria-hidden="true">📦</span>
+              <span class="admin-kpi-label" data-en="Products / orders" data-ha="Kaya / ododi">Products / orders</span>
+              <strong class="admin-kpi-value" id="topDemand">0</strong>
             </article>
           </div>
 
-          <div class="admin-workspace">
-            <div class="admin-main-column">
-              <article class="admin-panel admin-panel-large vendor-approval-panel">
-                <div class="admin-panel-heading">
-                  <div>
-                    <span data-en="Review queue" data-ha="Jerin dubawa">Review queue</span>
-                    <h3 data-en="Vendor approvals" data-ha="Amincewar dillalai">Vendor approvals</h3>
-                  </div>
-                </div>
-                <div class="vendor-approval-list" id="vendorApprovals"></div>
-              </article>
+          <!-- Tab navigation -->
+          <nav class="admin-tab-nav" aria-label="Admin sections">
+            <button type="button" class="admin-tab-btn is-active" data-admin-tab="overview" aria-selected="true">Overview</button>
+            <button type="button" class="admin-tab-btn" data-admin-tab="vendors" aria-selected="false">Vendors</button>
+            <button type="button" class="admin-tab-btn" data-admin-tab="products" aria-selected="false">Products</button>
+            <button type="button" class="admin-tab-btn" data-admin-tab="orders" aria-selected="false">Orders</button>
+            <button type="button" class="admin-tab-btn" data-admin-tab="finance" aria-selected="false">Finance</button>
+            <button type="button" class="admin-tab-btn" data-admin-tab="growth" aria-selected="false">Growth</button>
+          </nav>
 
-              <article class="admin-panel admin-panel-large product-moderation-panel">
+          <!-- ── OVERVIEW TAB ── -->
+          <div class="admin-tab-panel" data-admin-panel="overview">
+            <div class="admin-panel-3up">
+              <article class="admin-panel">
                 <div class="admin-panel-heading">
-                  <div>
-                    <span data-en="Catalog control" data-ha="Kula da kaya">Catalog control</span>
-                    <h3 data-en="Product moderation" data-ha="Duba kayayyaki">Product moderation</h3>
-                  </div>
-                </div>
-                <div class="product-moderation-list" id="productModeration"></div>
-              </article>
-            </div>
-
-            <aside class="admin-side-column" aria-label="Marketplace intelligence">
-              <article class="admin-panel demand-panel">
-                <div class="admin-panel-heading">
-                  <div>
-                    <span data-en="Demand" data-ha="Bukata">Demand</span>
-                    <h3 data-en="User demand trends" data-ha="Yanayin bukatun masu amfani">User demand trends</h3>
-                  </div>
+                  <span data-en="Demand" data-ha="Bukata">Demand</span>
+                  <h3 data-en="User demand trends" data-ha="Yanayin bukatun masu amfani">User demand trends</h3>
                 </div>
                 <div id="demandTrends" class="trend-list"></div>
               </article>
-
               <article class="admin-panel">
                 <div class="admin-panel-heading">
-                  <div>
-                    <span data-en="Searches" data-ha="Bincike">Searches</span>
-                    <h3 data-en="Popular searches" data-ha="Shahararrun bincike">Popular searches</h3>
-                  </div>
+                  <span data-en="Searches" data-ha="Bincike">Searches</span>
+                  <h3 data-en="Popular searches" data-ha="Shahararrun bincike">Popular searches</h3>
                 </div>
                 <div id="popularSearches" class="rank-list"></div>
               </article>
-
               <article class="admin-panel">
                 <div class="admin-panel-heading">
-                  <div>
-                    <span data-en="Gaps" data-ha="Gibi">Gaps</span>
-                    <h3 data-en="Failed searches" data-ha="Binciken da bai samu ba">Failed searches</h3>
-                  </div>
+                  <span data-en="Gaps" data-ha="Gibi">Gaps</span>
+                  <h3 data-en="Failed searches" data-ha="Binciken da bai samu ba">Failed searches</h3>
                 </div>
                 <div id="failedSearchList" class="rank-list"></div>
               </article>
-            </aside>
-          </div>
-
-          <div class="admin-health-grid">
-            <article class="admin-panel admin-panel-large">
-              <div class="admin-panel-heading">
-                <div>
-                  <span data-en="Reporting" data-ha="Rahoto">Reporting</span>
-                  <h3 data-en="Advanced analytics" data-ha="Bayanan kasuwa masu zurfi">Advanced analytics</h3>
-                </div>
-              </div>
-              <div id="advancedAnalytics"></div>
-            </article>
-
-            <article class="admin-panel admin-panel-large">
-              <div class="admin-panel-heading">
-                <div>
-                  <span data-en="Growth tools" data-ha="Kayan bunkasa">Growth tools</span>
-                  <h3 data-en="Commission and promotions" data-ha="Kwamishan da talla">Commission and promotions</h3>
-                </div>
-              </div>
-              <div id="phaseThreeControls"></div>
-            </article>
-
+            </div>
             <article class="admin-panel">
               <div class="admin-panel-heading">
-                <div>
-                  <span data-en="Plans" data-ha="Tsare-tsare">Plans</span>
-                  <h3 data-en="Vendor subscriptions" data-ha="Biyan plan na dillalai">Vendor subscriptions</h3>
-                </div>
-              </div>
-              <div id="vendorSubscriptionSummary"></div>
-            </article>
-
-            <article class="admin-panel">
-              <div class="admin-panel-heading">
-                <div>
-                  <span data-en="Sellers" data-ha="Dillalai">Sellers</span>
-                  <h3 data-en="Vendor performance" data-ha="Aikin dillalai">Vendor performance</h3>
-                </div>
-              </div>
-              <div class="record-list" id="vendorPerformance"></div>
-            </article>
-
-            <article class="admin-panel">
-              <div class="admin-panel-heading">
-                <div>
-                  <span data-en="Fulfillment" data-ha="Isarwa">Fulfillment</span>
-                  <h3 data-en="Order records" data-ha="Bayanan oda">Order records</h3>
-                </div>
-              </div>
-              <div class="record-list" id="orderRecords"></div>
-            </article>
-
-            <article class="admin-panel">
-              <div class="admin-panel-heading">
-                <div>
-                  <span data-en="Finance" data-ha="Kudi">Finance</span>
-                  <h3 data-en="Payment status" data-ha="Matsayin biyan kudi">Payment status</h3>
-                </div>
-              </div>
-              <div class="record-list" id="paymentStatus"></div>
-            </article>
-
-            <article class="admin-panel">
-              <div class="admin-panel-heading">
-                <div>
-                  <span data-en="Payouts" data-ha="Fitar kudi">Payouts</span>
-                  <h3 data-en="Withdrawal queue" data-ha="Jerin cire kudi">Withdrawal queue</h3>
-                </div>
-              </div>
-              <div class="withdrawal-list" id="withdrawalQueue"></div>
-            </article>
-
-            <article class="admin-panel">
-              <div class="admin-panel-heading">
-                <div>
-                  <span data-en="Reviews" data-ha="Ra'ayoyi">Reviews</span>
-                  <h3 data-en="Review moderation" data-ha="Duba ra'ayoyi">Review moderation</h3>
-                </div>
+                <span data-en="Reviews" data-ha="Ra'ayoyi">Reviews</span>
+                <h3 data-en="Review moderation" data-ha="Duba ra'ayoyi">Review moderation</h3>
               </div>
               <div class="review-moderation-list" id="reviewModeration"></div>
             </article>
+            <div class="search-table-wrap">
+              <table>
+                <caption data-en="Search history" data-ha="Tarihin bincike">Search history</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" data-en="Query" data-ha="Bincike">Query</th>
+                    <th scope="col" data-en="Results" data-ha="Sakamako">Results</th>
+                    <th scope="col" data-en="Category" data-ha="Rukuni">Category</th>
+                    <th scope="col" data-en="Status" data-ha="Matsayi">Status</th>
+                    <th scope="col" data-en="Time" data-ha="Lokaci">Time</th>
+                  </tr>
+                </thead>
+                <tbody id="searchHistoryTable"></tbody>
+              </table>
+            </div>
           </div>
 
-          <div class="search-table-wrap">
-            <table>
-              <caption data-en="Search history" data-ha="Tarihin bincike">Search history</caption>
-              <thead>
-                <tr>
-                  <th scope="col" data-en="Query" data-ha="Bincike">Query</th>
-                  <th scope="col" data-en="Results" data-ha="Sakamako">Results</th>
-                  <th scope="col" data-en="Category" data-ha="Rukuni">Category</th>
-                  <th scope="col" data-en="Status" data-ha="Matsayi">Status</th>
-                  <th scope="col" data-en="Time" data-ha="Lokaci">Time</th>
-                </tr>
-              </thead>
-              <tbody id="searchHistoryTable"></tbody>
-            </table>
+          <!-- ── VENDORS TAB ── -->
+          <div class="admin-tab-panel" data-admin-panel="vendors" hidden>
+            <article class="admin-panel admin-panel-large vendor-approval-panel">
+              <div class="admin-panel-heading">
+                <span data-en="Review queue" data-ha="Jerin dubawa">Review queue</span>
+                <h3 data-en="Vendor approvals" data-ha="Amincewar dillalai">Vendor approvals</h3>
+              </div>
+              <div class="vendor-approval-list" id="vendorApprovals"></div>
+            </article>
+            <div class="admin-panel-2up">
+              <article class="admin-panel">
+                <div class="admin-panel-heading">
+                  <span data-en="Plans" data-ha="Tsare-tsare">Plans</span>
+                  <h3 data-en="Vendor subscriptions" data-ha="Biyan plan na dillalai">Vendor subscriptions</h3>
+                </div>
+                <div id="vendorSubscriptionSummary"></div>
+              </article>
+              <article class="admin-panel">
+                <div class="admin-panel-heading">
+                  <span data-en="Sellers" data-ha="Dillalai">Sellers</span>
+                  <h3 data-en="Vendor performance" data-ha="Aikin dillalai">Vendor performance</h3>
+                </div>
+                <div class="record-list" id="vendorPerformance"></div>
+              </article>
+            </div>
           </div>
+
+          <!-- ── PRODUCTS TAB ── -->
+          <div class="admin-tab-panel" data-admin-panel="products" hidden>
+            <article class="admin-panel admin-panel-large product-moderation-panel">
+              <div class="admin-panel-heading">
+                <span data-en="Catalog control" data-ha="Kula da kaya">Catalog control</span>
+                <h3 data-en="Product moderation" data-ha="Duba kayayyaki">Product moderation</h3>
+              </div>
+              <div class="product-moderation-list" id="productModeration"></div>
+            </article>
+          </div>
+
+          <!-- ── ORDERS TAB ── -->
+          <div class="admin-tab-panel" data-admin-panel="orders" hidden>
+            <article class="admin-panel admin-panel-large">
+              <div class="admin-panel-heading">
+                <span data-en="Fulfillment" data-ha="Isarwa">Fulfillment</span>
+                <h3 data-en="Order records" data-ha="Bayanan oda">Order records</h3>
+              </div>
+              <div class="record-list" id="orderRecords"></div>
+            </article>
+          </div>
+
+          <!-- ── FINANCE TAB ── -->
+          <div class="admin-tab-panel" data-admin-panel="finance" hidden>
+            <div class="admin-panel-2up">
+              <article class="admin-panel">
+                <div class="admin-panel-heading">
+                  <span data-en="Finance" data-ha="Kudi">Finance</span>
+                  <h3 data-en="Payment status" data-ha="Matsayin biyan kudi">Payment status</h3>
+                </div>
+                <div class="record-list" id="paymentStatus"></div>
+              </article>
+              <article class="admin-panel">
+                <div class="admin-panel-heading">
+                  <span data-en="Payouts" data-ha="Fitar kudi">Payouts</span>
+                  <h3 data-en="Withdrawal queue" data-ha="Jerin cire kudi">Withdrawal queue</h3>
+                </div>
+                <div class="withdrawal-list" id="withdrawalQueue"></div>
+              </article>
+            </div>
+          </div>
+
+          <!-- ── GROWTH TAB ── -->
+          <div class="admin-tab-panel" data-admin-panel="growth" hidden>
+            <article class="admin-panel admin-panel-large">
+              <div class="admin-panel-heading">
+                <span data-en="Reporting" data-ha="Rahoto">Reporting</span>
+                <h3 data-en="Advanced analytics" data-ha="Bayanan kasuwa masu zurfi">Advanced analytics</h3>
+              </div>
+              <div id="advancedAnalytics"></div>
+            </article>
+            <article class="admin-panel admin-panel-large">
+              <div class="admin-panel-heading">
+                <span data-en="Growth tools" data-ha="Kayan bunkasa">Growth tools</span>
+                <h3 data-en="Commission and promotions" data-ha="Kwamishan da talla">Commission and promotions</h3>
+              </div>
+              <div id="phaseThreeControls"></div>
+            </article>
+          </div>
+
         </div>
       </section>
 

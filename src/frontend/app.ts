@@ -489,6 +489,23 @@ function readImageAsDataUrl(file: File): Promise<string> {
   });
 }
 
+function renderVendorDashHeader(): void {
+  const user = state.currentUser;
+  if (!user || user.role !== "vendor") return;
+  const vendor = findVendorByPhone(user.phone);
+  const businessName = vendor?.businessName || user.name;
+  const status = user.vendorStatus ?? "pending";
+
+  const nameEl = document.querySelector<HTMLElement>("#vendorDashBusinessName");
+  if (nameEl) nameEl.textContent = businessName;
+
+  const badge = document.querySelector<HTMLElement>("#vendorStatusBadge");
+  if (badge) {
+    badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    badge.dataset.status = status;
+  }
+}
+
 function renderVendorProducts(): void {
   const list = document.querySelector<HTMLElement>("#vendorProductsList");
   if (!list) return;
@@ -497,6 +514,7 @@ function renderVendorProducts(): void {
     list.innerHTML = "";
     return;
   }
+  renderVendorDashHeader();
 
   const vendorProducts = getProductsForVendor(user.phone);
   if (vendorProducts.length === 0) {
@@ -1201,6 +1219,34 @@ window.addEventListener("kanoMart:signed-out", () => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeCart();
   if (e.key === "Escape") closeSidebar();
+});
+
+// ── Admin tab switching ──
+document.querySelector("#adminContent")?.addEventListener("click", (e) => {
+  const btn = (e.target as Element | null)?.closest<HTMLButtonElement>("[data-admin-tab]");
+  if (!btn) return;
+  const tab = btn.dataset.adminTab!;
+  document.querySelectorAll<HTMLButtonElement>(".admin-tab-btn").forEach((b) => {
+    b.classList.toggle("is-active", b.dataset.adminTab === tab);
+    b.setAttribute("aria-selected", String(b.dataset.adminTab === tab));
+  });
+  document.querySelectorAll<HTMLElement>(".admin-tab-panel").forEach((panel) => {
+    panel.hidden = panel.dataset.adminPanel !== tab;
+  });
+});
+
+// ── Vendor tab switching ──
+document.querySelector(".vendor-dashboard")?.addEventListener("click", (e) => {
+  const btn = (e.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-tab]");
+  if (!btn) return;
+  const tab = btn.dataset.vendorTab!;
+  document.querySelectorAll<HTMLButtonElement>(".vendor-tab-btn").forEach((b) => {
+    b.classList.toggle("is-active", b.dataset.vendorTab === tab);
+    b.setAttribute("aria-selected", String(b.dataset.vendorTab === tab));
+  });
+  document.querySelectorAll<HTMLElement>(".vendor-tab-panel").forEach((panel) => {
+    panel.hidden = panel.dataset.vendorPanel !== tab;
+  });
 });
 
 // — Init —
