@@ -507,10 +507,15 @@ function buildUserPanel(): HTMLElement {
             <input type="email" name="email" value="${escapeHtml(user.email || "")}" />
           </label>
         </div>
-        <label>
+        ${user.role === "vendor"
+          ? `<label>
+          <span>${getCopy("Shop address (pickup location)", "Adireshin shago (don karbar kaya)")}</span>
+          <input type="text" name="deliveryAddress" value="${escapeHtml(user.deliveryAddress || "")}" />
+        </label>`
+          : `<label>
           <span>${getCopy("Delivery address", "Adireshin isarwa")}</span>
           <input type="text" name="deliveryAddress" value="${escapeHtml(user.deliveryAddress || "")}" />
-        </label>
+        </label>`}
         <label>
           <span>${getCopy("Preferred language", "Yaren da ka fi so")}</span>
           <select name="preferredLanguage">

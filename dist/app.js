@@ -2523,10 +2523,13 @@ function buildUserPanel() {
             <input type="email" name="email" value="${escapeHtml(user.email || "")}" />
           </label>
         </div>
-        <label>
+        ${user.role === "vendor" ? `<label>
+          <span>${getCopy("Shop address (pickup location)", "Adireshin shago (don karbar kaya)")}</span>
+          <input type="text" name="deliveryAddress" value="${escapeHtml(user.deliveryAddress || "")}" />
+        </label>` : `<label>
           <span>${getCopy("Delivery address", "Adireshin isarwa")}</span>
           <input type="text" name="deliveryAddress" value="${escapeHtml(user.deliveryAddress || "")}" />
-        </label>
+        </label>`}
         <label>
           <span>${getCopy("Preferred language", "Yaren da ka fi so")}</span>
           <select name="preferredLanguage">
@@ -2630,8 +2633,7 @@ function buildModalHtml(product) {
 
         <div class="product-modal-body">
           <div class="product-modal-thumb" style="--accent: ${product.accent}">
-            ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : ""}
-            <span>${escapeHtml(subcategory)}</span>
+            ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : `<span>${escapeHtml(subcategory)}</span>`}
           </div>
 
           <div class="product-modal-meta">
@@ -2698,6 +2700,24 @@ function openProductModal(productId) {
   modal.querySelector(".modal-close")?.addEventListener("click", closeProductModal);
   modal.addEventListener("click", (e) => {
     if (e.target === modal) closeProductModal();
+  });
+  modal.querySelector(".product-modal-thumb img")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const src = e.currentTarget.src;
+    const lb = document.createElement("div");
+    lb.className = "img-lightbox";
+    lb.innerHTML = `<button class="img-lightbox-close" aria-label="Close">\xD7</button><img src="${escapeHtml(src)}" alt="${escapeHtml(product.name[state.language])}" />`;
+    document.body.appendChild(lb);
+    const close = () => lb.remove();
+    lb.addEventListener("click", close);
+    lb.querySelector(".img-lightbox-close")?.addEventListener("click", close);
+    const onKey = (ev) => {
+      if (ev.key === "Escape") {
+        close();
+        document.removeEventListener("keydown", onKey);
+      }
+    };
+    document.addEventListener("keydown", onKey);
   });
   modal.querySelector("#modalAddToCart")?.addEventListener("click", () => {
     if (!state.currentUser) {

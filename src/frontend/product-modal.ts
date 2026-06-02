@@ -50,8 +50,7 @@ function buildModalHtml(product: Product): string {
 
         <div class="product-modal-body">
           <div class="product-modal-thumb" style="--accent: ${product.accent}">
-            ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : ""}
-            <span>${escapeHtml(subcategory)}</span>
+            ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : `<span>${escapeHtml(subcategory)}</span>`}
           </div>
 
           <div class="product-modal-meta">
@@ -122,6 +121,20 @@ export function openProductModal(productId: string): void {
 
   modal.querySelector(".modal-close")?.addEventListener("click", closeProductModal);
   modal.addEventListener("click", (e) => { if (e.target === modal) closeProductModal(); });
+
+  modal.querySelector<HTMLImageElement>(".product-modal-thumb img")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const src = (e.currentTarget as HTMLImageElement).src;
+    const lb = document.createElement("div");
+    lb.className = "img-lightbox";
+    lb.innerHTML = `<button class="img-lightbox-close" aria-label="Close">×</button><img src="${escapeHtml(src)}" alt="${escapeHtml(product.name[state.language])}" />`;
+    document.body.appendChild(lb);
+    const close = () => lb.remove();
+    lb.addEventListener("click", close);
+    lb.querySelector(".img-lightbox-close")?.addEventListener("click", close);
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape") { close(); document.removeEventListener("keydown", onKey); } };
+    document.addEventListener("keydown", onKey);
+  });
 
   modal.querySelector("#modalAddToCart")?.addEventListener("click", () => {
     if (!state.currentUser) { closeProductModal(); openAuthModal(); return; }
