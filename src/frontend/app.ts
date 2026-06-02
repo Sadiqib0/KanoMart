@@ -109,6 +109,8 @@ function setRoute(route = getCurrentRoute()): void {
   });
   // Toggle full-page auth layout (hides sidebar + header)
   document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
+  // Toggle transparent hero header vs solid sticky header
+  document.body.classList.toggle("on-home", nextRoute === "home");
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
 }

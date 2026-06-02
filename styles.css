@@ -7420,3 +7420,139 @@ body.sidebar-collapsed .sidebar-lang {
     padding: 20px 16px 0;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   HEADER — transparent overlay so hero image covers the full page top
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Override the sticky opaque header — make it float on top of hero */
+.site-header {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  background: transparent !important;
+  border-bottom: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+/* Mobile brand text white on hero */
+.mobile-brand,
+.mobile-brand strong,
+.mobile-brand small {
+  color: #fff;
+}
+
+.mobile-brand .brand-mark {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Hamburger white on hero */
+.site-header .sidebar-open {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.site-header .sidebar-open:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Hero must start at top: remove any top offset caused by header */
+.hero {
+  margin-top: 0 !important;
+  /* extend to cover behind the absolute header */
+  padding-top: 0;
+}
+
+.hero-content {
+  /* push content down past the floating header */
+  padding-top: 96px !important;
+}
+
+/* On non-hero pages, restore a solid sticky header */
+body:not(.on-home) .site-header {
+  position: sticky !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-bottom: 1px solid var(--line) !important;
+  backdrop-filter: blur(16px) !important;
+}
+
+body:not(.on-home) .mobile-brand,
+body:not(.on-home) .mobile-brand strong {
+  color: var(--ink);
+}
+
+body:not(.on-home) .mobile-brand .brand-mark {
+  background: var(--green);
+  color: #fff;
+  border: none;
+}
+
+body:not(.on-home) .site-header .sidebar-open {
+  color: var(--ink);
+  border-color: var(--line);
+  background: #fff;
+}
+
+/* ── Hero language toggle ── */
+.hero-lang {
+  position: absolute;
+  top: 20px;
+  left: 16px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+.hero-lang .language-option {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(8px);
+  transition: background 0.13s, color 0.13s;
+}
+
+.hero-lang .language-option:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.hero-lang .language-option.is-active {
+  background: #fff;
+  color: var(--green);
+  border-color: transparent;
+}
+
+/* On desktop, the absolute header won't affect the sidebar grid layout */
+@media (min-width: 1040px) {
+  .site-header {
+    position: absolute !important;
+    /* only span the main-shell column, not the sidebar */
+    left: 0;
+    right: 0;
+  }
+
+  .hero-content {
+    padding-top: 80px !important;
+  }
+
+  .hero-lang {
+    left: 24px;
+  }
+}
+
+@media (max-width: 767px) {
+  .hero-content {
+    padding-top: 80px !important;
+  }
+}

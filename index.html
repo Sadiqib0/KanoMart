@@ -148,47 +148,12 @@
             </span>
           </div>
 
-          <div class="header-actions">
-        <!-- Wishlist -->
-        <button
-          class="icon-button wishlist-button"
-          type="button"
-          aria-label="Wishlist"
-          data-aria-en="Wishlist"
-          data-aria-ha="Abubuwan da nake so"
-        >
-          <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
-            <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>
-          </svg>
-          <span class="cart-count" data-wishlist-count aria-label="Wishlist count" hidden>0</span>
-        </button>
-
-        <!-- Cart -->
-        <button
-          class="icon-button cart-button"
-          type="button"
-          aria-label="Cart"
-          data-aria-en="Cart"
-          data-aria-ha="Kwando"
-        >
-          <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
-            <path d="M6.2 6h15l-1.7 8.1a2 2 0 0 1-2 1.6H9.1a2 2 0 0 1-2-1.7L5.7 3.8H3" />
-            <circle cx="9.8" cy="20" r="1.5" />
-            <circle cx="17.2" cy="20" r="1.5" />
-          </svg>
-          <span class="cart-count" data-cart-count aria-label="Cart item count">0</span>
-        </button>
-
-        <!-- User / Sign in -->
-        <button class="user-button" type="button" id="userButton" aria-label="Sign in">
-          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" focusable="false" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="8" r="4"/>
-            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-          </svg>
-          <span id="userButtonLabel" data-en="Sign in" data-ha="Shiga">Sign in</span>
-        </button>
-
-          </div>
+          <!-- Hidden JS anchors — required by state.ts, not visible to users -->
+          <span hidden aria-hidden="true" data-wishlist-count>0</span>
+          <span hidden aria-hidden="true" data-cart-count>0</span>
+          <button hidden aria-hidden="true" type="button" id="userButton">
+            <span id="userButtonLabel">Sign in</span>
+          </button>
         </header>
 
         <!-- ═══ MAIN ═══ -->
@@ -208,6 +173,12 @@
         <div class="hero-shade" aria-hidden="true"></div>
 
         <div class="hero-content">
+          <!-- Language toggle — top-left of hero -->
+          <div class="hero-lang" role="group" aria-label="Choose language">
+            <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">EN</button>
+            <button class="language-option" type="button" data-language="ha" aria-pressed="false">HA</button>
+          </div>
+
           <p class="eyebrow" data-en="Trusted local vendors across Kano" data-ha="Amintattun dillalai a fadin Kano">
             Trusted local vendors across Kano
           </p>
