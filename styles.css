@@ -7350,3 +7350,51 @@ body.is-auth-route .site-header {
     padding: 20px 20px 32px;
   }
 }
+
+/* ── Bug fixes: header cleanup + sidebar language toggle ── */
+
+/* Hide old dashboard topbar title (removed from HTML but keep safety rule) */
+.desk-topbar-title {
+  display: none !important;
+}
+
+/* Language toggle in sidebar */
+.sidebar-lang {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 0 12px;
+  margin-bottom: 4px;
+}
+
+.sidebar-lang .language-option {
+  min-height: 34px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.13s, color 0.13s;
+}
+
+.sidebar-lang .language-option:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.sidebar-lang .language-option.is-active {
+  background: var(--green);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* When sidebar is collapsed, hide the language text (icon-only mode) */
+body.sidebar-collapsed .sidebar-lang {
+  padding: 0 6px;
+}
+
+/* Hide sidebar-quick-stats everywhere (removed from HTML, CSS safety rule) */
+.sidebar-quick-stats {
+  display: none !important;
+}
