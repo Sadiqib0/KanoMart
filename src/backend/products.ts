@@ -115,11 +115,24 @@ export function saveVendorProduct(input: VendorProductInput): Product {
         ? { en: "Available now", ha: "Akwai yanzu" }
         : { en: "Out of stock", ha: "Ya kare" },
     listingStatus: Number(input.quantityAvailable ?? 1) > 0 ? "active" : "out_of_stock",
+    // New products always start pending — admin must approve before they appear in catalog
+    moderationStatus: "pending",
     accent: "#1f7b84",
     tags: [name, input.category, input.vendor, input.area].filter(Boolean).map((item) => item.toLowerCase()),
   };
 
   setStoredList(storageKeys.vendorProducts, [product, ...getVendorProducts()]);
+
+  // Create the moderation record so admin dashboard shows it as "Pending"
+  const records = getProductModerationRecords();
+  const pendingRecord: ProductModerationRecord = {
+    productId: product.id,
+    status: "pending",
+    reviewedAt: new Date().toISOString(),
+    reviewNote: "",
+  };
+  setStoredList(storageKeys.productModeration, [pendingRecord, ...records]);
+
   return product;
 }
 
@@ -176,6 +189,7 @@ export function moderateProduct(
 ): ProductModerationRecord | null {
   if (!getAllProducts().some((product) => product.id === productId)) return null;
 
+  // Update the separate moderation record (used by admin dashboard / getProductStatus())
   const records = getProductModerationRecords();
   const nextRecord: ProductModerationRecord = {
     productId,
@@ -185,6 +199,16 @@ export function moderateProduct(
   };
   const nextRecords = [nextRecord, ...records.filter((record) => record.productId !== productId)];
   setStoredList(storageKeys.productModeration, nextRecords);
+
+  // Also write moderationStatus back onto the stored product object so the vendor
+  // dashboard (which reads product.moderationStatus directly) stays in sync.
+  const vendorProducts = getVendorProducts();
+  const storedProduct = vendorProducts.find((p) => p.id === productId);
+  if (storedProduct) {
+    storedProduct.moderationStatus = status;
+    setStoredList(storageKeys.vendorProducts, vendorProducts);
+  }
+
   return nextRecord;
 }
 

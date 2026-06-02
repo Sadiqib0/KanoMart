@@ -731,7 +731,10 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
     }
 
     form.reset();
-    if (message) message.textContent = getCopy("Product added to your active catalog.", "An saka kaya a kasuwarka.") + liveMessage;
+    if (message) message.textContent = getCopy(
+      "Product submitted — awaiting admin approval before it appears in the catalog.",
+      "An tura kaya — ana jiran amincewar admin kafin ya bayyana a kasuwa."
+    ) + liveMessage;
     renderVendorProducts();
     renderVendorCommerce();
     renderCatalogPreview();

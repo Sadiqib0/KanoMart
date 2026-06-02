@@ -38,7 +38,7 @@ import {
   updateUserProfile,
   vendorProfiles,
   verifyPassword
-} from "./chunk-VOTUQWEH.js";
+} from "./chunk-V6VR6KCH.js";
 
 // src/backend/products.ts
 var categoryCopy = {
@@ -119,10 +119,20 @@ function saveVendorProduct(input) {
     area: sanitizeProductText(input.area || "Kano", 80),
     availability: Number(input.quantityAvailable ?? 1) > 0 ? { en: "Available now", ha: "Akwai yanzu" } : { en: "Out of stock", ha: "Ya kare" },
     listingStatus: Number(input.quantityAvailable ?? 1) > 0 ? "active" : "out_of_stock",
+    // New products always start pending — admin must approve before they appear in catalog
+    moderationStatus: "pending",
     accent: "#1f7b84",
     tags: [name, input.category, input.vendor, input.area].filter(Boolean).map((item) => item.toLowerCase())
   };
   setStoredList(storageKeys.vendorProducts, [product, ...getVendorProducts()]);
+  const records = getProductModerationRecords();
+  const pendingRecord = {
+    productId: product.id,
+    status: "pending",
+    reviewedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    reviewNote: ""
+  };
+  setStoredList(storageKeys.productModeration, [pendingRecord, ...records]);
   return product;
 }
 function getProductsForVendor(vendorPhone) {
@@ -148,6 +158,12 @@ function moderateProduct(productId, status, reviewNote = "") {
   };
   const nextRecords = [nextRecord, ...records.filter((record) => record.productId !== productId)];
   setStoredList(storageKeys.productModeration, nextRecords);
+  const vendorProducts = getVendorProducts();
+  const storedProduct = vendorProducts.find((p) => p.id === productId);
+  if (storedProduct) {
+    storedProduct.moderationStatus = status;
+    setStoredList(storageKeys.vendorProducts, vendorProducts);
+  }
   return nextRecord;
 }
 function getProductStatusCounts() {
@@ -3790,7 +3806,10 @@ async function handleVendorProductSubmit(event) {
       }
     }
     form.reset();
-    if (message) message.textContent = getCopy("Product added to your active catalog.", "An saka kaya a kasuwarka.") + liveMessage;
+    if (message) message.textContent = getCopy(
+      "Product submitted \u2014 awaiting admin approval before it appears in the catalog.",
+      "An tura kaya \u2014 ana jiran amincewar admin kafin ya bayyana a kasuwa."
+    ) + liveMessage;
     renderVendorProducts();
     renderVendorCommerce();
     renderCatalogPreview();
@@ -4262,7 +4281,7 @@ renderCustomerDashboard();
 renderOrdersPage();
 var scheduleEnhancements = "requestIdleCallback" in window ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 }) : (callback) => window.setTimeout(callback, 350);
 scheduleEnhancements(() => {
-  import("./frontend-enhancements-GHCFJLLH.js").then(({ initFrontendEnhancements }) => {
+  import("./frontend-enhancements-NTNUIWUZ.js").then(({ initFrontendEnhancements }) => {
     initFrontendEnhancements();
   });
 });
