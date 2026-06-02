@@ -220,7 +220,9 @@ export function initSignupPage(): void {
   const page = document.getElementById("signupPage");
   if (!page) return;
 
-  let currentRole: "customer" | "vendor" = "customer";
+  // Check if a role was requested via hash fragment e.g. #signup/vendor
+  const hashRole = window.location.hash.split("/")[1];
+  let currentRole: "customer" | "vendor" = hashRole === "vendor" ? "vendor" : "customer";
 
   wirePasswordToggles(page);
   wireRoleTabs(page, (role) => {
@@ -228,8 +230,17 @@ export function initSignupPage(): void {
     applySignupRole(page, role);
   });
 
-  // Initialise as customer
-  applySignupRole(page, "customer");
+  // Pre-activate the correct tab
+  if (currentRole === "vendor") {
+    page.querySelectorAll<HTMLButtonElement>("[data-role-tab]").forEach((tab) => {
+      const isVendor = tab.dataset.roleTab === "vendor";
+      tab.classList.toggle("is-active", isVendor);
+      tab.setAttribute("aria-selected", String(isVendor));
+    });
+  }
+
+  // Initialise form fields for the chosen role
+  applySignupRole(page, currentRole);
 
   const form = page.querySelector<HTMLFormElement>("#signupForm");
   if (!form) return;

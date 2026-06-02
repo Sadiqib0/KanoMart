@@ -292,6 +292,55 @@ async function refreshLiveAdminDashboard(): Promise<void> {
   }
 }
 
+function renderCustomerDashboard(): void {
+  const user = state.currentUser;
+  if (!user || user.role !== "customer") return;
+
+  // Welcome name
+  const nameEl = document.querySelector<HTMLElement>("#customerWelcomeName");
+  if (nameEl) {
+    const firstName = user.firstName || user.name?.split(" ")[0] || "";
+    nameEl.textContent = firstName
+      ? getCopy(`Welcome back, ${firstName}!`, `Barka da dawo, ${firstName}!`)
+      : getCopy("Welcome back!", "Barka da dawo!");
+  }
+
+  // Quick stats
+  const orderCount = getOrders().filter((o) => o.customerPhone === user.phone).length;
+  const cartCount = state.cartCount;
+  const wishlistCount = Number(elements.wishlistCountEl.textContent) || 0;
+
+  const statOrders = document.querySelector<HTMLElement>("#customerStatOrders");
+  const statCart = document.querySelector<HTMLElement>("#customerStatCart");
+  const statWishlist = document.querySelector<HTMLElement>("#customerStatWishlist");
+  if (statOrders) statOrders.textContent = String(orderCount);
+  if (statCart) statCart.textContent = String(cartCount);
+  if (statWishlist) statWishlist.textContent = String(wishlistCount);
+
+  // Recent orders preview (last 3)
+  const recentEl = document.querySelector<HTMLElement>("#customerRecentOrders");
+  if (!recentEl) return;
+  const recentOrders = getOrders()
+    .filter((o) => o.customerPhone === user.phone)
+    .slice(0, 3);
+
+  if (recentOrders.length === 0) {
+    recentEl.innerHTML = `<p class="muted" data-en="No orders yet. Start shopping to see your orders here." data-ha="Babu oda tukuna. Fara sayayya don ganin ododinka a nan.">${getCopy("No orders yet. Start shopping to see your orders here.", "Babu oda tukuna. Fara sayayya don ganin ododinka a nan.")}</p>`;
+    return;
+  }
+
+  recentEl.innerHTML = recentOrders.map((order) => `
+    <div class="customer-order-row">
+      <div class="customer-order-id">
+        <strong>${escapeHtml(order.id)}</strong>
+        <small>${escapeHtml(formatDate(order.createdAt))}</small>
+      </div>
+      <span class="order-status order-status-${escapeHtml(order.status)}">${escapeHtml(order.status.replace(/_/g, " "))}</span>
+      <span class="customer-order-total">${escapeHtml(formatPrice(order.subtotal))}</span>
+    </div>
+  `).join("");
+}
+
 async function refreshLiveVendorDashboard(): Promise<void> {
   if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
   try {
@@ -713,15 +762,14 @@ elements.searchForm.addEventListener("submit", (event) => {
   performSearch(elements.searchInput.value);
 });
 
-elements.quickSearches.addEventListener("click", (event) => {
+// Hero quick-search chips AND home category cards both trigger catalog search
+document.addEventListener("click", (event) => {
   const button = (event.target as Element | null)?.closest<HTMLElement>("[data-query-en][data-query-ha]");
   if (!button) return;
   const query = button.dataset[state.language === "ha" ? "queryHa" : "queryEn"] || "";
   elements.searchInput.value = query;
-  if (getCurrentRoute() !== "catalog") {
-    window.location.hash = "catalog";
-    setRoute("catalog");
-  }
+  window.location.hash = "catalog";
+  setRoute("catalog");
   performSearch(query);
 });
 
@@ -803,6 +851,13 @@ document.querySelectorAll<HTMLElement>(".cart-button").forEach((button) => {
 document.querySelectorAll<HTMLElement>(".wishlist-button").forEach((button) => {
   button.addEventListener("click", openWishlistPanel);
 });
+
+// Customer dashboard shortcuts
+document.querySelector<HTMLButtonElement>("#customerCartBtn")?.addEventListener("click", () => {
+  renderCartPanel();
+  openCart();
+});
+document.querySelector<HTMLButtonElement>("#customerWishlistBtn")?.addEventListener("click", openWishlistPanel);
 elements.cartOverlay.addEventListener("click", closeCart);
 document.querySelector<HTMLButtonElement>(".cart-close")?.addEventListener("click", closeCart);
 elements.checkoutButton.addEventListener("click", () => {
@@ -1096,6 +1151,7 @@ window.addEventListener("kanoMart:signed-in", () => {
   renderVendorCommerce();
   renderAdminGate();
   renderAdminDashboard();
+  renderCustomerDashboard();
   void refreshLiveAdminDashboard();
   void refreshLiveVendorDashboard();
   void fetchLiveNotifications();
@@ -1145,6 +1201,9 @@ void fetchLiveCategories();
 // Initialise the dedicated login and signup pages
 initLoginPage();
 initSignupPage();
+
+// Render role dashboards for users already logged in (page reload)
+renderCustomerDashboard();
 
 const scheduleEnhancements =
   "requestIdleCallback" in window

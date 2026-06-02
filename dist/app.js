@@ -3122,13 +3122,21 @@ async function submitLogin(form, role) {
 function initSignupPage() {
   const page = document.getElementById("signupPage");
   if (!page) return;
-  let currentRole = "customer";
+  const hashRole = window.location.hash.split("/")[1];
+  let currentRole = hashRole === "vendor" ? "vendor" : "customer";
   wirePasswordToggles(page);
   wireRoleTabs(page, (role) => {
     currentRole = role;
     applySignupRole(page, role);
   });
-  applySignupRole(page, "customer");
+  if (currentRole === "vendor") {
+    page.querySelectorAll("[data-role-tab]").forEach((tab) => {
+      const isVendor = tab.dataset.roleTab === "vendor";
+      tab.classList.toggle("is-active", isVendor);
+      tab.setAttribute("aria-selected", String(isVendor));
+    });
+  }
+  applySignupRole(page, currentRole);
   const form = page.querySelector("#signupForm");
   if (!form) return;
   form.addEventListener("submit", (e) => {
@@ -3404,6 +3412,41 @@ async function refreshLiveAdminDashboard() {
     renderAdminDashboard();
   } catch {
   }
+}
+function renderCustomerDashboard() {
+  const user = state.currentUser;
+  if (!user || user.role !== "customer") return;
+  const nameEl = document.querySelector("#customerWelcomeName");
+  if (nameEl) {
+    const firstName = user.firstName || user.name?.split(" ")[0] || "";
+    nameEl.textContent = firstName ? getCopy(`Welcome back, ${firstName}!`, `Barka da dawo, ${firstName}!`) : getCopy("Welcome back!", "Barka da dawo!");
+  }
+  const orderCount = getOrders().filter((o) => o.customerPhone === user.phone).length;
+  const cartCount = state.cartCount;
+  const wishlistCount = Number(elements.wishlistCountEl.textContent) || 0;
+  const statOrders = document.querySelector("#customerStatOrders");
+  const statCart = document.querySelector("#customerStatCart");
+  const statWishlist = document.querySelector("#customerStatWishlist");
+  if (statOrders) statOrders.textContent = String(orderCount);
+  if (statCart) statCart.textContent = String(cartCount);
+  if (statWishlist) statWishlist.textContent = String(wishlistCount);
+  const recentEl = document.querySelector("#customerRecentOrders");
+  if (!recentEl) return;
+  const recentOrders = getOrders().filter((o) => o.customerPhone === user.phone).slice(0, 3);
+  if (recentOrders.length === 0) {
+    recentEl.innerHTML = `<p class="muted" data-en="No orders yet. Start shopping to see your orders here." data-ha="Babu oda tukuna. Fara sayayya don ganin ododinka a nan.">${getCopy("No orders yet. Start shopping to see your orders here.", "Babu oda tukuna. Fara sayayya don ganin ododinka a nan.")}</p>`;
+    return;
+  }
+  recentEl.innerHTML = recentOrders.map((order) => `
+    <div class="customer-order-row">
+      <div class="customer-order-id">
+        <strong>${escapeHtml(order.id)}</strong>
+        <small>${escapeHtml(formatDate(order.createdAt))}</small>
+      </div>
+      <span class="order-status order-status-${escapeHtml(order.status)}">${escapeHtml(order.status.replace(/_/g, " "))}</span>
+      <span class="customer-order-total">${escapeHtml(formatPrice(order.subtotal))}</span>
+    </div>
+  `).join("");
 }
 async function refreshLiveVendorDashboard() {
   if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
@@ -3748,15 +3791,13 @@ elements.searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   performSearch(elements.searchInput.value);
 });
-elements.quickSearches.addEventListener("click", (event) => {
+document.addEventListener("click", (event) => {
   const button = event.target?.closest("[data-query-en][data-query-ha]");
   if (!button) return;
   const query = button.dataset[state.language === "ha" ? "queryHa" : "queryEn"] || "";
   elements.searchInput.value = query;
-  if (getCurrentRoute() !== "catalog") {
-    window.location.hash = "catalog";
-    setRoute("catalog");
-  }
+  window.location.hash = "catalog";
+  setRoute("catalog");
   performSearch(query);
 });
 document.addEventListener("click", (event) => {
@@ -3833,6 +3874,11 @@ document.querySelectorAll(".cart-button").forEach((button) => {
 document.querySelectorAll(".wishlist-button").forEach((button) => {
   button.addEventListener("click", openWishlistPanel);
 });
+document.querySelector("#customerCartBtn")?.addEventListener("click", () => {
+  renderCartPanel();
+  openCart();
+});
+document.querySelector("#customerWishlistBtn")?.addEventListener("click", openWishlistPanel);
 elements.cartOverlay.addEventListener("click", closeCart);
 document.querySelector(".cart-close")?.addEventListener("click", closeCart);
 elements.checkoutButton.addEventListener("click", () => {
@@ -4080,6 +4126,7 @@ window.addEventListener("kanoMart:signed-in", () => {
   renderVendorCommerce();
   renderAdminGate();
   renderAdminDashboard();
+  renderCustomerDashboard();
   void refreshLiveAdminDashboard();
   void refreshLiveVendorDashboard();
   void fetchLiveNotifications();
@@ -4119,6 +4166,7 @@ if (state.currentUser?.token) {
 void fetchLiveCategories();
 initLoginPage();
 initSignupPage();
+renderCustomerDashboard();
 var scheduleEnhancements = "requestIdleCallback" in window ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 }) : (callback) => window.setTimeout(callback, 350);
 scheduleEnhancements(() => {
   import("./frontend-enhancements-GHCFJLLH.js").then(({ initFrontendEnhancements }) => {

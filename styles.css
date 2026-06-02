@@ -6837,3 +6837,516 @@ body.is-auth-route .site-header {
     align-items: center;
   }
 }
+
+/* ── Hero auth CTAs (guest-only) ── */
+.hero-auth-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 20px;
+}
+
+.hero-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  background: #fff;
+  color: var(--green);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  font-size: 0.97rem;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  transition: background 0.14s, color 0.14s, transform 0.1s;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.hero-cta-primary:hover {
+  background: var(--green);
+  color: #fff;
+  border-color: var(--green);
+  transform: translateY(-1px);
+}
+
+.hero-cta-ghost {
+  display: inline-flex;
+  align-items: center;
+  padding: 13px 22px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  border-radius: 8px;
+  font-size: 0.97rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.14s, transform 0.1s;
+  backdrop-filter: blur(6px);
+}
+
+.hero-cta-ghost:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   LANDING PAGE — clean marketplace sections
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Home category grid ── */
+.home-categories {
+  padding: 72px 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.home-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 40px;
+}
+
+.home-cat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 16px 22px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.14s, box-shadow 0.14s, transform 0.12s;
+  font: inherit;
+  color: var(--ink);
+}
+
+.home-cat-card:hover {
+  border-color: var(--green);
+  box-shadow: 0 4px 20px rgba(23, 107, 77, 0.12);
+  transform: translateY(-2px);
+}
+
+.home-cat-card:active {
+  transform: translateY(0);
+}
+
+.cat-emoji {
+  font-size: 2.2rem;
+  line-height: 1;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.home-cat-card strong {
+  font-size: 0.97rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.home-cat-card small {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ── Why Kano Mart ── */
+.why-kano {
+  background: var(--soft);
+  padding: 80px 24px;
+}
+
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  max-width: 1100px;
+  margin: 44px auto 0;
+}
+
+.why-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 32px 28px;
+  border: 1.5px solid var(--line);
+  transition: box-shadow 0.16s, transform 0.12s;
+}
+
+.why-card:hover {
+  box-shadow: 0 6px 24px rgba(21, 26, 23, 0.08);
+  transform: translateY(-2px);
+}
+
+.why-icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 14px;
+  line-height: 1;
+}
+
+.why-card h3 {
+  font-size: 1.02rem;
+  font-weight: 700;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+
+.why-card p {
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── Vendor CTA section ── */
+.vendor-cta-section {
+  padding: 80px 24px;
+  background: var(--green);
+  color: #fff;
+}
+
+.vendor-cta-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+}
+
+.vendor-cta-copy .eyebrow {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  display: block;
+  font-weight: 600;
+}
+
+.vendor-cta-copy h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0 0 16px;
+  letter-spacing: -0.02em;
+}
+
+.vendor-cta-copy p {
+  font-size: 1rem;
+  opacity: 0.88;
+  line-height: 1.65;
+  margin-bottom: 32px;
+}
+
+.btn-vendor-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background: #fff;
+  color: var(--green);
+  border-radius: 8px;
+  font-size: 0.97rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: 2px solid #fff;
+  transition: background 0.14s, transform 0.1s;
+  letter-spacing: 0.01em;
+}
+
+.btn-vendor-cta:hover {
+  background: var(--soft);
+  transform: translateY(-1px);
+}
+
+.vendor-cta-perks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.vendor-cta-perks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.95rem;
+  opacity: 0.92;
+  line-height: 1.5;
+}
+
+.vendor-cta-perks li::before {
+  content: "✓";
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+/* ── Customer dashboard ── */
+.role-dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 36px 32px 28px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.role-dashboard-header .eyebrow {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--green);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.role-dashboard-header h2 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0;
+}
+
+.role-dashboard-quick-stats {
+  display: flex;
+  gap: 24px;
+  flex-shrink: 0;
+}
+
+.role-dashboard-quick-stats span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.role-dashboard-quick-stats strong {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.role-dashboard-quick-stats small {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Role action grid */
+.role-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 28px 32px;
+}
+
+.role-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 20px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 0.14s, box-shadow 0.14s, transform 0.12s;
+}
+
+.role-action-card:hover {
+  border-color: var(--green);
+  box-shadow: 0 4px 16px rgba(23, 107, 77, 0.1);
+  transform: translateY(-1px);
+}
+
+.role-action-icon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  background: rgba(23, 107, 77, 0.08);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--green);
+}
+
+.role-action-card div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.role-action-card strong {
+  font-size: 0.97rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.role-action-card small {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Customer recent orders */
+.customer-recent-orders {
+  padding: 28px 32px 40px;
+}
+
+.role-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.role-section-label h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--ink);
+}
+
+.role-section-label a {
+  font-size: 0.85rem;
+  color: var(--green);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.customer-order-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.customer-order-id {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.customer-order-id strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  color: var(--ink);
+}
+
+.customer-order-id small {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.customer-order-total {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+/* Customer section wrapper */
+.customer-section {
+  background: var(--soft);
+  min-height: calc(100vh - 64px);
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .home-cat-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .why-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .vendor-cta-inner {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+}
+
+@media (max-width: 600px) {
+  .home-categories,
+  .why-kano {
+    padding: 52px 16px;
+  }
+
+  .home-cat-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .home-cat-card {
+    padding: 20px 12px;
+  }
+
+  .cat-emoji {
+    font-size: 1.8rem;
+  }
+
+  .why-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .vendor-cta-section {
+    padding: 52px 20px;
+  }
+
+  .role-dashboard-header {
+    padding: 24px 20px 20px;
+    flex-direction: column;
+  }
+
+  .role-dashboard-quick-stats {
+    align-self: stretch;
+    justify-content: space-around;
+  }
+
+  .role-action-grid {
+    grid-template-columns: 1fr;
+    padding: 20px;
+    gap: 12px;
+  }
+
+  .customer-recent-orders {
+    padding: 20px 20px 32px;
+  }
+}
