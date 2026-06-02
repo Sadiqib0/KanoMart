@@ -1249,6 +1249,16 @@ document.querySelector(".vendor-dashboard")?.addEventListener("click", (e) => {
   });
 });
 
+// — Init: clear all demo/legacy data when app version changes —
+const APP_DATA_VERSION = "v2-postgres";
+if (localStorage.getItem("kanoMart.dataVersion") !== APP_DATA_VERSION) {
+  const keysToPreserve = new Set(["kanoMart.dataVersion", "kanoMart.language", SIDEBAR_COLLAPSED_KEY]);
+  Object.keys(localStorage)
+    .filter((k) => !keysToPreserve.has(k))
+    .forEach((k) => localStorage.removeItem(k));
+  localStorage.setItem("kanoMart.dataVersion", APP_DATA_VERSION);
+}
+
 // — Init —
 syncCart();
 syncWishlistCount();

@@ -1,7 +1,61 @@
 import { createHash, pbkdf2Sync, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { dirname } from "node:path";
+import { neon } from "@neondatabase/serverless";
+import { put as blobPut } from "@vercel/blob";
+import {
+  sendEmail,
+  orderConfirmationEmail,
+  orderStatusEmail,
+  paymentStatusEmail,
+  vendorApprovalEmail,
+  vendorNewOrderEmail,
+  payoutDecisionEmail,
+} from "./email.mjs";
+
+// ── Error monitoring (Sentry HTTP API — no package needed) ────────────────────
+async function captureException(error, context = {}) {
+  const dsn = process.env.SENTRY_DSN;
+  if (!dsn || (error?.status && error.status < 500)) return;
+  try {
+    const u = new URL(dsn);
+    const projectId = u.pathname.replace(/^\//, "");
+    const endpoint = `${u.protocol}//${u.host}/api/${projectId}/store/`;
+    const key = u.username;
+    const frames = (error?.stack ?? "")
+      .split("\n")
+      .slice(1, 8)
+      .map((line) => {
+        const m = line.trim().match(/^at (.+) \((.+):(\d+):(\d+)\)$/) ??
+                  line.trim().match(/^at (.+):(\d+):(\d+)$/);
+        return m ? { function: m[1], filename: m[2] ?? m[1], lineno: Number(m[3] ?? m[2]), colno: Number(m[4] ?? m[3]) } : { filename: line.trim() };
+      });
+    await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Sentry-Auth": `Sentry sentry_version=7, sentry_key=${key}, sentry_timestamp=${Math.floor(Date.now() / 1000)}`,
+      },
+      body: JSON.stringify({
+        event_id: randomUUID().replace(/-/g, ""),
+        timestamp: new Date().toISOString(),
+        platform: "node",
+        level: "error",
+        environment: process.env.NODE_ENV ?? "production",
+        exception: {
+          values: [{
+            type: error?.name ?? "Error",
+            value: error?.message ?? String(error),
+            stacktrace: frames.length ? { frames: frames.reverse() } : undefined,
+          }],
+        },
+        extra: context,
+        tags: { service: "kano-mart-api" },
+      }),
+    });
+  } catch {
+    // Never fail because monitoring failed
+  }
+}
 
 const DEFAULT_ADMIN_PHONE = "08000000000";
 const SESSION_COOKIE = "kano_session";
@@ -16,187 +70,913 @@ const jsonHeaders = {
   "x-frame-options": "DENY",
 };
 
-function createDefaultCategories() {
-  return new Map(
-    [
-      { key: "food", name: { en: "Food", ha: "Abinci" }, searchTerms: ["food", "abinci", "groceries"] },
-      { key: "fashion", name: { en: "Fashion", ha: "Kaya" }, searchTerms: ["fashion", "kaya", "clothes"] },
-      { key: "children", name: { en: "Children", ha: "Yara" }, searchTerms: ["children", "yara", "school"] },
-      { key: "essentials", name: { en: "Essentials", ha: "Kayan yau da kullum" }, searchTerms: ["essentials", "daily"] },
-    ].map((category) => [category.key, { ...category, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]),
-  );
-}
-
-export function createMemoryStore() {
-  return {
-    users: new Map(),
-    sessions: new Map(),
-    vendorApplications: new Map(),
-    products: new Map(),
-    carts: new Map(),
-    orders: new Map(),
-    payments: new Map(),
-    walletLedger: new Map(),
-    notifications: new Map(),
-    wishlists: new Map(),
-    reviews: new Map(),
-    promotions: new Map(),
-    payoutRequests: new Map(),
-    categories: createDefaultCategories(),
-    productViews: new Map(),
-    searchEvents: [],
-    uploads: new Map(),
-  };
-}
-
-function mapValues(map) {
-  return Array.from(map.values());
-}
-
-function mapFromValues(items = [], key = "id") {
-  return new Map(items.map((item) => [item[key], item]));
-}
-
-function serializeStore(store) {
-  return {
-    users: mapValues(store.users),
-    sessions: Array.from(store.sessions.entries()),
-    vendorApplications: mapValues(store.vendorApplications),
-    products: mapValues(store.products),
-    carts: Array.from(store.carts.entries()).map(([userId, cart]) => [userId, mapValues(cart)]),
-    orders: mapValues(store.orders),
-    payments: mapValues(store.payments),
-    walletLedger: mapValues(store.walletLedger),
-    notifications: mapValues(store.notifications),
-    wishlists: Array.from(store.wishlists.entries()).map(([userId, wishlist]) => [userId, Array.from(wishlist)]),
-    reviews: mapValues(store.reviews),
-    promotions: mapValues(store.promotions),
-    payoutRequests: mapValues(store.payoutRequests),
-    categories: mapValues(store.categories),
-    productViews: mapValues(store.productViews),
-    searchEvents: store.searchEvents,
-    uploads: mapValues(store.uploads),
-  };
-}
-
-function hydrateStore(data = {}) {
-  const store = createMemoryStore();
-  store.users = mapFromValues(data.users);
-  store.sessions = new Map(data.sessions ?? []);
-  store.vendorApplications = new Map((data.vendorApplications ?? []).map((item) => [item.userId, item]));
-  store.products = mapFromValues(data.products);
-  store.carts = new Map((data.carts ?? []).map(([userId, items]) => [userId, mapFromValues(items, "productId")]));
-  store.orders = mapFromValues(data.orders);
-  store.payments = mapFromValues(data.payments);
-  store.walletLedger = mapFromValues(data.walletLedger);
-  store.notifications = mapFromValues(data.notifications);
-  store.wishlists = new Map((data.wishlists ?? []).map(([userId, items]) => [userId, new Set(items)]));
-  store.reviews = mapFromValues(data.reviews);
-  store.promotions = mapFromValues(data.promotions);
-  store.payoutRequests = mapFromValues(data.payoutRequests);
-  store.categories = new Map([...(store.categories.entries()), ...(data.categories ?? []).map((item) => [item.key, item])]);
-  store.productViews = mapFromValues(data.productViews, "productId");
-  store.searchEvents = data.searchEvents ?? [];
-  store.uploads = mapFromValues(data.uploads);
-  return store;
-}
-
-function createFileStore(filePath) {
-  if (!filePath || !existsSync(filePath)) return createMemoryStore();
-  const parsed = JSON.parse(readFileSync(filePath, "utf8"));
-  return hydrateStore(parsed.data ?? parsed);
-}
-
-function persistStore(filePath, store) {
-  if (!filePath) return;
-  mkdirSync(dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.${process.pid}.tmp`;
-  writeFileSync(
-    tmpPath,
-    JSON.stringify(
-      {
-        version: 1,
-        savedAt: new Date().toISOString(),
-        data: serializeStore(store),
-      },
-      null,
-      2,
-    ),
-  );
-  renameSync(tmpPath, filePath);
-}
-
-function getRemoteSnapshotConfig(env = process.env) {
-  const url = env.API_STORE_REST_URL ?? env.UPSTASH_REDIS_REST_URL;
-  const token = env.API_STORE_REST_TOKEN ?? env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return {
-    url: String(url).replace(/\/$/, ""),
-    token,
-    key: env.API_STORE_KEY ?? "kano-mart:api-store:v1",
-  };
-}
-
-async function checkRedisAuthRateLimit(config, ip) {
-  if (!config) return true;
-  const window = 15 * 60;
-  const max = 10;
-  const key = `rate:auth:${ip}`;
-  const incrRes = await fetch(`${config.url}/incr/${encodeURIComponent(key)}`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${config.token}` },
-  });
-  if (!incrRes.ok) return false;
-  const count = (await incrRes.json()).result;
-  if (count === 1) {
-    fetch(`${config.url}/expire/${encodeURIComponent(key)}/${window}`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${config.token}` },
-    }).catch(() => {});
+// ── DB ──────────────────────────────────────────────────────────────────────
+let _sql;
+function db() {
+  if (!_sql) {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL is not set");
+    _sql = neon(url);
   }
-  return count <= max;
+  return _sql;
 }
 
-async function readRemoteSnapshot(config) {
-  const response = await fetch(`${config.url}/get/${encodeURIComponent(config.key)}`, {
-    headers: { authorization: `Bearer ${config.token}` },
-  });
-  if (!response.ok) throw new Error(`Remote API store read failed with ${response.status}`);
-  const payload = await response.json();
-  const value = payload.result;
-  if (!value) return createMemoryStore();
-  const parsed = typeof value === "string" ? JSON.parse(value) : value;
-  return hydrateStore(parsed.data ?? parsed);
+// Row → camelCase JS object helpers
+function fromRow(r) {
+  if (!r) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(r)) {
+    out[k.replace(/_([a-z])/g, (_, c) => c.toUpperCase())] = v;
+  }
+  return out;
 }
+const fromRows = (rs) => rs.map(fromRow);
 
-async function writeRemoteSnapshot(config, store) {
-  const snapshot = {
-    version: 1,
-    savedAt: new Date().toISOString(),
-    data: serializeStore(store),
+function userFromRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    phone: r.phone,
+    email: r.email ?? undefined,
+    passwordHash: r.password_hash,
+    firstName: r.first_name,
+    lastName: r.last_name,
+    name: r.display_name,
+    role: r.role,
+    deliveryAddress: r.delivery_address ?? undefined,
+    preferredLanguage: r.preferred_language,
+    vendorStatus: r.vendor_status ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
-  const response = await fetch(`${config.url}/set/${encodeURIComponent(config.key)}`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${config.token}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(snapshot),
-  });
-  if (!response.ok) throw new Error(`Remote API store write failed with ${response.status}`);
 }
 
-export async function createRemoteStoreApp(options = {}) {
-  const config = options.remoteStoreConfig ?? getRemoteSnapshotConfig(options.env);
-  if (!config) return createApp(options);
-  const store = options.store ?? (await readRemoteSnapshot(config));
-  return createApp({
-    ...options,
-    store,
-    remoteStoreConfig: config,
-    persist: (nextStore) => writeRemoteSnapshot(config, nextStore),
-  });
+function productFromRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    vendorUserId: r.vendor_user_id,
+    vendorName: r.vendor_name,
+    vendorPhone: r.vendor_phone ?? undefined,
+    name: { en: r.name_en, ha: r.name_ha },
+    description: { en: r.description_en ?? "", ha: r.description_ha ?? "" },
+    category: r.category,
+    price: r.price,
+    currency: r.currency,
+    quantityAvailable: r.quantity_available,
+    area: r.area,
+    imageUrl: r.image_url ?? undefined,
+    tags: r.tags ?? [],
+    listingStatus: r.listing_status,
+    moderationStatus: r.moderation_status,
+    reviewNote: r.review_note ?? undefined,
+    reviewedAt: r.reviewed_at ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
 }
+
+function orderItemFromRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    productId: r.product_id,
+    vendorUserId: r.vendor_user_id,
+    vendorName: r.vendor_name,
+    name: { en: r.name_en, ha: r.name_ha },
+    unitPrice: r.unit_price,
+    originalUnitPrice: r.original_unit_price,
+    quantity: r.quantity,
+    lineTotal: r.line_total,
+    discountAmount: r.discount_amount,
+    promotionId: r.promotion_id ?? undefined,
+    commissionRate: parseFloat(r.commission_rate),
+    commissionAmount: r.commission_amount,
+    vendorPayout: r.vendor_payout,
+  };
+}
+
+function orderFromRow(r, items, payment) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    customerUserId: r.customer_user_id,
+    customerName: r.customer_name,
+    customerPhone: r.customer_phone,
+    items: items ?? [],
+    deliveryOption: r.delivery_option,
+    deliveryAddress: r.delivery_address ?? undefined,
+    deliveryArea: r.delivery_area,
+    deliveryFee: r.delivery_fee,
+    deliveryPerson: r.delivery_person ?? undefined,
+    paymentMethod: r.payment_method,
+    paymentReference: r.payment_reference,
+    paymentStatus: r.payment_status,
+    paymentId: r.payment_id ?? undefined,
+    subtotal: r.subtotal,
+    itemsSubtotal: r.items_subtotal,
+    commissionTotal: r.commission_total,
+    vendorPayoutTotal: r.vendor_payout_total,
+    status: r.status,
+    payment: payment ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function paymentFromRow(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    orderId: r.order_id,
+    reference: r.reference,
+    method: r.method,
+    gateway: r.gateway,
+    amount: r.amount,
+    currency: r.currency,
+    status: r.status,
+    adminNote: r.admin_note ?? undefined,
+    verifiedAt: r.verified_at ?? undefined,
+    failedAt: r.failed_at ?? undefined,
+    refundedAt: r.refunded_at ?? undefined,
+    createdAt: r.created_at,
+  };
+}
+
+// ── DB query helpers ──────────────────────────────────────────────────────────
+
+async function dbGetUserByIdentifier(identifier) {
+  const sql = db();
+  const phone = normalizePhone(identifier);
+  const email = normalizeEmail(identifier);
+  const [r] = await sql`
+    SELECT * FROM users WHERE phone = ${phone} OR (email IS NOT NULL AND email = ${email || null})
+    LIMIT 1
+  `;
+  return userFromRow(r);
+}
+
+async function dbGetUserById(id) {
+  const sql = db();
+  const [r] = await sql`SELECT * FROM users WHERE id = ${id} LIMIT 1`;
+  return userFromRow(r);
+}
+
+async function dbCreateUser(user) {
+  const sql = db();
+  const [r] = await sql`
+    INSERT INTO users (id, phone, email, password_hash, first_name, last_name, display_name,
+      role, delivery_address, preferred_language, vendor_status)
+    VALUES (${user.id}, ${user.phone}, ${user.email ?? null}, ${user.passwordHash},
+      ${user.firstName}, ${user.lastName}, ${user.name}, ${user.role},
+      ${user.deliveryAddress ?? null}, ${user.preferredLanguage}, ${user.vendorStatus ?? null})
+    RETURNING *
+  `;
+  return userFromRow(r);
+}
+
+async function dbUpdateUser(id, fields) {
+  const sql = db();
+  const [r] = await sql`
+    UPDATE users SET
+      display_name = COALESCE(${fields.name ?? null}, display_name),
+      first_name = COALESCE(${fields.firstName ?? null}, first_name),
+      last_name = COALESCE(${fields.lastName ?? null}, last_name),
+      email = COALESCE(${fields.email ?? null}, email),
+      delivery_address = COALESCE(${fields.deliveryAddress ?? null}, delivery_address),
+      preferred_language = COALESCE(${fields.preferredLanguage ?? null}, preferred_language),
+      vendor_status = COALESCE(${fields.vendorStatus ?? null}, vendor_status),
+      updated_at = now()
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return userFromRow(r);
+}
+
+async function dbGetAllUsers() {
+  const sql = db();
+  const rs = await sql`SELECT * FROM users ORDER BY created_at DESC`;
+  return rs.map(userFromRow);
+}
+
+async function dbCreateSession(userId) {
+  const sql = db();
+  const token = randomUUID();
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
+  await sql`
+    INSERT INTO sessions (id, user_id, token_hash, expires_at)
+    VALUES (${randomUUID()}, ${userId}, ${tokenHash}, ${expiresAt})
+  `;
+  return { token, expiresAt };
+}
+
+async function dbGetSessionUser(token) {
+  if (!token) return null;
+  const sql = db();
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const [r] = await sql`
+    SELECT u.* FROM sessions s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.token_hash = ${tokenHash} AND s.expires_at > now()
+    LIMIT 1
+  `;
+  return userFromRow(r);
+}
+
+async function dbDeleteSession(token) {
+  if (!token) return;
+  const sql = db();
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  await sql`DELETE FROM sessions WHERE token_hash = ${tokenHash}`;
+}
+
+async function dbCreateVendorApplication(app) {
+  const sql = db();
+  const [r] = await sql`
+    INSERT INTO vendor_applications (id, user_id, business_name, phone, area, category, status)
+    VALUES (${app.id}, ${app.userId}, ${app.businessName}, ${app.phone},
+            ${app.area}, ${app.category}, 'pending')
+    ON CONFLICT (user_id) DO UPDATE SET
+      business_name = EXCLUDED.business_name, phone = EXCLUDED.phone,
+      area = EXCLUDED.area, category = EXCLUDED.category, updated_at = now()
+    RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbGetVendorApplicationById(appId) {
+  const sql = db();
+  const [r] = await sql`
+    SELECT va.*, u.display_name as user_name, u.phone as user_phone, u.email as user_email,
+           u.role as user_role, u.vendor_status as user_vendor_status
+    FROM vendor_applications va
+    JOIN users u ON u.id = va.user_id
+    WHERE va.id = ${appId} LIMIT 1
+  `;
+  return r ? r : null;
+}
+
+async function dbGetVendorApplicationByUserId(userId) {
+  const sql = db();
+  const [r] = await sql`
+    SELECT va.*, u.display_name as user_name, u.phone as user_phone, u.email as user_email,
+           u.role as user_role, u.vendor_status as user_vendor_status
+    FROM vendor_applications va
+    JOIN users u ON u.id = va.user_id
+    WHERE va.user_id = ${userId} LIMIT 1
+  `;
+  return r ? r : null;
+}
+
+async function dbGetAllVendorApplications(status) {
+  const sql = db();
+  const rs = status
+    ? await sql`SELECT va.*, u.display_name as user_name, u.phone as user_phone, u.email as user_email,
+                       u.role as user_role, u.vendor_status as user_vendor_status
+                FROM vendor_applications va JOIN users u ON u.id = va.user_id
+                WHERE va.status = ${status} ORDER BY va.created_at DESC`
+    : await sql`SELECT va.*, u.display_name as user_name, u.phone as user_phone, u.email as user_email,
+                       u.role as user_role, u.vendor_status as user_vendor_status
+                FROM vendor_applications va JOIN users u ON u.id = va.user_id
+                ORDER BY va.created_at DESC`;
+  return rs;
+}
+
+async function dbUpdateVendorApplication(appId, userId, status, adminNote) {
+  const sql = db();
+  await sql`
+    UPDATE vendor_applications SET status = ${status},
+      admin_note = ${adminNote ?? null}, reviewed_at = now(), updated_at = now()
+    WHERE id = ${appId}
+  `;
+  await sql`UPDATE users SET vendor_status = ${status}, updated_at = now() WHERE id = ${userId}`;
+}
+
+async function dbGetProductById(productId, includeVendorPhone) {
+  const sql = db();
+  if (includeVendorPhone) {
+    const [r] = await sql`
+      SELECT p.*, u.phone as vendor_phone FROM products p
+      JOIN users u ON u.id = p.vendor_user_id
+      WHERE p.id = ${productId} LIMIT 1
+    `;
+    return productFromRow(r);
+  }
+  const [r] = await sql`SELECT * FROM products WHERE id = ${productId} LIMIT 1`;
+  return productFromRow(r);
+}
+
+async function dbGetProductsForVendor(vendorUserId) {
+  const sql = db();
+  const rs = await sql`
+    SELECT p.*, u.phone as vendor_phone FROM products p
+    JOIN users u ON u.id = p.vendor_user_id
+    WHERE p.vendor_user_id = ${vendorUserId} ORDER BY p.created_at DESC
+  `;
+  return rs.map(productFromRow);
+}
+
+async function dbGetPublicCatalog(category, query) {
+  const sql = db();
+  let rs;
+  if (category && query) {
+    const q = `%${query.toLowerCase()}%`;
+    rs = await sql`
+      SELECT p.*, u.phone as vendor_phone FROM products p
+      JOIN users u ON u.id = p.vendor_user_id
+      WHERE p.moderation_status = 'approved' AND p.listing_status = 'active'
+        AND p.category = ${category}
+        AND (LOWER(p.name_en) LIKE ${q} OR LOWER(p.name_ha) LIKE ${q}
+             OR EXISTS (SELECT 1 FROM unnest(p.tags) t WHERE t LIKE ${q}))
+      ORDER BY p.created_at DESC
+    `;
+  } else if (category) {
+    rs = await sql`
+      SELECT p.*, u.phone as vendor_phone FROM products p
+      JOIN users u ON u.id = p.vendor_user_id
+      WHERE p.moderation_status = 'approved' AND p.listing_status = 'active'
+        AND p.category = ${category}
+      ORDER BY p.created_at DESC
+    `;
+  } else if (query) {
+    const q = `%${query.toLowerCase()}%`;
+    rs = await sql`
+      SELECT p.*, u.phone as vendor_phone FROM products p
+      JOIN users u ON u.id = p.vendor_user_id
+      WHERE p.moderation_status = 'approved' AND p.listing_status = 'active'
+        AND (LOWER(p.name_en) LIKE ${q} OR LOWER(p.name_ha) LIKE ${q}
+             OR EXISTS (SELECT 1 FROM unnest(p.tags) t WHERE t LIKE ${q}))
+      ORDER BY p.created_at DESC
+    `;
+  } else {
+    rs = await sql`
+      SELECT p.*, u.phone as vendor_phone FROM products p
+      JOIN users u ON u.id = p.vendor_user_id
+      WHERE p.moderation_status = 'approved' AND p.listing_status = 'active'
+      ORDER BY p.created_at DESC
+    `;
+  }
+  return rs.map(productFromRow);
+}
+
+async function dbGetAllProducts(status) {
+  const sql = db();
+  const rs = status
+    ? await sql`SELECT p.*, u.phone as vendor_phone FROM products p
+                JOIN users u ON u.id = p.vendor_user_id
+                WHERE p.moderation_status = ${status} ORDER BY p.created_at DESC`
+    : await sql`SELECT p.*, u.phone as vendor_phone FROM products p
+                JOIN users u ON u.id = p.vendor_user_id
+                ORDER BY p.created_at DESC`;
+  return rs.map(productFromRow);
+}
+
+async function dbCreateProduct(vendorId, vendorName, input) {
+  const sql = db();
+  const id = randomUUID();
+  const [r] = await sql`
+    INSERT INTO products (id, vendor_user_id, vendor_name, name_en, name_ha,
+      description_en, description_ha, category, price, currency, quantity_available,
+      area, image_url, tags, listing_status, moderation_status)
+    VALUES (${id}, ${vendorId}, ${vendorName},
+      ${input.name.en}, ${input.name.ha},
+      ${input.description.en}, ${input.description.ha},
+      ${input.category}, ${input.price}, ${input.currency},
+      ${input.quantityAvailable}, ${input.area},
+      ${input.imageUrl ?? null}, ${input.tags},
+      ${input.quantityAvailable > 0 ? 'active' : 'out_of_stock'}, 'pending')
+    RETURNING *
+  `;
+  return productFromRow(r);
+}
+
+async function dbUpdateProductListing(productId, listingStatus) {
+  const sql = db();
+  const [r] = await sql`
+    UPDATE products SET listing_status = ${listingStatus}, updated_at = now()
+    WHERE id = ${productId} RETURNING *
+  `;
+  return productFromRow(r);
+}
+
+async function dbUpdateProductModeration(productId, status, reviewNote) {
+  const sql = db();
+  const [r] = await sql`
+    UPDATE products SET moderation_status = ${status},
+      review_note = ${reviewNote ?? null}, reviewed_at = now(), updated_at = now()
+    WHERE id = ${productId} RETURNING *
+  `;
+  return productFromRow(r);
+}
+
+async function dbDecrementProductQuantity(productId, qty) {
+  const sql = db();
+  await sql`
+    UPDATE products SET
+      quantity_available = GREATEST(0, quantity_available - ${qty}),
+      listing_status = CASE WHEN quantity_available - ${qty} <= 0 THEN 'out_of_stock' ELSE listing_status END,
+      updated_at = now()
+    WHERE id = ${productId}
+  `;
+}
+
+async function dbGetCart(userId) {
+  const sql = db();
+  const rs = await sql`
+    SELECT ci.*, p.name_en, p.name_ha, p.price, p.currency, p.image_url,
+           p.listing_status, p.moderation_status, p.quantity_available,
+           p.vendor_user_id, p.vendor_name, p.category, p.area, p.tags,
+           p.description_en, p.description_ha, p.review_note, p.reviewed_at,
+           u.phone as vendor_phone
+    FROM cart_items ci
+    JOIN products p ON p.id = ci.product_id
+    JOIN users u ON u.id = p.vendor_user_id
+    WHERE ci.user_id = ${userId}
+    ORDER BY ci.added_at DESC
+  `;
+  return rs;
+}
+
+async function dbUpsertCartItem(userId, productId, quantity) {
+  const sql = db();
+  await sql`
+    INSERT INTO cart_items (user_id, product_id, quantity)
+    VALUES (${userId}, ${productId}, ${quantity})
+    ON CONFLICT (user_id, product_id) DO UPDATE SET quantity = ${quantity}, updated_at = now()
+  `;
+}
+
+async function dbDeleteCartItem(userId, productId) {
+  const sql = db();
+  await sql`DELETE FROM cart_items WHERE user_id = ${userId} AND product_id = ${productId}`;
+}
+
+async function dbClearCart(userId) {
+  const sql = db();
+  await sql`DELETE FROM cart_items WHERE user_id = ${userId}`;
+}
+
+async function dbCreateOrderWithItems(order, items, payment) {
+  const sql = db();
+  await sql`
+    INSERT INTO orders (id, customer_user_id, customer_name, customer_phone,
+      delivery_option, delivery_address, delivery_area, delivery_fee,
+      payment_method, payment_reference, payment_status, payment_id,
+      items_subtotal, subtotal, commission_total, vendor_payout_total, status)
+    VALUES (${order.id}, ${order.customerUserId}, ${order.customerName}, ${order.customerPhone},
+      ${order.deliveryOption}, ${order.deliveryAddress ?? null}, ${order.deliveryArea},
+      ${order.deliveryFee}, ${order.paymentMethod}, ${order.paymentReference},
+      ${order.paymentStatus}, ${payment.id},
+      ${order.itemsSubtotal}, ${order.subtotal}, ${order.commissionTotal}, ${order.vendorPayoutTotal},
+      'awaiting_confirmation')
+  `;
+  for (const item of items) {
+    await sql`
+      INSERT INTO order_items (id, order_id, product_id, vendor_user_id, vendor_name,
+        name_en, name_ha, unit_price, original_unit_price, quantity, line_total,
+        discount_amount, promotion_id, commission_rate, commission_amount, vendor_payout)
+      VALUES (${randomUUID()}, ${order.id}, ${item.productId}, ${item.vendorUserId},
+        ${item.vendorName ?? ''}, ${item.name.en}, ${item.name.ha},
+        ${item.unitPrice}, ${item.originalUnitPrice}, ${item.quantity}, ${item.lineTotal},
+        ${item.discountAmount}, ${item.promotionId ?? null},
+        ${item.commissionRate}, ${item.commissionAmount}, ${item.vendorPayout})
+    `;
+  }
+  await sql`
+    INSERT INTO payments (id, order_id, reference, method, gateway, amount, currency, status, verified_at)
+    VALUES (${payment.id}, ${payment.orderId}, ${payment.reference}, ${payment.method},
+      ${payment.gateway}, ${payment.amount}, ${payment.currency}, ${payment.status},
+      ${payment.verifiedAt ?? null})
+  `;
+  if (order.paymentStatus === "paid") {
+    await dbCreateLedgerForOrder(order.id, items);
+  }
+}
+
+async function dbCreateLedgerForOrder(orderId, items) {
+  const sql = db();
+  for (const item of items) {
+    await sql`
+      INSERT INTO wallet_ledger (id, order_id, product_id, vendor_user_id, type, status, amount)
+      VALUES (${randomUUID()}, ${orderId}, ${item.productId}, ${item.vendorUserId},
+              'vendor_pending_credit', 'pending', ${item.vendorPayout})
+    `;
+    await sql`
+      INSERT INTO wallet_ledger (id, order_id, product_id, vendor_user_id, type, status, amount)
+      VALUES (${randomUUID()}, ${orderId}, ${item.productId}, ${item.vendorUserId},
+              'platform_commission', 'available', ${item.commissionAmount})
+    `;
+  }
+}
+
+async function dbGetOrderWithItems(orderId) {
+  const sql = db();
+  const [orderRow] = await sql`SELECT * FROM orders WHERE id = ${orderId} LIMIT 1`;
+  if (!orderRow) return null;
+  const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${orderId}`;
+  const [paymentRow] = orderRow.payment_id
+    ? await sql`SELECT * FROM payments WHERE id = ${orderRow.payment_id} LIMIT 1`
+    : [null];
+  return orderFromRow(orderRow, itemRows.map(orderItemFromRow), paymentFromRow(paymentRow));
+}
+
+async function dbGetOrdersForCustomer(userId) {
+  const sql = db();
+  const orderRows = await sql`SELECT * FROM orders WHERE customer_user_id = ${userId} ORDER BY created_at DESC`;
+  const orders = [];
+  for (const row of orderRows) {
+    const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${row.id}`;
+    const [paymentRow] = row.payment_id
+      ? await sql`SELECT * FROM payments WHERE id = ${row.payment_id} LIMIT 1`
+      : [null];
+    orders.push(orderFromRow(row, itemRows.map(orderItemFromRow), paymentFromRow(paymentRow)));
+  }
+  return orders;
+}
+
+async function dbGetOrdersForVendor(vendorUserId) {
+  const sql = db();
+  const orderRows = await sql`
+    SELECT DISTINCT o.* FROM orders o
+    JOIN order_items oi ON oi.order_id = o.id
+    WHERE oi.vendor_user_id = ${vendorUserId}
+    ORDER BY o.created_at DESC
+  `;
+  const orders = [];
+  for (const row of orderRows) {
+    const itemRows = await sql`
+      SELECT * FROM order_items WHERE order_id = ${row.id} AND vendor_user_id = ${vendorUserId}
+    `;
+    const [paymentRow] = row.payment_id
+      ? await sql`SELECT * FROM payments WHERE id = ${row.payment_id} LIMIT 1`
+      : [null];
+    orders.push(orderFromRow(row, itemRows.map(orderItemFromRow), paymentFromRow(paymentRow)));
+  }
+  return orders;
+}
+
+async function dbGetAllOrders() {
+  const sql = db();
+  const orderRows = await sql`SELECT * FROM orders ORDER BY created_at DESC`;
+  const orders = [];
+  for (const row of orderRows) {
+    const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${row.id}`;
+    const [paymentRow] = row.payment_id
+      ? await sql`SELECT * FROM payments WHERE id = ${row.payment_id} LIMIT 1`
+      : [null];
+    orders.push(orderFromRow(row, itemRows.map(orderItemFromRow), paymentFromRow(paymentRow)));
+  }
+  return orders;
+}
+
+async function dbUpdateOrderStatus(orderId, status, deliveryPerson) {
+  const sql = db();
+  const [r] = await sql`
+    UPDATE orders SET status = ${status},
+      delivery_person = COALESCE(${deliveryPerson ?? null}, delivery_person),
+      updated_at = now()
+    WHERE id = ${orderId} RETURNING *
+  `;
+  if (status === "delivered") {
+    await sql`
+      UPDATE wallet_ledger SET status = 'available', available_at = now()
+      WHERE order_id = ${orderId} AND type = 'vendor_pending_credit' AND status = 'pending'
+    `;
+  }
+  return r;
+}
+
+async function dbGetPaymentById(paymentId) {
+  const sql = db();
+  const [r] = await sql`SELECT * FROM payments WHERE id = ${paymentId} LIMIT 1`;
+  return paymentFromRow(r);
+}
+
+async function dbGetAllPayments() {
+  const sql = db();
+  const rs = await sql`SELECT * FROM payments ORDER BY created_at DESC`;
+  return rs.map(paymentFromRow);
+}
+
+async function dbUpdatePaymentStatus(paymentId, orderId, status, adminNote) {
+  const sql = db();
+  const now = new Date().toISOString();
+  await sql`
+    UPDATE payments SET status = ${status},
+      admin_note = ${adminNote ?? null},
+      verified_at = CASE WHEN ${status} = 'paid' THEN ${now}::timestamptz ELSE verified_at END,
+      failed_at   = CASE WHEN ${status} = 'failed' THEN ${now}::timestamptz ELSE failed_at END,
+      refunded_at = CASE WHEN ${status} = 'refunded' THEN ${now}::timestamptz ELSE refunded_at END
+    WHERE id = ${paymentId}
+  `;
+  await sql`UPDATE orders SET payment_status = ${status}, updated_at = now() WHERE id = ${orderId}`;
+  if (status === "paid") {
+    const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${orderId}`;
+    await dbCreateLedgerForOrder(orderId, itemRows.map(orderItemFromRow));
+    const [orderRow] = await sql`SELECT status FROM orders WHERE id = ${orderId}`;
+    if (orderRow?.status === "delivered") {
+      await sql`
+        UPDATE wallet_ledger SET status = 'available', available_at = now()
+        WHERE order_id = ${orderId} AND type = 'vendor_pending_credit' AND status = 'pending'
+      `;
+    }
+  }
+}
+
+async function dbGetVendorWallet(vendorUserId) {
+  const sql = db();
+  const rs = await sql`
+    SELECT type, status, amount FROM wallet_ledger WHERE vendor_user_id = ${vendorUserId}
+  `;
+  return rs.reduce(
+    (s, e) => {
+      if (e.type === "vendor_pending_credit") {
+        if (e.status === "available") s.availableBalance += e.amount;
+        else s.pendingBalance += e.amount;
+      }
+      if (e.type === "platform_commission") s.totalCommission += e.amount;
+      if (e.type === "vendor_withdrawal_debit") s.availableBalance -= e.amount;
+      return s;
+    },
+    { vendorUserId, pendingBalance: 0, availableBalance: 0, totalCommission: 0 },
+  );
+}
+
+async function dbGetPayoutRequests(vendorUserId) {
+  const sql = db();
+  const rs = vendorUserId
+    ? await sql`SELECT * FROM payout_requests WHERE vendor_user_id = ${vendorUserId} ORDER BY requested_at DESC`
+    : await sql`SELECT * FROM payout_requests ORDER BY requested_at DESC`;
+  return rs.map(fromRow);
+}
+
+async function dbCreatePayoutRequest(payout) {
+  const sql = db();
+  const [r] = await sql`
+    INSERT INTO payout_requests (id, vendor_user_id, amount, status, bank_name, account_number, account_name)
+    VALUES (${payout.id}, ${payout.vendorUserId}, ${payout.amount}, 'pending',
+            ${payout.bankName}, ${payout.accountNumber}, ${payout.accountName})
+    RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbUpdatePayoutStatus(payoutId, vendorUserId, status, adminNote, amount) {
+  const sql = db();
+  const [r] = await sql`
+    UPDATE payout_requests SET status = ${status},
+      admin_note = ${adminNote ?? null}, reviewed_at = now()
+    WHERE id = ${payoutId} RETURNING *
+  `;
+  if (status === "approved") {
+    await sql`
+      INSERT INTO wallet_ledger (id, vendor_user_id, payout_request_id, type, status, amount, available_at)
+      VALUES (${randomUUID()}, ${vendorUserId}, ${payoutId},
+              'vendor_withdrawal_debit', 'available', ${amount}, now())
+    `;
+  }
+  return fromRow(r);
+}
+
+async function dbCreateNotification(n) {
+  const sql = db();
+  await sql`
+    INSERT INTO notifications (id, audience, recipient_user_id, title, message, type, order_id, product_id)
+    VALUES (${randomUUID()}, ${n.audience}, ${n.recipientUserId},
+            ${n.title}, ${n.message}, ${n.type},
+            ${n.orderId ?? null}, ${n.productId ?? null})
+  `;
+}
+
+async function dbNotifyAdmins(n) {
+  const sql = db();
+  const admins = await sql`SELECT id FROM users WHERE role = 'admin'`;
+  for (const admin of admins) {
+    await dbCreateNotification({ ...n, audience: "admin", recipientUserId: admin.id });
+  }
+}
+
+async function dbGetNotifications(userId) {
+  const sql = db();
+  const rs = await sql`
+    SELECT * FROM notifications WHERE recipient_user_id = ${userId} ORDER BY created_at DESC LIMIT 50
+  `;
+  return rs.map(fromRow);
+}
+
+async function dbMarkNotificationRead(notifId, userId) {
+  const sql = db();
+  const [r] = await sql`
+    UPDATE notifications SET read_at = now()
+    WHERE id = ${notifId} AND recipient_user_id = ${userId}
+    RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbGetWishlist(userId) {
+  const sql = db();
+  const rs = await sql`
+    SELECT p.*, u.phone as vendor_phone FROM wishlists w
+    JOIN products p ON p.id = w.product_id
+    JOIN users u ON u.id = p.vendor_user_id
+    WHERE w.user_id = ${userId}
+      AND p.moderation_status = 'approved' AND p.listing_status = 'active'
+  `;
+  return rs.map(productFromRow);
+}
+
+async function dbAddWishlist(userId, productId) {
+  const sql = db();
+  await sql`
+    INSERT INTO wishlists (user_id, product_id) VALUES (${userId}, ${productId})
+    ON CONFLICT DO NOTHING
+  `;
+}
+
+async function dbRemoveWishlist(userId, productId) {
+  const sql = db();
+  await sql`DELETE FROM wishlists WHERE user_id = ${userId} AND product_id = ${productId}`;
+}
+
+async function dbGetReviews(productId, includeHidden) {
+  const sql = db();
+  const rs = includeHidden
+    ? await sql`SELECT * FROM reviews WHERE product_id = ${productId} ORDER BY created_at DESC`
+    : await sql`SELECT * FROM reviews WHERE product_id = ${productId} AND hidden = false ORDER BY created_at DESC`;
+  return rs.map(fromRow);
+}
+
+async function dbGetVendorReviews(vendorUserId) {
+  const sql = db();
+  const rs = await sql`SELECT * FROM reviews WHERE vendor_user_id = ${vendorUserId} ORDER BY created_at DESC`;
+  return rs.map(fromRow);
+}
+
+async function dbGetAllReviews() {
+  const sql = db();
+  const rs = await sql`SELECT * FROM reviews ORDER BY created_at DESC`;
+  return rs.map(fromRow);
+}
+
+async function dbCreateReview(review) {
+  const sql = db();
+  const [r] = await sql`
+    INSERT INTO reviews (id, product_id, vendor_user_id, customer_user_id, reviewer_name, rating, comment)
+    VALUES (${randomUUID()}, ${review.productId}, ${review.vendorUserId}, ${review.customerUserId},
+            ${review.reviewerName}, ${review.rating}, ${review.comment})
+    RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbUpdateReview(reviewId, hidden, adminNote) {
+  const sql = db();
+  const [r] = await sql`
+    UPDATE reviews SET hidden = ${hidden}, admin_note = ${adminNote ?? null}, updated_at = now()
+    WHERE id = ${reviewId} RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbCustomerHasDeliveredOrder(customerId, productId) {
+  const sql = db();
+  const [r] = await sql`
+    SELECT 1 FROM orders o JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.customer_user_id = ${customerId} AND o.status = 'delivered'
+      AND oi.product_id = ${productId}
+    LIMIT 1
+  `;
+  return !!r;
+}
+
+async function dbGetPromotions(activeOnly) {
+  const sql = db();
+  const rs = activeOnly
+    ? await sql`SELECT * FROM promotions WHERE active = true AND starts_at <= now() ORDER BY created_at DESC`
+    : await sql`SELECT * FROM promotions ORDER BY created_at DESC`;
+  return rs.map(fromRow);
+}
+
+async function dbGetActivePromotionForProduct(product, code) {
+  const sql = db();
+  const normalizedCode = code ? code.toUpperCase() : null;
+  const rs = await sql`
+    SELECT * FROM promotions
+    WHERE active = true AND starts_at <= now() AND (ends_at IS NULL OR ends_at > now())
+      AND (code IS NULL OR code = ${normalizedCode})
+      AND (product_id = ${product.id} OR vendor_user_id = ${product.vendorUserId}
+           OR category = ${product.category}
+           OR (product_id IS NULL AND vendor_user_id IS NULL AND category IS NULL))
+    ORDER BY created_at DESC LIMIT 1
+  `;
+  return rs[0] ? fromRow(rs[0]) : null;
+}
+
+async function dbCreatePromotion(p) {
+  const sql = db();
+  const [r] = await sql`
+    INSERT INTO promotions (id, title_en, title_ha, type, discount_percent, code, product_id,
+      vendor_user_id, category, active, starts_at, ends_at)
+    VALUES (${randomUUID()}, ${p.title.en}, ${p.title.ha}, ${p.type}, ${p.discountPercent},
+            ${p.code ?? null}, ${p.productId ?? null}, ${p.vendorUserId ?? null},
+            ${p.category ?? null}, ${p.active !== false}, ${p.startsAt ?? new Date().toISOString()},
+            ${p.endsAt ?? null})
+    RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbUpdatePromotion(promoId, active) {
+  const sql = db();
+  const [r] = await sql`
+    UPDATE promotions SET active = ${active}, updated_at = now()
+    WHERE id = ${promoId} RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbGetCategories() {
+  const sql = db();
+  const rs = await sql`SELECT * FROM categories ORDER BY key`;
+  return rs.map(fromRow);
+}
+
+async function dbUpsertCategory(cat) {
+  const sql = db();
+  const [r] = await sql`
+    INSERT INTO categories (key, name_en, name_ha, search_terms)
+    VALUES (${cat.key}, ${cat.name.en}, ${cat.name.ha}, ${cat.searchTerms})
+    ON CONFLICT (key) DO UPDATE SET
+      name_en = EXCLUDED.name_en, name_ha = EXCLUDED.name_ha,
+      search_terms = EXCLUDED.search_terms, updated_at = now()
+    RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbSaveUpload(upload) {
+  const sql = db();
+  const [r] = await sql`
+    INSERT INTO uploads (id, vendor_user_id, file_name, mime_type, data_url, blob_url, url)
+    VALUES (${upload.id}, ${upload.vendorUserId}, ${upload.fileName},
+            ${upload.mimeType}, ${upload.dataUrl ?? null}, ${upload.blobUrl ?? null}, ${upload.url})
+    RETURNING *
+  `;
+  return fromRow(r);
+}
+
+async function dbGetUpload(uploadId) {
+  const sql = db();
+  const [r] = await sql`SELECT * FROM uploads WHERE id = ${uploadId} LIMIT 1`;
+  return r ? fromRow(r) : null;
+}
+
+async function dbRecordSearchEvent(query) {
+  const sql = db();
+  await sql`INSERT INTO search_events (id, query) VALUES (${randomUUID()}, ${query})`;
+}
+
+async function dbIncrementProductView(productId) {
+  const sql = db();
+  await sql`
+    INSERT INTO product_views (product_id, views, last_viewed_at) VALUES (${productId}, 1, now())
+    ON CONFLICT (product_id) DO UPDATE SET views = product_views.views + 1, last_viewed_at = now()
+  `;
+}
+
+async function dbGetAnalytics() {
+  const sql = db();
+  const [totals] = await sql`
+    SELECT
+      (SELECT COUNT(*) FROM orders)::int as total_orders,
+      (SELECT COALESCE(SUM(subtotal),0) FROM orders)::int as total_sales,
+      (SELECT COUNT(*) FROM orders WHERE status = 'cancelled')::int as cancelled_orders,
+      (SELECT COUNT(*) FROM users WHERE role = 'customer')::int as customer_count,
+      (SELECT COUNT(*) FROM users WHERE role = 'vendor')::int as vendor_count
+  `;
+  const productViews = await sql`SELECT product_id, views, last_viewed_at FROM product_views ORDER BY views DESC LIMIT 20`;
+  const popularSearches = await sql`
+    SELECT query, COUNT(*)::int as count FROM search_events GROUP BY query ORDER BY count DESC LIMIT 20
+  `;
+  const bestSelling = await sql`
+    SELECT product_id, SUM(quantity)::int as quantity, SUM(line_total)::int as sales
+    FROM order_items GROUP BY product_id ORDER BY quantity DESC LIMIT 10
+  `;
+  return {
+    totalSales: totals.total_sales,
+    totalOrders: totals.total_orders,
+    cancelledOrders: totals.cancelled_orders,
+    customerGrowth: totals.customer_count,
+    vendorGrowth: totals.vendor_count,
+    productViews: productViews.map(r => ({ productId: r.product_id, views: r.views, lastViewedAt: r.last_viewed_at })),
+    popularSearches: popularSearches.map(r => ({ query: r.query, count: r.count })),
+    bestSellingProducts: bestSelling.map(r => ({ productId: r.product_id, quantity: r.quantity, sales: r.sales })),
+  };
+}
+
+// ── Utils ────────────────────────────────────────────────────────────────────
 
 function normalizePhone(value = "") {
   const digits = String(value).replace(/\D/g, "");
@@ -213,8 +993,8 @@ function normalizeEmail(value = "") {
 
 function hashPassword(password) {
   const salt = randomUUID().replace(/-/g, "");
-  const minIterations = process.env.NODE_ENV === "test" ? 1_000 : 100_000;
-  const iterations = Math.max(minIterations, Number(process.env.PASSWORD_HASH_ITERATIONS ?? (process.env.NODE_ENV === "test" ? 1_000 : 210_000)));
+  const minIter = process.env.NODE_ENV === "test" ? 1_000 : 100_000;
+  const iterations = Math.max(minIter, Number(process.env.PASSWORD_HASH_ITERATIONS ?? (process.env.NODE_ENV === "test" ? 1_000 : 210_000)));
   const hash = pbkdf2Sync(String(password), salt, iterations, 32, "sha256").toString("hex");
   return `pbkdf2_sha256$${iterations}$${salt}$${hash}`;
 }
@@ -223,343 +1003,133 @@ function verifyPassword(password, storedHash = "") {
   const [algorithm, iterations, salt, expected] = storedHash.split("$");
   if (algorithm !== "pbkdf2_sha256" || !iterations || !salt || !expected) return false;
   const actual = pbkdf2Sync(String(password), salt, Number(iterations), 32, "sha256");
-  const expectedBuffer = Buffer.from(expected, "hex");
-  if (actual.length !== expectedBuffer.length) return false;
-  return timingSafeEqual(actual, expectedBuffer);
+  const expectedBuf = Buffer.from(expected, "hex");
+  if (actual.length !== expectedBuf.length) return false;
+  return timingSafeEqual(actual, expectedBuf);
 }
+
+function sanitizeText(value, maxLength = 120) {
+  return String(value ?? "").replace(/[ -]/g, " ").replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+// ── Public formatters ─────────────────────────────────────────────────────────
 
 function publicUser(user) {
   if (!user) return null;
   return {
-    id: user.id,
-    phone: user.phone,
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    name: user.name,
-    role: user.role,
-    deliveryAddress: user.deliveryAddress,
-    preferredLanguage: user.preferredLanguage,
-    vendorStatus: user.vendorStatus,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
+    id: user.id, phone: user.phone, email: user.email,
+    firstName: user.firstName, lastName: user.lastName, name: user.name,
+    role: user.role, deliveryAddress: user.deliveryAddress,
+    preferredLanguage: user.preferredLanguage, vendorStatus: user.vendorStatus,
+    createdAt: user.createdAt, updatedAt: user.updatedAt,
   };
 }
 
-function publicVendorApplication(store, application) {
-  if (!application) return null;
+function publicVendorApplication(row) {
+  if (!row) return null;
   return {
-    id: application.id,
-    userId: application.userId,
-    user: publicUser(store.users.get(application.userId)),
-    businessName: application.businessName,
-    phone: application.phone,
-    area: application.area,
-    category: application.category,
-    status: application.status,
-    adminNote: application.adminNote,
-    reviewedAt: application.reviewedAt,
-    createdAt: application.createdAt,
-    updatedAt: application.updatedAt,
+    id: row.id,
+    userId: row.user_id,
+    user: {
+      id: row.user_id, name: row.user_name, phone: row.user_phone,
+      email: row.user_email, role: row.user_role, vendorStatus: row.user_vendor_status,
+    },
+    businessName: row.business_name, phone: row.phone, area: row.area,
+    category: row.category, status: row.status, adminNote: row.admin_note,
+    reviewedAt: row.reviewed_at, createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
 
-function publicProduct(store, product, options = {}) {
+function publicProduct(product, opts = {}) {
   if (!product) return null;
-  const vendor = store.users.get(product.vendorUserId);
   return {
-    id: product.id,
-    vendorUserId: product.vendorUserId,
-    vendorName: product.vendorName,
-    vendorPhone: vendor?.phone,
-    name: product.name,
-    description: product.description,
-    category: product.category,
-    price: product.price,
-    currency: product.currency,
-    quantityAvailable: product.quantityAvailable,
-    area: product.area,
-    imageUrl: product.imageUrl,
-    tags: product.tags,
-    listingStatus: product.listingStatus,
-    moderationStatus: product.moderationStatus,
-    reviewNote: options.includeAdminFields ? product.reviewNote : undefined,
-    reviewedAt: options.includeAdminFields ? product.reviewedAt : undefined,
-    createdAt: product.createdAt,
-    updatedAt: product.updatedAt,
+    id: product.id, vendorUserId: product.vendorUserId, vendorName: product.vendorName,
+    vendorPhone: product.vendorPhone, name: product.name, description: product.description,
+    category: product.category, price: product.price, currency: product.currency,
+    quantityAvailable: product.quantityAvailable, area: product.area, imageUrl: product.imageUrl,
+    tags: product.tags, listingStatus: product.listingStatus, moderationStatus: product.moderationStatus,
+    reviewNote: opts.includeAdminFields ? product.reviewNote : undefined,
+    reviewedAt: opts.includeAdminFields ? product.reviewedAt : undefined,
+    createdAt: product.createdAt, updatedAt: product.updatedAt,
   };
 }
 
-function publicCart(store, userId) {
-  const cart = store.carts.get(userId) ?? new Map();
-  const items = Array.from(cart.values())
-    .map((item) => {
-      const product = store.products.get(item.productId);
-      if (!product) return null;
-      return {
-        productId: item.productId,
-        quantity: item.quantity,
-        product: publicProduct(store, product),
-        lineTotal: product.price * item.quantity,
-        addedAt: item.addedAt,
-        updatedAt: item.updatedAt,
-      };
-    })
-    .filter(Boolean);
-
+function publicOrder(order) {
+  if (!order) return null;
   return {
-    items,
-    subtotal: items.reduce((total, item) => total + item.lineTotal, 0),
+    id: order.id, customerUserId: order.customerUserId,
+    customerName: order.customerName, customerPhone: order.customerPhone,
+    items: order.items ?? [], deliveryOption: order.deliveryOption,
+    deliveryAddress: order.deliveryAddress, deliveryArea: order.deliveryArea,
+    deliveryFee: order.deliveryFee, deliveryPerson: order.deliveryPerson,
+    paymentMethod: order.paymentMethod, paymentReference: order.paymentReference,
+    paymentStatus: order.paymentStatus, subtotal: order.subtotal,
+    itemsSubtotal: order.itemsSubtotal, commissionTotal: order.commissionTotal,
+    vendorPayoutTotal: order.vendorPayoutTotal, status: order.status,
+    payment: order.payment, createdAt: order.createdAt, updatedAt: order.updatedAt,
   };
 }
 
 function publicPayment(payment) {
   if (!payment) return null;
   return {
-    id: payment.id,
-    orderId: payment.orderId,
-    reference: payment.reference,
-    method: payment.method,
-    gateway: payment.gateway,
-    amount: payment.amount,
-    currency: payment.currency,
-    status: payment.status,
-    adminNote: payment.adminNote,
-    createdAt: payment.createdAt,
-    verifiedAt: payment.verifiedAt,
-    failedAt: payment.failedAt,
-    refundedAt: payment.refundedAt,
+    id: payment.id, orderId: payment.orderId, reference: payment.reference,
+    method: payment.method, gateway: payment.gateway, amount: payment.amount,
+    currency: payment.currency, status: payment.status, adminNote: payment.adminNote,
+    createdAt: payment.createdAt, verifiedAt: payment.verifiedAt,
+    failedAt: payment.failedAt, refundedAt: payment.refundedAt,
   };
 }
 
-function publicOrder(store, order) {
-  if (!order) return null;
+function publicNotification(n) {
+  if (!n) return null;
   return {
-    id: order.id,
-    customerUserId: order.customerUserId,
-    customerName: order.customerName,
-    customerPhone: order.customerPhone,
-    items: order.items,
-    deliveryOption: order.deliveryOption,
-    deliveryAddress: order.deliveryAddress,
-    deliveryArea: order.deliveryArea,
-    deliveryFee: order.deliveryFee,
-    deliveryPerson: order.deliveryPerson,
-    paymentMethod: order.paymentMethod,
-    paymentReference: order.paymentReference,
-    paymentStatus: order.paymentStatus,
-    subtotal: order.subtotal,
-    itemsSubtotal: order.itemsSubtotal,
-    commissionTotal: order.commissionTotal,
-    vendorPayoutTotal: order.vendorPayoutTotal,
-    status: order.status,
-    payment: publicPayment(store.payments.get(order.paymentId)),
-    createdAt: order.createdAt,
-    updatedAt: order.updatedAt,
+    id: n.id, audience: n.audience, recipientUserId: n.recipientUserId ?? n.recipient_user_id,
+    title: n.title, message: n.message, type: n.type,
+    orderId: n.orderId ?? n.order_id, productId: n.productId ?? n.product_id,
+    readAt: n.readAt ?? n.read_at, createdAt: n.createdAt ?? n.created_at,
   };
 }
 
-function publicNotification(notification) {
-  if (!notification) return null;
-  return {
-    id: notification.id,
-    audience: notification.audience,
-    recipientUserId: notification.recipientUserId,
-    title: notification.title,
-    message: notification.message,
-    type: notification.type,
-    orderId: notification.orderId,
-    productId: notification.productId,
-    readAt: notification.readAt,
-    createdAt: notification.createdAt,
-  };
-}
-
-function publicReview(store, review, options = {}) {
+function publicReview(review) {
   if (!review) return null;
-  const product = store.products.get(review.productId);
-  const reviewer = store.users.get(review.customerUserId);
   return {
-    id: review.id,
-    productId: review.productId,
-    productName: product?.name,
-    vendorUserId: review.vendorUserId,
-    customerUserId: review.customerUserId,
-    reviewerName: reviewer?.name ?? review.reviewerName,
-    rating: review.rating,
-    comment: review.comment,
-    hidden: options.includeAdminFields ? review.hidden : undefined,
-    adminNote: options.includeAdminFields ? review.adminNote : undefined,
-    createdAt: review.createdAt,
-    updatedAt: review.updatedAt,
-  };
-}
-
-function publicPromotion(promotion) {
-  if (!promotion) return null;
-  return {
-    id: promotion.id,
-    title: promotion.title,
-    type: promotion.type,
-    discountPercent: promotion.discountPercent,
-    code: promotion.code,
-    productId: promotion.productId,
-    vendorUserId: promotion.vendorUserId,
-    category: promotion.category,
-    active: promotion.active,
-    startsAt: promotion.startsAt,
-    endsAt: promotion.endsAt,
-    createdAt: promotion.createdAt,
-    updatedAt: promotion.updatedAt,
+    id: review.id, productId: review.productId ?? review.product_id,
+    vendorUserId: review.vendorUserId ?? review.vendor_user_id,
+    customerUserId: review.customerUserId ?? review.customer_user_id,
+    reviewerName: review.reviewerName ?? review.reviewer_name,
+    rating: review.rating, comment: review.comment, hidden: review.hidden,
+    adminNote: review.adminNote ?? review.admin_note,
+    createdAt: review.createdAt ?? review.created_at, updatedAt: review.updatedAt ?? review.updated_at,
   };
 }
 
 function publicPayoutRequest(payout) {
   if (!payout) return null;
   return {
-    id: payout.id,
-    vendorUserId: payout.vendorUserId,
-    amount: payout.amount,
-    status: payout.status,
-    bankName: payout.bankName,
-    accountNumber: payout.accountNumber,
-    accountName: payout.accountName,
-    adminNote: payout.adminNote,
-    requestedAt: payout.requestedAt,
-    reviewedAt: payout.reviewedAt,
+    id: payout.id, vendorUserId: payout.vendorUserId ?? payout.vendor_user_id,
+    amount: payout.amount, status: payout.status,
+    bankName: payout.bankName ?? payout.bank_name,
+    accountNumber: payout.accountNumber ?? payout.account_number,
+    accountName: payout.accountName ?? payout.account_name,
+    adminNote: payout.adminNote ?? payout.admin_note,
+    requestedAt: payout.requestedAt ?? payout.requested_at,
+    reviewedAt: payout.reviewedAt ?? payout.reviewed_at,
   };
 }
 
-function publicCategory(category) {
-  if (!category) return null;
+function publicCategory(cat) {
+  if (!cat) return null;
   return {
-    key: category.key,
-    name: category.name,
-    searchTerms: category.searchTerms,
-    createdAt: category.createdAt,
-    updatedAt: category.updatedAt,
+    key: cat.key,
+    name: cat.name ?? { en: cat.name_en, ha: cat.name_ha },
+    searchTerms: cat.searchTerms ?? cat.search_terms ?? [],
+    createdAt: cat.createdAt ?? cat.created_at,
+    updatedAt: cat.updatedAt ?? cat.updated_at,
   };
 }
 
-function createNotification(store, input) {
-  const now = new Date().toISOString();
-  const notification = {
-    id: randomUUID(),
-    audience: input.audience,
-    recipientUserId: input.recipientUserId,
-    title: sanitizeText(input.title, 120),
-    message: sanitizeText(input.message, 240),
-    type: input.type,
-    orderId: input.orderId,
-    productId: input.productId,
-    createdAt: now,
-  };
-  store.notifications.set(notification.id, notification);
-  return notification;
-}
-
-function notifyAdmins(store, input) {
-  for (const user of store.users.values()) {
-    if (user.role === "admin") createNotification(store, { ...input, audience: "admin", recipientUserId: user.id });
-  }
-}
-
-function findUserByIdentifier(store, identifier) {
-  const normalizedPhone = normalizePhone(identifier);
-  const normalizedEmail = normalizeEmail(identifier);
-
-  for (const user of store.users.values()) {
-    if (user.phone === normalizedPhone || (normalizedEmail && user.email === normalizedEmail)) {
-      return user;
-    }
-  }
-
-  return null;
-}
-
-function findVendorApplicationById(store, applicationId) {
-  for (const application of store.vendorApplications.values()) {
-    if (application.id === applicationId) return application;
-  }
-  return null;
-}
-
-function findVendorApplicationByUserId(store, userId) {
-  return store.vendorApplications.get(userId) ?? null;
-}
-
-function getSessionToken(request) {
-  const auth = request.headers.authorization;
-  if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length).trim();
-
-  const cookieHeader = request.headers.cookie ?? "";
-  const cookies = new Map(
-    cookieHeader
-      .split(";")
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .map((item) => {
-        const index = item.indexOf("=");
-        return [item.slice(0, index), decodeURIComponent(item.slice(index + 1))];
-      }),
-  );
-  return cookies.get(SESSION_COOKIE) ?? "";
-}
-
-function getCurrentUser(request, store) {
-  const token = getSessionToken(request);
-  if (!token) return null;
-  const session = store.sessions.get(token);
-  if (!session || Date.parse(session.expiresAt) <= Date.now()) {
-    if (session) store.sessions.delete(token);
-    return null;
-  }
-  return store.users.get(session.userId) ?? null;
-}
-
-function send(response, status, body, extraHeaders = {}) {
-  response.writeHead(status, { ...jsonHeaders, ...extraHeaders });
-  response.end(JSON.stringify(body));
-}
-
-function sendError(response, status, code, message, details) {
-  send(response, status, {
-    error: {
-      code,
-      message,
-      ...(details ? { details } : {}),
-    },
-  });
-}
-
-async function readJson(request) {
-  const chunks = [];
-  const limit = Number(process.env.API_BODY_LIMIT_BYTES ?? DEFAULT_BODY_LIMIT_BYTES);
-  let total = 0;
-  for await (const chunk of request) chunks.push(chunk);
-  for (const chunk of chunks) {
-    total += chunk.length;
-    if (total > limit) {
-      const error = new Error("Request body is too large");
-      error.status = 413;
-      error.code = "body_too_large";
-      throw error;
-    }
-  }
-  if (!chunks.length) return {};
-
-  const raw = Buffer.concat(chunks).toString("utf8");
-  if (!raw.trim()) return {};
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const error = new Error("Invalid JSON request body");
-    error.status = 400;
-    error.code = "invalid_json";
-    throw error;
-  }
-}
+// ── Validators ────────────────────────────────────────────────────────────────
 
 function validateSignup(input) {
   const errors = {};
@@ -568,167 +1138,21 @@ function validateSignup(input) {
   const firstName = String(input.firstName ?? "").trim();
   const lastName = String(input.lastName ?? "").trim();
   const role = input.role === "vendor" ? "vendor" : input.role === "customer" ? "customer" : "";
-
   if (!phone || phone.length < 8) errors.phone = "A valid phone number is required.";
   if (password.length < 8) errors.password = "Password must be at least 8 characters.";
   if (!firstName) errors.firstName = "First name is required.";
   if (!lastName) errors.lastName = "Last name is required.";
   if (!role) errors.role = "Role must be customer or vendor.";
-
   return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: {
-      phone,
-      password,
-      firstName,
-      lastName,
-      role,
+    valid: Object.keys(errors).length === 0, errors,
+    value: { phone, password, firstName, lastName, role,
       email: normalizeEmail(input.email),
       deliveryAddress: String(input.deliveryAddress ?? "").trim(),
       preferredLanguage: input.preferredLanguage === "ha" ? "ha" : "en",
       businessName: String(input.businessName ?? "").trim(),
       area: String(input.area ?? "").trim(),
-      category: String(input.category ?? "").trim(),
-    },
+      category: String(input.category ?? "").trim() },
   };
-}
-
-function createSession(store, userId) {
-  const token = randomUUID();
-  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
-  store.sessions.set(token, {
-    tokenHash: createHash("sha256").update(token).digest("hex"),
-    userId,
-    createdAt: new Date().toISOString(),
-    expiresAt,
-  });
-  return { token, expiresAt };
-}
-
-function createCookie(token) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`;
-}
-
-function clearCookie() {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
-}
-
-function createUser(store, input, adminPhone) {
-  const now = new Date().toISOString();
-  const isAdmin = input.phone === normalizePhone(adminPhone);
-  const role = isAdmin ? "admin" : input.role;
-
-  const user = {
-    id: randomUUID(),
-    phone: input.phone,
-    email: input.email || undefined,
-    passwordHash: hashPassword(input.password),
-    firstName: isAdmin ? "Admin" : input.firstName,
-    lastName: isAdmin ? "" : input.lastName,
-    name: isAdmin ? "Kano Mart Admin" : `${input.firstName} ${input.lastName}`.trim(),
-    role,
-    deliveryAddress: input.deliveryAddress || undefined,
-    preferredLanguage: input.preferredLanguage,
-    vendorStatus: role === "vendor" ? "pending" : undefined,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  store.users.set(user.id, user);
-
-  if (role === "vendor") {
-    store.vendorApplications.set(user.id, {
-      id: randomUUID(),
-      userId: user.id,
-      businessName: input.businessName || user.name,
-      phone: user.phone,
-      area: input.area || "Kano",
-      category: input.category || "essentials",
-      status: "pending",
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  return user;
-}
-
-function assertAdmin(response, user) {
-  if (!user) {
-    sendError(response, 401, "unauthenticated", "Sign in is required.");
-    return false;
-  }
-  if (user.role !== "admin") {
-    sendError(response, 403, "forbidden", "Admin access is required.");
-    return false;
-  }
-  return true;
-}
-
-function assertAuthenticated(response, user) {
-  if (!user) {
-    sendError(response, 401, "unauthenticated", "Sign in is required.");
-    return false;
-  }
-  return true;
-}
-
-function validateVendorDecision(input) {
-  const status = input.status === "approved" || input.status === "rejected" ? input.status : "";
-  const adminNote = String(input.adminNote ?? "").trim();
-  const errors = {};
-
-  if (!status) errors.status = "Status must be approved or rejected.";
-  if (adminNote.length > 500) errors.adminNote = "Admin note must be 500 characters or fewer.";
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { status, adminNote },
-  };
-}
-
-function updateVendorApplicationStatus(store, application, decision) {
-  const now = new Date().toISOString();
-  const nextApplication = {
-    ...application,
-    status: decision.status,
-    adminNote: decision.adminNote || undefined,
-    reviewedAt: now,
-    updatedAt: now,
-  };
-
-  store.vendorApplications.set(application.userId, nextApplication);
-
-  const user = store.users.get(application.userId);
-  if (user) {
-    store.users.set(user.id, {
-      ...user,
-      vendorStatus: decision.status,
-      updatedAt: now,
-    });
-    createNotification(store, {
-      audience: "vendor",
-      recipientUserId: user.id,
-      title: decision.status === "approved" ? "Vendor approved" : "Vendor rejected",
-      message: `Your vendor application was ${decision.status}.`,
-      type: "vendor",
-    });
-  }
-
-  return nextApplication;
-}
-
-function sanitizeText(value, maxLength = 120) {
-  return String(value ?? "")
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/[<>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
 }
 
 function validateProductInput(input) {
@@ -742,136 +1166,36 @@ function validateProductInput(input) {
   const quantityAvailable = Number(input.quantityAvailable ?? 1);
   const area = sanitizeText(input.area ?? "Kano", 80);
   const imageUrl = sanitizeText(input.imageUrl ?? "", 500);
-  const tags = Array.isArray(input.tags) ? input.tags.map((tag) => sanitizeText(tag, 40)).filter(Boolean) : [];
-
+  const tags = Array.isArray(input.tags) ? input.tags.map((t) => sanitizeText(t, 40)).filter(Boolean) : [];
   if (!nameEn) errors.name = "Product name is required.";
   if (!category) errors.category = "Category is required.";
   if (!Number.isFinite(price) || price <= 0) errors.price = "Price must be greater than zero.";
-  if (!Number.isInteger(quantityAvailable) || quantityAvailable < 0) {
-    errors.quantityAvailable = "Quantity must be a whole number greater than or equal to zero.";
-  }
-
+  if (!Number.isInteger(quantityAvailable) || quantityAvailable < 0) errors.quantityAvailable = "Quantity must be a whole number ≥ 0.";
   return {
-    valid: Object.keys(errors).length === 0,
-    errors,
+    valid: Object.keys(errors).length === 0, errors,
     value: {
-      name: { en: nameEn, ha: nameHa },
-      description: { en: descriptionEn, ha: descriptionHa },
-      category,
-      price,
-      currency: "NGN",
-      quantityAvailable,
-      area,
+      name: { en: nameEn, ha: nameHa }, description: { en: descriptionEn, ha: descriptionHa },
+      category, price, currency: "NGN", quantityAvailable, area,
       imageUrl: imageUrl || undefined,
-      tags: [...new Set([nameEn, nameHa, category, area, ...tags].map((tag) => tag.toLowerCase()).filter(Boolean))],
+      tags: [...new Set([nameEn, nameHa, category, area, ...tags].map((t) => t.toLowerCase()).filter(Boolean))],
     },
   };
 }
 
-function createProduct(store, vendor, input) {
-  const now = new Date().toISOString();
-  const product = {
-    id: randomUUID(),
-    vendorUserId: vendor.id,
-    vendorName: vendor.name,
-    name: input.name,
-    description: input.description,
-    category: input.category,
-    price: input.price,
-    currency: input.currency,
-    quantityAvailable: input.quantityAvailable,
-    area: input.area,
-    imageUrl: input.imageUrl,
-    tags: input.tags,
-    listingStatus: input.quantityAvailable > 0 ? "active" : "out_of_stock",
-    moderationStatus: "pending",
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  store.products.set(product.id, product);
-  return product;
-}
-
-function validateProductModeration(input) {
-  const status =
-    input.status === "approved" || input.status === "rejected" || input.status === "hidden" ? input.status : "";
-  const reviewNote = sanitizeText(input.reviewNote ?? "", 500);
-  const errors = {};
-
-  if (!status) errors.status = "Status must be approved, hidden, or rejected.";
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { status, reviewNote },
-  };
-}
-
-function updateProductModeration(product, decision) {
-  const now = new Date().toISOString();
-  const nextProduct = {
-    ...product,
-    moderationStatus: decision.status,
-    reviewNote: decision.reviewNote || undefined,
-    reviewedAt: now,
-    updatedAt: now,
-  };
-  return nextProduct;
-}
-
 function validateListingStatus(input) {
-  const listingStatus =
-    input.listingStatus === "active" || input.listingStatus === "out_of_stock" || input.listingStatus === "taken_down"
-      ? input.listingStatus
-      : "";
+  const listingStatus = ["active", "out_of_stock", "taken_down"].includes(input.listingStatus) ? input.listingStatus : "";
   const errors = {};
-
   if (!listingStatus) errors.listingStatus = "Listing status must be active, out_of_stock, or taken_down.";
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { listingStatus },
-  };
-}
-
-function getPublicCatalogProduct(store, productId) {
-  const product = store.products.get(productId);
-  if (!product || product.moderationStatus !== "approved" || product.listingStatus !== "active") return null;
-  return product;
+  return { valid: !errors.listingStatus, errors, value: { listingStatus } };
 }
 
 function validateCartItem(input) {
   const productId = String(input.productId ?? "").trim();
   const quantity = Number(input.quantity ?? 1);
   const errors = {};
-
   if (!productId) errors.productId = "Product is required.";
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
-    errors.quantity = "Quantity must be a whole number between 1 and 99.";
-  }
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { productId, quantity },
-  };
-}
-
-function upsertCartItem(store, userId, input) {
-  const now = new Date().toISOString();
-  const cart = store.carts.get(userId) ?? new Map();
-  const existing = cart.get(input.productId);
-  const item = {
-    productId: input.productId,
-    quantity: input.quantity,
-    addedAt: existing?.addedAt ?? now,
-    updatedAt: now,
-  };
-  cart.set(input.productId, item);
-  store.carts.set(userId, cart);
-  return item;
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) errors.quantity = "Quantity must be 1-99.";
+  return { valid: Object.keys(errors).length === 0, errors, value: { productId, quantity } };
 }
 
 function validateCheckout(input) {
@@ -881,246 +1205,44 @@ function validateCheckout(input) {
   const paymentMethod = sanitizeText(input.paymentMethod ?? "", 40);
   const promotionCode = sanitizeText(input.promotionCode ?? "", 40).toUpperCase();
   const errors = {};
-  const allowedPaymentMethods = new Set(["manual_transfer", "pay_on_delivery", "card", "bank_transfer", "ussd", "wallet"]);
-
-  if (deliveryOption === "delivery" && !deliveryAddress) {
-    errors.deliveryAddress = "Delivery address is required.";
-  }
+  const allowed = new Set(["manual_transfer", "pay_on_delivery", "card", "bank_transfer", "ussd", "wallet"]);
+  if (deliveryOption === "delivery" && !deliveryAddress) errors.deliveryAddress = "Delivery address is required.";
   if (!deliveryArea) errors.deliveryArea = "Delivery area is required.";
-  if (!allowedPaymentMethods.has(paymentMethod)) {
-    errors.paymentMethod = "Payment method is not supported.";
-  }
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { deliveryOption, deliveryAddress, deliveryArea, paymentMethod, promotionCode },
-  };
+  if (!allowed.has(paymentMethod)) errors.paymentMethod = "Payment method is not supported.";
+  return { valid: Object.keys(errors).length === 0, errors, value: { deliveryOption, deliveryAddress, deliveryArea, paymentMethod, promotionCode } };
 }
 
-function getPaymentStatusForMethod(method) {
-  return method === "card" || method === "ussd" || method === "wallet" ? "paid" : "pending";
+function validateVendorDecision(input) {
+  const status = ["approved", "rejected"].includes(input.status) ? input.status : "";
+  const adminNote = sanitizeText(input.adminNote ?? "", 500);
+  const errors = {};
+  if (!status) errors.status = "Status must be approved or rejected.";
+  return { valid: !errors.status, errors, value: { status, adminNote } };
 }
 
-function getPaymentGatewayForMethod(method) {
-  return method === "card" || method === "ussd" || method === "wallet" ? "prototype" : "manual";
-}
-
-function calculateDeliveryFee(deliveryOption) {
-  return deliveryOption === "pickup" ? 0 : 1200;
-}
-
-function createPayment(store, order) {
-  const now = new Date().toISOString();
-  const status = getPaymentStatusForMethod(order.paymentMethod);
-  const payment = {
-    id: randomUUID(),
-    orderId: order.id,
-    reference: order.paymentReference,
-    method: order.paymentMethod,
-    gateway: getPaymentGatewayForMethod(order.paymentMethod),
-    amount: order.subtotal,
-    currency: "NGN",
-    status,
-    createdAt: now,
-    verifiedAt: status === "paid" ? now : undefined,
-  };
-  store.payments.set(payment.id, payment);
-  return payment;
-}
-
-function createLedgerEntriesForPaidOrder(store, order) {
-  if (order.paymentStatus !== "paid") return [];
-  if (Array.from(store.walletLedger.values()).some((entry) => entry.orderId === order.id)) return [];
-  const now = new Date().toISOString();
-  const entries = order.items.flatMap((item) => [
-    {
-      id: randomUUID(),
-      orderId: order.id,
-      productId: item.productId,
-      vendorUserId: item.vendorUserId,
-      type: "vendor_pending_credit",
-      status: "pending",
-      amount: item.vendorPayout,
-      createdAt: now,
-    },
-    {
-      id: randomUUID(),
-      orderId: order.id,
-      productId: item.productId,
-      vendorUserId: item.vendorUserId,
-      type: "platform_commission",
-      status: "available",
-      amount: item.commissionAmount,
-      createdAt: now,
-    },
-  ]);
-
-  for (const entry of entries) store.walletLedger.set(entry.id, entry);
-  return entries;
-}
-
-function releaseVendorPayoutForDeliveredOrder(store, order) {
-  if (order.paymentStatus !== "paid" || order.status !== "delivered") return [];
-  const now = new Date().toISOString();
-  const released = [];
-
-  for (const [id, entry] of store.walletLedger.entries()) {
-    if (entry.orderId !== order.id || entry.type !== "vendor_pending_credit" || entry.status === "available") {
-      continue;
-    }
-
-    const nextEntry = {
-      ...entry,
-      status: "available",
-      availableAt: now,
-    };
-    store.walletLedger.set(id, nextEntry);
-    released.push(nextEntry);
-  }
-
-  return released;
+function validateProductModeration(input) {
+  const status = ["approved", "hidden", "rejected"].includes(input.status) ? input.status : "";
+  const reviewNote = sanitizeText(input.reviewNote ?? "", 500);
+  const errors = {};
+  if (!status) errors.status = "Status must be approved, hidden, or rejected.";
+  return { valid: !errors.status, errors, value: { status, reviewNote } };
 }
 
 function validatePaymentDecision(input) {
-  const status =
-    input.status === "paid" || input.status === "failed" || input.status === "refunded" ? input.status : "";
+  const status = ["paid", "failed", "refunded"].includes(input.status) ? input.status : "";
   const adminNote = sanitizeText(input.adminNote ?? "", 500);
   const errors = {};
-
   if (!status) errors.status = "Status must be paid, failed, or refunded.";
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { status, adminNote },
-  };
-}
-
-function updatePaymentStatus(store, payment, decision) {
-  const now = new Date().toISOString();
-
-  const order = store.orders.get(payment.orderId);
-  if (decision.status === "paid" && order?.status === "cancelled") {
-    return { error: { status: 409, code: "order_cancelled", message: "Cannot confirm payment for a cancelled order." } };
-  }
-
-  const nextPayment = {
-    ...payment,
-    status: decision.status,
-    adminNote: decision.adminNote || undefined,
-    verifiedAt: decision.status === "paid" ? now : payment.verifiedAt,
-    failedAt: decision.status === "failed" ? now : payment.failedAt,
-    refundedAt: decision.status === "refunded" ? now : payment.refundedAt,
-  };
-  store.payments.set(nextPayment.id, nextPayment);
-
-  if (order) {
-    const nextOrder = {
-      ...order,
-      paymentStatus: decision.status,
-      updatedAt: now,
-    };
-    store.orders.set(nextOrder.id, nextOrder);
-    if (decision.status === "paid") createLedgerEntriesForPaidOrder(store, nextOrder);
-    if (decision.status === "paid" && nextOrder.status === "delivered") releaseVendorPayoutForDeliveredOrder(store, nextOrder);
-    createNotification(store, {
-      audience: "customer",
-      recipientUserId: nextOrder.customerUserId,
-      title: decision.status === "paid" ? "Payment successful" : decision.status === "failed" ? "Payment failed" : "Payment refunded",
-      message: `Payment for order ${nextOrder.id} is ${decision.status}.`,
-      type: "payment",
-      orderId: nextOrder.id,
-    });
-    if (decision.status === "paid") {
-      for (const vendorUserId of new Set(nextOrder.items.map((item) => item.vendorUserId))) {
-        createNotification(store, {
-          audience: "vendor",
-          recipientUserId: vendorUserId,
-          title: "Payment confirmed",
-          message: `Payment confirmed for order ${nextOrder.id}.`,
-          type: "payment",
-          orderId: nextOrder.id,
-        });
-      }
-    }
-  }
-
-  return nextPayment;
+  return { valid: !errors.status, errors, value: { status, adminNote } };
 }
 
 function validateOrderStatusInput(input) {
+  const allowed = new Set(["awaiting_confirmation","preparing_order","ready_for_pickup","assigned_to_rider","out_for_delivery","delivered","cancelled"]);
   const status = sanitizeText(input.status ?? "", 40);
   const deliveryPerson = sanitizeText(input.deliveryPerson ?? "", 100);
   const errors = {};
-  const allowed = new Set([
-    "awaiting_confirmation",
-    "preparing_order",
-    "ready_for_pickup",
-    "assigned_to_rider",
-    "out_for_delivery",
-    "delivered",
-    "cancelled",
-  ]);
-
   if (!allowed.has(status)) errors.status = "Order status is not supported.";
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { status, deliveryPerson },
-  };
-}
-
-function getAllowedNextStatuses(order) {
-  if (order.status === "cancelled" || order.status === "delivered") return [];
-  const deliveryFlow =
-    order.deliveryOption === "pickup"
-      ? ["awaiting_confirmation", "preparing_order", "ready_for_pickup", "delivered"]
-      : ["awaiting_confirmation", "preparing_order", "ready_for_pickup", "assigned_to_rider", "out_for_delivery", "delivered"];
-  const currentIndex = deliveryFlow.indexOf(order.status);
-  const next = currentIndex >= 0 ? deliveryFlow[currentIndex + 1] : undefined;
-  return ["cancelled", next].filter(Boolean);
-}
-
-function updateOrderStatus(store, order, input) {
-  const allowed = getAllowedNextStatuses(order);
-  if (!allowed.includes(input.status)) {
-    return {
-      error: {
-        status: 409,
-        code: "invalid_order_transition",
-        message: `Cannot move order from ${order.status} to ${input.status}.`,
-      },
-    };
-  }
-
-  const now = new Date().toISOString();
-  const nextOrder = {
-    ...order,
-    status: input.status,
-    deliveryPerson: input.deliveryPerson || order.deliveryPerson,
-    updatedAt: now,
-  };
-  store.orders.set(nextOrder.id, nextOrder);
-  releaseVendorPayoutForDeliveredOrder(store, nextOrder);
-  createNotification(store, {
-    audience: "customer",
-    recipientUserId: nextOrder.customerUserId,
-    title: nextOrder.status === "delivered" ? "Order delivered" : "Order updated",
-    message: `Order ${nextOrder.id} is now ${nextOrder.status}.`,
-    type: nextOrder.status === "delivered" ? "delivery" : "order",
-    orderId: nextOrder.id,
-  });
-  return { order: nextOrder };
-}
-
-function getWishlistProducts(store, userId) {
-  const wishlist = store.wishlists.get(userId) ?? new Set();
-  return Array.from(wishlist)
-    .map((productId) => store.products.get(productId))
-    .filter(Boolean)
-    .map((product) => publicProduct(store, product));
+  return { valid: !errors.status, errors, value: { status, deliveryPerson } };
 }
 
 function validateReviewInput(input) {
@@ -1128,69 +1250,10 @@ function validateReviewInput(input) {
   const rating = Number(input.rating);
   const comment = sanitizeText(input.comment ?? "", 500);
   const errors = {};
-
   if (!productId) errors.productId = "Product is required.";
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) errors.rating = "Rating must be between 1 and 5.";
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) errors.rating = "Rating must be 1-5.";
   if (!comment) errors.comment = "Review comment is required.";
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { productId, rating, comment },
-  };
-}
-
-function customerCanReviewProduct(store, customerUserId, productId) {
-  return Array.from(store.orders.values()).some(
-    (order) =>
-      order.customerUserId === customerUserId &&
-      order.status === "delivered" &&
-      order.items.some((item) => item.productId === productId),
-  );
-}
-
-function createReview(store, customer, input) {
-  const product = store.products.get(input.productId);
-  if (!product) return { error: { status: 404, code: "product_not_found", message: "Product was not found." } };
-  if (!customerCanReviewProduct(store, customer.id, input.productId)) {
-    return {
-      error: {
-        status: 403,
-        code: "review_not_allowed",
-        message: "Only customers with delivered orders can review this product.",
-      },
-    };
-  }
-
-  const now = new Date().toISOString();
-  const review = {
-    id: randomUUID(),
-    productId: input.productId,
-    vendorUserId: product.vendorUserId,
-    customerUserId: customer.id,
-    reviewerName: customer.name,
-    rating: input.rating,
-    comment: input.comment,
-    hidden: false,
-    createdAt: now,
-    updatedAt: now,
-  };
-  store.reviews.set(review.id, review);
-  createNotification(store, {
-    audience: "vendor",
-    recipientUserId: product.vendorUserId,
-    title: "New product review",
-    message: `${customer.name} reviewed ${product.name.en}.`,
-    type: "review",
-    productId: product.id,
-  });
-  return { review };
-}
-
-function validateReviewModeration(input) {
-  const hidden = Boolean(input.hidden);
-  const adminNote = sanitizeText(input.adminNote ?? "", 500);
-  return { valid: true, errors: {}, value: { hidden, adminNote } };
+  return { valid: Object.keys(errors).length === 0, errors, value: { productId, rating, comment } };
 }
 
 function validatePromotionInput(input) {
@@ -1199,53 +1262,23 @@ function validatePromotionInput(input) {
   const type = sanitizeText(input.type ?? "discount_code", 40);
   const discountPercent = Number(input.discountPercent);
   const code = sanitizeText(input.code ?? "", 40).toUpperCase();
-  const productId = sanitizeText(input.productId ?? "", 80);
-  const vendorUserId = sanitizeText(input.vendorUserId ?? "", 80);
-  const category = sanitizeText(input.category ?? "", 40).toLowerCase();
-  const startsAt = input.startsAt ? new Date(input.startsAt).toISOString() : new Date().toISOString();
-  const endsAt = input.endsAt ? new Date(input.endsAt).toISOString() : undefined;
   const errors = {};
-  const allowedTypes = new Set(["discount_code", "flash_sale", "featured_product", "featured_vendor", "seasonal_campaign"]);
-
+  const allowedTypes = new Set(["discount_code","flash_sale","featured_product","featured_vendor","seasonal_campaign"]);
   if (!titleEn) errors.title = "Promotion title is required.";
   if (!allowedTypes.has(type)) errors.type = "Promotion type is not supported.";
-  if (!Number.isFinite(discountPercent) || discountPercent < 1 || discountPercent > 90) {
-    errors.discountPercent = "Discount percent must be between 1 and 90.";
-  }
-
+  if (!Number.isFinite(discountPercent) || discountPercent < 1 || discountPercent > 90) errors.discountPercent = "Discount must be 1-90%.";
   return {
-    valid: Object.keys(errors).length === 0,
-    errors,
+    valid: Object.keys(errors).length === 0, errors,
     value: {
-      title: { en: titleEn, ha: titleHa },
-      type,
-      discountPercent,
-      code: code || undefined,
-      productId: productId || undefined,
-      vendorUserId: vendorUserId || undefined,
-      category: category || undefined,
+      title: { en: titleEn, ha: titleHa }, type, discountPercent,
+      code: code || undefined, productId: sanitizeText(input.productId ?? "", 80) || undefined,
+      vendorUserId: sanitizeText(input.vendorUserId ?? "", 80) || undefined,
+      category: sanitizeText(input.category ?? "", 40).toLowerCase() || undefined,
       active: input.active !== false,
-      startsAt,
-      endsAt,
+      startsAt: input.startsAt ? new Date(input.startsAt).toISOString() : new Date().toISOString(),
+      endsAt: input.endsAt ? new Date(input.endsAt).toISOString() : undefined,
     },
   };
-}
-
-function getActivePromotionForProduct(store, product, code) {
-  const now = Date.now();
-  const normalizedCode = sanitizeText(code ?? "", 40).toUpperCase();
-  return Array.from(store.promotions.values()).find((promotion) => {
-    if (!promotion.active) return false;
-    if (Date.parse(promotion.startsAt) > now) return false;
-    if (promotion.endsAt && Date.parse(promotion.endsAt) < now) return false;
-    if (promotion.code && promotion.code !== normalizedCode) return false;
-    return (
-      promotion.productId === product.id ||
-      promotion.vendorUserId === product.vendorUserId ||
-      promotion.category === product.category ||
-      (!promotion.productId && !promotion.vendorUserId && !promotion.category)
-    );
-  });
 }
 
 function validatePayoutInput(input) {
@@ -1254,86 +1287,30 @@ function validatePayoutInput(input) {
   const accountNumber = sanitizeText(input.accountNumber ?? "", 30);
   const accountName = sanitizeText(input.accountName ?? "", 120);
   const errors = {};
-
   if (!Number.isInteger(amount) || amount < 1000) errors.amount = "Amount must be at least 1000.";
   if (!bankName) errors.bankName = "Bank name is required.";
   if (!accountNumber) errors.accountNumber = "Account number is required.";
   if (!accountName) errors.accountName = "Account name is required.";
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { amount, bankName, accountNumber, accountName },
-  };
-}
-
-function getVendorWalletSummary(store, vendorUserId) {
-  return Array.from(store.walletLedger.values()).reduce(
-    (summary, entry) => {
-      if (entry.vendorUserId !== vendorUserId) return summary;
-      if (entry.type === "vendor_pending_credit") {
-        if (entry.status === "available") summary.availableBalance += entry.amount;
-        else summary.pendingBalance += entry.amount;
-      }
-      if (entry.type === "platform_commission") summary.totalCommission += entry.amount;
-      if (entry.type === "vendor_withdrawal_debit") summary.availableBalance -= entry.amount;
-      return summary;
-    },
-    { vendorUserId, pendingBalance: 0, availableBalance: 0, totalCommission: 0 },
-  );
+  return { valid: Object.keys(errors).length === 0, errors, value: { amount, bankName, accountNumber, accountName } };
 }
 
 function validatePayoutDecision(input) {
-  const status = input.status === "approved" || input.status === "rejected" ? input.status : "";
+  const status = ["approved", "rejected"].includes(input.status) ? input.status : "";
   const adminNote = sanitizeText(input.adminNote ?? "", 500);
   const errors = {};
   if (!status) errors.status = "Status must be approved or rejected.";
-  return { valid: Object.keys(errors).length === 0, errors, value: { status, adminNote } };
-}
-
-function updatePayoutStatus(store, payout, decision) {
-  const now = new Date().toISOString();
-  const nextPayout = {
-    ...payout,
-    status: decision.status,
-    adminNote: decision.adminNote || undefined,
-    reviewedAt: now,
-  };
-  store.payoutRequests.set(nextPayout.id, nextPayout);
-
-  if (decision.status === "approved") {
-    const entry = {
-      id: randomUUID(),
-      orderId: `payout:${nextPayout.id}`,
-      productId: "payout",
-      vendorUserId: nextPayout.vendorUserId,
-      type: "vendor_withdrawal_debit",
-      status: "available",
-      amount: nextPayout.amount,
-      createdAt: now,
-      availableAt: now,
-    };
-    store.walletLedger.set(entry.id, entry);
-  }
-
-  return nextPayout;
+  return { valid: !errors.status, errors, value: { status, adminNote } };
 }
 
 function validateCategoryInput(input) {
   const key = sanitizeText(input.key ?? "", 40).toLowerCase();
   const nameEn = sanitizeText(input.name?.en ?? input.nameEn ?? "", 80);
   const nameHa = sanitizeText(input.name?.ha ?? input.nameHa ?? nameEn, 80);
-  const searchTerms = Array.isArray(input.searchTerms)
-    ? input.searchTerms.map((term) => sanitizeText(term, 40).toLowerCase()).filter(Boolean)
-    : [];
+  const searchTerms = Array.isArray(input.searchTerms) ? input.searchTerms.map((t) => sanitizeText(t, 40).toLowerCase()).filter(Boolean) : [];
   const errors = {};
   if (!key) errors.key = "Category key is required.";
-  if (!nameEn) errors.name = "Category English name is required.";
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { key, name: { en: nameEn, ha: nameHa }, searchTerms },
-  };
+  if (!nameEn) errors.name = "Category name is required.";
+  return { valid: Object.keys(errors).length === 0, errors, value: { key, name: { en: nameEn, ha: nameHa }, searchTerms } };
 }
 
 function validateUploadInput(input) {
@@ -1341,146 +1318,78 @@ function validateUploadInput(input) {
   const mimeType = sanitizeText(input.mimeType ?? "", 80);
   const dataUrl = String(input.dataUrl ?? "");
   const errors = {};
-  const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+  const allowed = new Set(["image/png", "image/jpeg", "image/webp"]);
   const maxLength = Number(process.env.API_UPLOAD_MAX_DATA_URL_LENGTH ?? 750_000);
-
-  if (!allowedMimeTypes.has(mimeType)) errors.mimeType = "Only PNG, JPEG, and WebP images are supported.";
+  if (!allowed.has(mimeType)) errors.mimeType = "Only PNG, JPEG, and WebP are supported.";
   if (!dataUrl.startsWith(`data:${mimeType};base64,`)) errors.dataUrl = "A matching base64 data URL is required.";
   if (dataUrl.length > maxLength) errors.dataUrl = "Image upload is too large.";
-
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    value: { fileName, mimeType, dataUrl },
-  };
+  return { valid: Object.keys(errors).length === 0, errors, value: { fileName, mimeType, dataUrl } };
 }
 
-function createOrderFromCart(store, customer, checkout) {
-  const cart = store.carts.get(customer.id);
-  if (!cart || cart.size === 0) {
-    return { error: { status: 409, code: "cart_empty", message: "Cart is empty." } };
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
+
+function send(response, status, body, extraHeaders = {}) {
+  response.writeHead(status, { ...jsonHeaders, ...extraHeaders });
+  response.end(JSON.stringify(body));
+}
+
+function sendError(response, status, code, message, details) {
+  send(response, status, { error: { code, message, ...(details ? { details } : {}) } });
+}
+
+async function readJson(request) {
+  const chunks = [];
+  const limit = Number(process.env.API_BODY_LIMIT_BYTES ?? DEFAULT_BODY_LIMIT_BYTES);
+  let total = 0;
+  for await (const chunk of request) {
+    total += chunk.length;
+    if (total > limit) { const e = new Error("Request body is too large"); e.status = 413; e.code = "body_too_large"; throw e; }
+    chunks.push(chunk);
   }
+  if (!chunks.length) return {};
+  const raw = Buffer.concat(chunks).toString("utf8");
+  if (!raw.trim()) return {};
+  try { return JSON.parse(raw); } catch { const e = new Error("Invalid JSON"); e.status = 400; e.code = "invalid_json"; throw e; }
+}
 
-  const orderItems = [];
-  for (const cartItem of cart.values()) {
-    const product = getPublicCatalogProduct(store, cartItem.productId);
-    if (!product) {
-      return {
-        error: {
-          status: 409,
-          code: "product_unavailable",
-          message: "One or more products in your cart are no longer available.",
-        },
-      };
-    }
-    if (product.quantityAvailable < cartItem.quantity) {
-      return {
-        error: {
-          status: 409,
-          code: "insufficient_stock",
-          message: `${product.name.en} has only ${product.quantityAvailable} item(s) available.`,
-        },
-      };
-    }
+function getSessionToken(request) {
+  const auth = request.headers.authorization;
+  if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length).trim();
+  const cookieHeader = request.headers.cookie ?? "";
+  const cookies = new Map(
+    cookieHeader.split(";").map((c) => c.trim()).filter(Boolean).map((c) => {
+      const i = c.indexOf("=");
+      return [c.slice(0, i), decodeURIComponent(c.slice(i + 1))];
+    }),
+  );
+  return cookies.get(SESSION_COOKIE) ?? "";
+}
 
-    const promotion = getActivePromotionForProduct(store, product, checkout.promotionCode);
-    const unitPrice = promotion ? Math.max(0, Math.round(product.price * (1 - promotion.discountPercent / 100))) : product.price;
-    const discountAmount = (product.price - unitPrice) * cartItem.quantity;
-    const lineTotal = unitPrice * cartItem.quantity;
-    const commissionRate = 0.1;
-    const commissionAmount = Math.round(lineTotal * commissionRate);
-    orderItems.push({
-      productId: product.id,
-      vendorUserId: product.vendorUserId,
-      vendorName: product.vendorName,
-      name: product.name,
-      unitPrice,
-      originalUnitPrice: product.price,
-      quantity: cartItem.quantity,
-      lineTotal,
-      discountAmount,
-      promotionId: promotion?.id,
-      commissionRate,
-      commissionAmount,
-      vendorPayout: lineTotal - commissionAmount,
-    });
-  }
+function createCookie(token) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`;
+}
 
-  const now = new Date().toISOString();
-  const itemsSubtotal = orderItems.reduce((total, item) => total + item.lineTotal, 0);
-  const deliveryFee = calculateDeliveryFee(checkout.deliveryOption);
-  const order = {
-    id: `KM-${randomUUID().slice(0, 8).toUpperCase()}`,
-    customerUserId: customer.id,
-    customerName: customer.name,
-    customerPhone: customer.phone,
-    items: orderItems,
-    deliveryOption: checkout.deliveryOption,
-    deliveryAddress: checkout.deliveryOption === "delivery" ? checkout.deliveryAddress : undefined,
-    deliveryArea: checkout.deliveryArea,
-    deliveryFee,
-    paymentMethod: checkout.paymentMethod,
-    paymentReference: `KM-PAY-${randomUUID().slice(0, 10).toUpperCase()}`,
-    paymentStatus: "pending",
-    itemsSubtotal,
-    subtotal: itemsSubtotal + deliveryFee,
-    commissionTotal: orderItems.reduce((total, item) => total + item.commissionAmount, 0),
-    vendorPayoutTotal: orderItems.reduce((total, item) => total + item.vendorPayout, 0),
-    status: "awaiting_confirmation",
-    createdAt: now,
-    updatedAt: now,
-  };
+function clearCookie() {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
+}
 
-  const payment = createPayment(store, order);
-  order.paymentId = payment.id;
-  order.paymentStatus = payment.status;
-  store.orders.set(order.id, order);
-  createLedgerEntriesForPaidOrder(store, order);
-  createNotification(store, {
-    audience: "customer",
-    recipientUserId: customer.id,
-    title: "Order placed",
-    message: `Order ${order.id} has been placed.`,
-    type: "order",
-    orderId: order.id,
-  });
-  notifyAdmins(store, {
-    title: "New order",
-    message: `Order ${order.id} is awaiting confirmation.`,
-    type: "order",
-    orderId: order.id,
-  });
-  for (const vendorUserId of new Set(orderItems.map((item) => item.vendorUserId))) {
-    createNotification(store, {
-      audience: "vendor",
-      recipientUserId: vendorUserId,
-      title: "New order",
-      message: `Order ${order.id} includes your product.`,
-      type: "order",
-      orderId: order.id,
-    });
-  }
+function assertAdmin(response, user) {
+  if (!user) { sendError(response, 401, "unauthenticated", "Sign in is required."); return false; }
+  if (user.role !== "admin") { sendError(response, 403, "forbidden", "Admin access is required."); return false; }
+  return true;
+}
 
-  for (const item of orderItems) {
-    const product = store.products.get(item.productId);
-    const quantityAvailable = product.quantityAvailable - item.quantity;
-    store.products.set(product.id, {
-      ...product,
-      quantityAvailable,
-      listingStatus: quantityAvailable > 0 ? product.listingStatus : "out_of_stock",
-      updatedAt: now,
-    });
-  }
-
-  store.carts.set(customer.id, new Map());
-  return { order };
+function assertAuthenticated(response, user) {
+  if (!user) { sendError(response, 401, "unauthenticated", "Sign in is required."); return false; }
+  return true;
 }
 
 function corsHeaders(request, allowedOrigin) {
   const origin = request.headers.origin;
   const allowOrigin = allowedOrigin === "*" ? "*" : origin && allowedOrigin.split(",").includes(origin) ? origin : "";
   if (!allowOrigin) return {};
-
   return {
     "access-control-allow-origin": allowOrigin,
     "access-control-allow-credentials": "true",
@@ -1494,1043 +1403,783 @@ function createRateLimiter(options = {}) {
   const windowMs = Number(options.windowMs ?? process.env.API_RATE_LIMIT_WINDOW_MS ?? 60_000);
   const maxRequests = Number(options.maxRequests ?? process.env.API_RATE_LIMIT_MAX ?? 600);
   const buckets = new Map();
-
   return {
     check(request) {
       if (maxRequests <= 0) return true;
-      const forwarded = request.headers["x-forwarded-for"]?.split(",")[0]?.trim();
-      const key = forwarded || request.socket?.remoteAddress || "local";
+      const key = request.headers["x-forwarded-for"]?.split(",")[0]?.trim() || request.socket?.remoteAddress || "local";
       const now = Date.now();
       const bucket = buckets.get(key);
-      if (!bucket || bucket.resetAt <= now) {
-        buckets.set(key, { count: 1, resetAt: now + windowMs });
-        return true;
-      }
+      if (!bucket || bucket.resetAt <= now) { buckets.set(key, { count: 1, resetAt: now + windowMs }); return true; }
       bucket.count += 1;
       return bucket.count <= maxRequests;
     },
   };
 }
 
+// ── Payment helpers ───────────────────────────────────────────────────────────
+
+function paymentStatusForMethod(method) {
+  return ["card", "ussd", "wallet"].includes(method) ? "paid" : "pending";
+}
+function paymentGatewayForMethod(method) {
+  return ["card", "ussd", "wallet"].includes(method) ? "prototype" : "manual";
+}
+function calcDeliveryFee(deliveryOption) {
+  return deliveryOption === "pickup" ? 0 : 1200;
+}
+
+function getAllowedNextStatuses(order) {
+  if (order.status === "cancelled" || order.status === "delivered") return [];
+  const flow =
+    order.deliveryOption === "pickup"
+      ? ["awaiting_confirmation", "preparing_order", "ready_for_pickup", "delivered"]
+      : ["awaiting_confirmation", "preparing_order", "ready_for_pickup", "assigned_to_rider", "out_for_delivery", "delivered"];
+  const idx = flow.indexOf(order.status);
+  const next = idx >= 0 ? flow[idx + 1] : undefined;
+  return ["cancelled", next].filter(Boolean);
+}
+
+// ── App ────────────────────────────────────────────────────────────────────────
+
 export function createApp(options = {}) {
-  const dataFile = options.dataFile ?? process.env.API_DATA_FILE;
-  const store = options.store ?? (dataFile ? createFileStore(dataFile) : createMemoryStore());
   const adminPhone = options.adminPhone ?? process.env.KANO_ADMIN_PHONE ?? DEFAULT_ADMIN_PHONE;
   const allowedOrigin = options.allowedOrigin ?? process.env.CORS_ORIGIN ?? "http://localhost:4173,http://localhost:63342";
   const rateLimiter = options.rateLimiter ?? createRateLimiter(options.rateLimit);
-  const remoteStoreConfig = options.remoteStoreConfig ?? null;
   const publicApiBasePath = options.publicApiBasePath ?? process.env.API_PUBLIC_BASE_PATH ?? "";
-  const persist = options.persist;
 
   async function handle(request, response) {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     const method = request.method ?? "GET";
     const headers = corsHeaders(request, allowedOrigin);
-    const originalEnd = response.end.bind(response);
-    response.end = (payload = "") => {
-      const finish = () => originalEnd(payload);
-      if (dataFile && method !== "OPTIONS") {
-        try {
-          persistStore(dataFile, store);
-        } catch (error) {
-          console.error("Failed to persist API data", error);
-        }
-      }
-      if (persist && method !== "OPTIONS") {
-        Promise.resolve(persist(store))
-          .catch((error) => console.error("Failed to persist remote API data", error))
-          .finally(finish);
-        return;
-      }
-      finish();
-    };
 
-    if (method === "OPTIONS") {
-      response.writeHead(204, headers);
-      response.end();
-      return;
-    }
-
-    if (!rateLimiter.check(request)) {
-      sendError(response, 429, "rate_limited", "Too many requests. Try again shortly.");
-      return;
-    }
+    if (method === "OPTIONS") { response.writeHead(204, headers); response.end(); return; }
+    if (!rateLimiter.check(request)) { sendError(response, 429, "rate_limited", "Too many requests."); return; }
 
     try {
+
       if (method === "GET" && requestUrl.pathname === "/health") {
-        send(response, 200, { status: "ok", service: "kano-mart-api" }, headers);
+        send(response, 200, { status: "ok", service: "kano-mart-api", db: "postgres" }, headers);
         return;
       }
 
+      // ── AUTH ──────────────────────────────────────────────────────────────
+
       if (method === "POST" && requestUrl.pathname === "/auth/register") {
-        const clientIp = request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ?? request.socket?.remoteAddress ?? "local";
-        if (!await checkRedisAuthRateLimit(remoteStoreConfig, clientIp)) {
-          sendError(response, 429, "rate_limited", "Too many attempts. Try again later.");
-          return;
-        }
         const body = await readJson(request);
         const parsed = validateSignup(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+
+        const existing = await dbGetUserByIdentifier(parsed.value.phone);
+        if (existing) { sendError(response, 409, "user_exists", "A user with this phone number already exists."); return; }
+        if (parsed.value.email) {
+          const existingEmail = await dbGetUserByIdentifier(parsed.value.email);
+          if (existingEmail) { sendError(response, 409, "email_exists", "A user with this email already exists."); return; }
         }
 
-        if (findUserByIdentifier(store, parsed.value.phone)) {
-          sendError(response, 409, "user_exists", "A user with this phone number already exists.");
-          return;
-        }
-        if (parsed.value.email && findUserByIdentifier(store, parsed.value.email)) {
-          sendError(response, 409, "email_exists", "A user with this email already exists.");
-          return;
+        const isAdmin = normalizePhone(parsed.value.phone) === normalizePhone(adminPhone);
+        const role = isAdmin ? "admin" : parsed.value.role;
+        const firstName = isAdmin ? "Admin" : parsed.value.firstName;
+        const lastName = isAdmin ? "" : parsed.value.lastName;
+        const displayName = isAdmin ? "Kano Mart Admin" : `${firstName} ${lastName}`.trim();
+
+        const user = await dbCreateUser({
+          id: randomUUID(), phone: parsed.value.phone, email: parsed.value.email || null,
+          passwordHash: hashPassword(parsed.value.password), firstName, lastName, name: displayName,
+          role, deliveryAddress: parsed.value.deliveryAddress || null,
+          preferredLanguage: parsed.value.preferredLanguage,
+          vendorStatus: role === "vendor" ? "pending" : null,
+        });
+
+        if (role === "vendor") {
+          await dbCreateVendorApplication({
+            id: randomUUID(), userId: user.id,
+            businessName: parsed.value.businessName || displayName,
+            phone: user.phone, area: parsed.value.area || "Kano",
+            category: parsed.value.category || "essentials",
+          });
+          await dbNotifyAdmins({ title: "New vendor application", message: `${displayName} applied to become a vendor.`, type: "vendor" });
         }
 
-        const user = createUser(store, parsed.value, adminPhone);
-        const session = createSession(store, user.id);
-        send(
-          response,
-          201,
-          { user: publicUser(user), token: session.token, expiresAt: session.expiresAt },
-          { ...headers, "set-cookie": createCookie(session.token) },
-        );
+        const session = await dbCreateSession(user.id);
+        send(response, 201, { user: publicUser(user), token: session.token, expiresAt: session.expiresAt },
+          { ...headers, "set-cookie": createCookie(session.token) });
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/auth/login") {
-        const clientIp = request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ?? request.socket?.remoteAddress ?? "local";
-        if (!await checkRedisAuthRateLimit(remoteStoreConfig, clientIp)) {
-          sendError(response, 429, "rate_limited", "Too many attempts. Try again later.");
-          return;
-        }
         const body = await readJson(request);
         const identifier = String(body.identifier ?? body.phone ?? body.email ?? "").trim();
         const password = String(body.password ?? "");
-        const user = findUserByIdentifier(store, identifier);
-
+        const user = await dbGetUserByIdentifier(identifier);
         if (!user || !verifyPassword(password, user.passwordHash)) {
-          sendError(response, 401, "invalid_credentials", "Phone/email or password is incorrect.");
-          return;
+          sendError(response, 401, "invalid_credentials", "Phone/email or password is incorrect."); return;
         }
-
-        const session = createSession(store, user.id);
-        send(
-          response,
-          200,
-          { user: publicUser(user), token: session.token, expiresAt: session.expiresAt },
-          { ...headers, "set-cookie": createCookie(session.token) },
-        );
+        const session = await dbCreateSession(user.id);
+        send(response, 200, { user: publicUser(user), token: session.token, expiresAt: session.expiresAt },
+          { ...headers, "set-cookie": createCookie(session.token) });
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/auth/logout") {
         const token = getSessionToken(request);
-        if (token) store.sessions.delete(token);
+        await dbDeleteSession(token);
         send(response, 200, { ok: true }, { ...headers, "set-cookie": clearCookie() });
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/me") {
-        const user = getCurrentUser(request, store);
-        if (!user) {
-          sendError(response, 401, "unauthenticated", "Sign in is required.");
-          return;
-        }
+        const user = await dbGetSessionUser(getSessionToken(request));
+        if (!user) { sendError(response, 401, "unauthenticated", "Sign in is required."); return; }
         send(response, 200, { user: publicUser(user) }, headers);
         return;
       }
 
+      // ── NOTIFICATIONS ─────────────────────────────────────────────────────
+
       if (method === "GET" && requestUrl.pathname === "/notifications") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        const notifications = Array.from(store.notifications.values())
-          .filter((notification) => notification.recipientUserId === user.id)
-          .map(publicNotification);
-        send(response, 200, { notifications }, headers);
+        const notifications = await dbGetNotifications(user.id);
+        send(response, 200, { notifications: notifications.map(publicNotification) }, headers);
         return;
       }
 
-      const notificationMatch = requestUrl.pathname.match(/^\/notifications\/([^/]+)$/);
-      if (method === "PATCH" && notificationMatch) {
-        const user = getCurrentUser(request, store);
+      const notifMatch = requestUrl.pathname.match(/^\/notifications\/([^/]+)$/);
+      if (method === "PATCH" && notifMatch) {
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        const notification = store.notifications.get(decodeURIComponent(notificationMatch[1]));
-        if (!notification || notification.recipientUserId !== user.id) {
-          sendError(response, 404, "notification_not_found", "Notification was not found.");
-          return;
-        }
-        const nextNotification = { ...notification, readAt: new Date().toISOString() };
-        store.notifications.set(nextNotification.id, nextNotification);
-        send(response, 200, { notification: publicNotification(nextNotification) }, headers);
+        const notif = await dbMarkNotificationRead(decodeURIComponent(notifMatch[1]), user.id);
+        if (!notif) { sendError(response, 404, "notification_not_found", "Notification not found."); return; }
+        send(response, 200, { notification: publicNotification(notif) }, headers);
         return;
       }
+
+      // ── CATEGORIES ────────────────────────────────────────────────────────
 
       if (method === "GET" && requestUrl.pathname === "/categories") {
-        send(response, 200, { categories: Array.from(store.categories.values()).map(publicCategory) }, headers);
+        const cats = await dbGetCategories();
+        send(response, 200, { categories: cats.map(publicCategory) }, headers);
         return;
       }
+
+      // ── UPLOADS ───────────────────────────────────────────────────────────
 
       const uploadMatch = requestUrl.pathname.match(/^\/uploads\/([^/]+)$/);
       if (method === "GET" && uploadMatch) {
-        const upload = store.uploads.get(decodeURIComponent(uploadMatch[1]));
-        if (!upload) {
-          sendError(response, 404, "upload_not_found", "Upload was not found.");
+        const upload = await dbGetUpload(decodeURIComponent(uploadMatch[1]));
+        if (!upload) { sendError(response, 404, "upload_not_found", "Upload not found."); return; }
+        // New uploads: redirect to Vercel Blob CDN URL (no DB read cost)
+        if (upload.blobUrl || (!upload.dataUrl)) {
+          const dest = upload.blobUrl ?? upload.url;
+          response.writeHead(301, { location: dest, "cache-control": "public, max-age=31536000, immutable" });
+          response.end();
           return;
         }
+        // Legacy uploads: serve the stored base64 (backward compat)
         const base64 = upload.dataUrl.slice(upload.dataUrl.indexOf(",") + 1);
-        response.writeHead(200, {
-          "content-type": upload.mimeType,
-          "cache-control": "public, max-age=31536000, immutable",
-          "x-content-type-options": "nosniff",
-        });
+        response.writeHead(200, { "content-type": upload.mimeType, "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff" });
         response.end(Buffer.from(base64, "base64"));
         return;
       }
 
+      // ── VENDOR ────────────────────────────────────────────────────────────
+
       if (method === "GET" && requestUrl.pathname === "/vendor/application") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
-
-        const application = findVendorApplicationByUserId(store, user.id);
-        if (!application) {
-          sendError(response, 404, "vendor_application_not_found", "Vendor application was not found.");
-          return;
-        }
-
-        send(response, 200, { application: publicVendorApplication(store, application) }, headers);
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
+        const app = await dbGetVendorApplicationByUserId(user.id);
+        if (!app) { sendError(response, 404, "vendor_application_not_found", "Application not found."); return; }
+        send(response, 200, { application: publicVendorApplication(app) }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/vendor/products") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
-
-        const products = Array.from(store.products.values())
-          .filter((product) => product.vendorUserId === user.id)
-          .map((product) => publicProduct(store, product, { includeAdminFields: true }));
-        send(response, 200, { products }, headers);
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
+        const products = await dbGetProductsForVendor(user.id);
+        send(response, 200, { products: products.map((p) => publicProduct(p, { includeAdminFields: true })) }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/vendor/products") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
-        if (user.vendorStatus !== "approved") {
-          sendError(response, 403, "vendor_not_approved", "Vendor approval is required before creating products.");
-          return;
-        }
-
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
+        if (user.vendorStatus !== "approved") { sendError(response, 403, "vendor_not_approved", "Vendor approval required."); return; }
         const body = await readJson(request);
         const parsed = validateProductInput(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-
-        const product = createProduct(store, user, parsed.value);
-        send(response, 201, { product: publicProduct(store, product, { includeAdminFields: true }) }, headers);
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+        const product = await dbCreateProduct(user.id, user.name, parsed.value);
+        send(response, 201, { product: publicProduct(product, { includeAdminFields: true }) }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/vendor/uploads") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
-        if (user.vendorStatus !== "approved") {
-          sendError(response, 403, "vendor_not_approved", "Vendor approval is required before uploading product images.");
-          return;
-        }
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
+        if (user.vendorStatus !== "approved") { sendError(response, 403, "vendor_not_approved", "Vendor approval required."); return; }
         const parsed = validateUploadInput(await readJson(request));
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+
         const uploadId = randomUUID();
-        const upload = {
-          id: uploadId,
-          vendorUserId: user.id,
-          fileName: parsed.value.fileName,
+        const base64Data = parsed.value.dataUrl.replace(/^data:[^;]+;base64,/, "");
+        const buffer = Buffer.from(base64Data, "base64");
+        const ext = parsed.value.mimeType === "image/png" ? "png" : parsed.value.mimeType === "image/webp" ? "webp" : "jpg";
+        const blobPath = `products/${uploadId}.${ext}`;
+
+        let blobUrl = null;
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+          const blob = await blobPut(blobPath, buffer, {
+            access: "public",
+            contentType: parsed.value.mimeType,
+            token: process.env.BLOB_READ_WRITE_TOKEN,
+          });
+          blobUrl = blob.url;
+        }
+
+        const finalUrl = blobUrl ?? `${publicApiBasePath}/uploads/${uploadId}`;
+        const upload = await dbSaveUpload({
+          id: uploadId, vendorUserId: user.id, fileName: parsed.value.fileName,
           mimeType: parsed.value.mimeType,
-          dataUrl: parsed.value.dataUrl,
-          url: `${publicApiBasePath}/uploads/${uploadId}`,
-          createdAt: new Date().toISOString(),
-        };
-        store.uploads.set(upload.id, upload);
-        send(response, 201, { upload: { id: upload.id, url: upload.url, fileName: upload.fileName, mimeType: upload.mimeType } }, headers);
+          // Only store raw data if Blob storage is unavailable (fallback)
+          dataUrl: blobUrl ? null : parsed.value.dataUrl,
+          blobUrl,
+          url: finalUrl,
+        });
+        send(response, 201, { upload: { id: upload.id, url: finalUrl, fileName: upload.fileName, mimeType: upload.mimeType } }, headers);
         return;
       }
 
       const vendorProductMatch = requestUrl.pathname.match(/^\/vendor\/products\/([^/]+)$/);
       if (method === "PATCH" && vendorProductMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
-
-        const product = store.products.get(decodeURIComponent(vendorProductMatch[1]));
-        if (!product || product.vendorUserId !== user.id) {
-          sendError(response, 404, "product_not_found", "Product was not found.");
-          return;
-        }
-
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
+        const product = await dbGetProductById(decodeURIComponent(vendorProductMatch[1]));
+        if (!product || product.vendorUserId !== user.id) { sendError(response, 404, "product_not_found", "Product not found."); return; }
         const body = await readJson(request);
         const parsed = validateListingStatus(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-
-        const nextProduct = {
-          ...product,
-          listingStatus: parsed.value.listingStatus,
-          updatedAt: new Date().toISOString(),
-        };
-        store.products.set(nextProduct.id, nextProduct);
-        send(response, 200, { product: publicProduct(store, nextProduct, { includeAdminFields: true }) }, headers);
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+        const updated = await dbUpdateProductListing(product.id, parsed.value.listingStatus);
+        send(response, 200, { product: publicProduct(updated, { includeAdminFields: true }) }, headers);
         return;
       }
+
+      // ── PRODUCTS ──────────────────────────────────────────────────────────
 
       if (method === "GET" && requestUrl.pathname === "/products") {
         const category = requestUrl.searchParams.get("category")?.toLowerCase();
         const query = requestUrl.searchParams.get("q")?.trim().toLowerCase();
-        if (query) {
-          store.searchEvents.push({
-            id: randomUUID(),
-            query,
-            createdAt: new Date().toISOString(),
-          });
-          if (store.searchEvents.length > 10_000) store.searchEvents = store.searchEvents.slice(-5_000);
-        }
-        const products = Array.from(store.products.values())
-          .filter((product) => product.moderationStatus === "approved" && product.listingStatus === "active")
-          .filter((product) => !category || product.category === category)
-          .filter(
-            (product) =>
-              !query ||
-              product.name.en.toLowerCase().includes(query) ||
-              product.name.ha.toLowerCase().includes(query) ||
-              product.tags.some((tag) => tag.includes(query)),
-          )
-          .map((product) => publicProduct(store, product));
-
-        send(response, 200, { products }, headers);
+        if (query) await dbRecordSearchEvent(query);
+        const products = await dbGetPublicCatalog(category, query);
+        send(response, 200, { products: products.map((p) => publicProduct(p)) }, headers);
         return;
       }
 
       const productDetailMatch = requestUrl.pathname.match(/^\/products\/([^/]+)$/);
       if (method === "GET" && productDetailMatch) {
-        const product = getPublicCatalogProduct(store, decodeURIComponent(productDetailMatch[1]));
-        if (!product) {
-          sendError(response, 404, "product_not_found", "Product was not found.");
-          return;
+        const product = await dbGetProductById(decodeURIComponent(productDetailMatch[1]), true);
+        if (!product || product.moderationStatus !== "approved" || product.listingStatus !== "active") {
+          sendError(response, 404, "product_not_found", "Product not found."); return;
         }
-        const currentViews = store.productViews.get(product.id) ?? { productId: product.id, views: 0 };
-        store.productViews.set(product.id, {
-          productId: product.id,
-          views: currentViews.views + 1,
-          lastViewedAt: new Date().toISOString(),
-        });
-        send(response, 200, { product: publicProduct(store, product) }, headers);
+        await dbIncrementProductView(product.id);
+        send(response, 200, { product: publicProduct(product) }, headers);
         return;
       }
 
+      // ── WISHLIST ──────────────────────────────────────────────────────────
+
       if (method === "GET" && requestUrl.pathname === "/wishlist") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
-        send(response, 200, { products: getWishlistProducts(store, user.id) }, headers);
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
+        const products = await dbGetWishlist(user.id);
+        send(response, 200, { products: products.map((p) => publicProduct(p)) }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/wishlist") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const body = await readJson(request);
-        const product = getPublicCatalogProduct(store, String(body.productId ?? ""));
-        if (!product) {
-          sendError(response, 404, "product_not_found", "Product was not found.");
-          return;
+        const product = await dbGetProductById(String(body.productId ?? ""), true);
+        if (!product || product.moderationStatus !== "approved" || product.listingStatus !== "active") {
+          sendError(response, 404, "product_not_found", "Product not found."); return;
         }
-        const wishlist = store.wishlists.get(user.id) ?? new Set();
-        wishlist.add(product.id);
-        store.wishlists.set(user.id, wishlist);
-        send(response, 200, { products: getWishlistProducts(store, user.id) }, headers);
+        await dbAddWishlist(user.id, product.id);
+        const products = await dbGetWishlist(user.id);
+        send(response, 200, { products: products.map((p) => publicProduct(p)) }, headers);
         return;
       }
 
       const wishlistMatch = requestUrl.pathname.match(/^\/wishlist\/([^/]+)$/);
       if (method === "DELETE" && wishlistMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
-        const wishlist = store.wishlists.get(user.id) ?? new Set();
-        wishlist.delete(decodeURIComponent(wishlistMatch[1]));
-        store.wishlists.set(user.id, wishlist);
-        send(response, 200, { products: getWishlistProducts(store, user.id) }, headers);
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
+        await dbRemoveWishlist(user.id, decodeURIComponent(wishlistMatch[1]));
+        const products = await dbGetWishlist(user.id);
+        send(response, 200, { products: products.map((p) => publicProduct(p)) }, headers);
         return;
       }
 
+      // ── REVIEWS ───────────────────────────────────────────────────────────
+
       if (method === "GET" && requestUrl.pathname.match(/^\/products\/[^/]+\/reviews$/)) {
         const productId = decodeURIComponent(requestUrl.pathname.split("/")[2]);
-        const reviews = Array.from(store.reviews.values())
-          .filter((review) => review.productId === productId && !review.hidden)
-          .map((review) => publicReview(store, review));
-        send(response, 200, { reviews }, headers);
+        const reviews = await dbGetReviews(productId, false);
+        send(response, 200, { reviews: reviews.map(publicReview) }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/reviews") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const body = await readJson(request);
         const parsed = validateReviewInput(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-        const result = createReview(store, user, parsed.value);
-        if (result.error) {
-          sendError(response, result.error.status, result.error.code, result.error.message);
-          return;
-        }
-        send(response, 201, { review: publicReview(store, result.review) }, headers);
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+        const product = await dbGetProductById(parsed.value.productId, true);
+        if (!product) { sendError(response, 404, "product_not_found", "Product not found."); return; }
+        const canReview = await dbCustomerHasDeliveredOrder(user.id, parsed.value.productId);
+        if (!canReview) { sendError(response, 403, "review_not_allowed", "Only customers with delivered orders can review this product."); return; }
+        const review = await dbCreateReview({ productId: parsed.value.productId, vendorUserId: product.vendorUserId, customerUserId: user.id, reviewerName: user.name, rating: parsed.value.rating, comment: parsed.value.comment });
+        await dbCreateNotification({ audience: "vendor", recipientUserId: product.vendorUserId, title: "New product review", message: `${user.name} reviewed ${product.name.en}.`, type: "review", productId: product.id });
+        send(response, 201, { review: publicReview(review) }, headers);
         return;
       }
 
-      if (method === "GET" && requestUrl.pathname === "/cart") {
-        const user = getCurrentUser(request, store);
-        if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
+      // ── CART ──────────────────────────────────────────────────────────────
 
-        send(response, 200, { cart: publicCart(store, user.id) }, headers);
+      if (method === "GET" && requestUrl.pathname === "/cart") {
+        const user = await dbGetSessionUser(getSessionToken(request));
+        if (!assertAuthenticated(response, user)) return;
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
+        const cartRows = await dbGetCart(user.id);
+        const items = cartRows.map((r) => {
+          const product = productFromRow(r);
+          return { productId: r.product_id, quantity: r.quantity, product: publicProduct(product), lineTotal: product.price * r.quantity, addedAt: r.added_at, updatedAt: r.updated_at };
+        });
+        send(response, 200, { cart: { items, subtotal: items.reduce((t, i) => t + i.lineTotal, 0) } }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/cart/items") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
-
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const body = await readJson(request);
         const parsed = validateCartItem(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-
-        const product = getPublicCatalogProduct(store, parsed.value.productId);
-        if (!product) {
-          sendError(response, 404, "product_not_found", "Product was not found.");
-          return;
-        }
-        if (product.quantityAvailable < parsed.value.quantity) {
-          sendError(response, 409, "insufficient_stock", `${product.name.en} has only ${product.quantityAvailable} item(s) available.`);
-          return;
-        }
-
-        upsertCartItem(store, user.id, parsed.value);
-        send(response, 200, { cart: publicCart(store, user.id) }, headers);
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+        const product = await dbGetProductById(parsed.value.productId, true);
+        if (!product || product.moderationStatus !== "approved" || product.listingStatus !== "active") { sendError(response, 404, "product_not_found", "Product not found."); return; }
+        if (product.quantityAvailable < parsed.value.quantity) { sendError(response, 409, "insufficient_stock", `${product.name.en} has only ${product.quantityAvailable} available.`); return; }
+        await dbUpsertCartItem(user.id, parsed.value.productId, parsed.value.quantity);
+        const cartRows = await dbGetCart(user.id);
+        const items = cartRows.map((r) => { const p = productFromRow(r); return { productId: r.product_id, quantity: r.quantity, product: publicProduct(p), lineTotal: p.price * r.quantity, addedAt: r.added_at, updatedAt: r.updated_at }; });
+        send(response, 200, { cart: { items, subtotal: items.reduce((t, i) => t + i.lineTotal, 0) } }, headers);
         return;
       }
 
       const cartItemMatch = requestUrl.pathname.match(/^\/cart\/items\/([^/]+)$/);
       if ((method === "PATCH" || method === "DELETE") && cartItemMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
-
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const productId = decodeURIComponent(cartItemMatch[1]);
-        const cart = store.carts.get(user.id) ?? new Map();
-
         if (method === "DELETE") {
-          cart.delete(productId);
-          store.carts.set(user.id, cart);
-          send(response, 200, { cart: publicCart(store, user.id) }, headers);
-          return;
+          await dbDeleteCartItem(user.id, productId);
+        } else {
+          const body = await readJson(request);
+          const parsed = validateCartItem({ ...body, productId });
+          if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+          const product = await dbGetProductById(productId, true);
+          if (!product || product.moderationStatus !== "approved" || product.listingStatus !== "active") { sendError(response, 404, "product_not_found", "Product not found."); return; }
+          if (product.quantityAvailable < parsed.value.quantity) { sendError(response, 409, "insufficient_stock", `${product.name.en} has only ${product.quantityAvailable} available.`); return; }
+          await dbUpsertCartItem(user.id, productId, parsed.value.quantity);
         }
-
-        const body = await readJson(request);
-        const parsed = validateCartItem({ ...body, productId });
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-
-        if (!cart.has(productId)) {
-          sendError(response, 404, "cart_item_not_found", "Cart item was not found.");
-          return;
-        }
-
-        const product = getPublicCatalogProduct(store, productId);
-        if (!product) {
-          sendError(response, 404, "product_not_found", "Product was not found.");
-          return;
-        }
-        if (product.quantityAvailable < parsed.value.quantity) {
-          sendError(response, 409, "insufficient_stock", `${product.name.en} has only ${product.quantityAvailable} item(s) available.`);
-          return;
-        }
-
-        upsertCartItem(store, user.id, parsed.value);
-        send(response, 200, { cart: publicCart(store, user.id) }, headers);
+        const cartRows = await dbGetCart(user.id);
+        const items = cartRows.map((r) => { const p = productFromRow(r); return { productId: r.product_id, quantity: r.quantity, product: publicProduct(p), lineTotal: p.price * r.quantity, addedAt: r.added_at, updatedAt: r.updated_at }; });
+        send(response, 200, { cart: { items, subtotal: items.reduce((t, i) => t + i.lineTotal, 0) } }, headers);
         return;
       }
+
+      // ── CHECKOUT ──────────────────────────────────────────────────────────
 
       if (method === "POST" && requestUrl.pathname === "/checkout") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
-
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const body = await readJson(request);
         const parsed = validateCheckout(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+
+        const cartRows = await dbGetCart(user.id);
+        if (!cartRows.length) { sendError(response, 409, "cart_empty", "Cart is empty."); return; }
+
+        const orderItems = [];
+        for (const row of cartRows) {
+          const product = productFromRow(row);
+          if (product.moderationStatus !== "approved" || product.listingStatus !== "active") { sendError(response, 409, "product_unavailable", "One or more products in your cart are no longer available."); return; }
+          if (product.quantityAvailable < row.quantity) { sendError(response, 409, "insufficient_stock", `${product.name.en} has only ${product.quantityAvailable} available.`); return; }
+          const promo = await dbGetActivePromotionForProduct(product, parsed.value.promotionCode);
+          const unitPrice = promo ? Math.max(0, Math.round(product.price * (1 - promo.discountPercent / 100))) : product.price;
+          const discountAmount = (product.price - unitPrice) * row.quantity;
+          const lineTotal = unitPrice * row.quantity;
+          const commissionRate = 0.1;
+          const commissionAmount = Math.round(lineTotal * commissionRate);
+          orderItems.push({ productId: product.id, vendorUserId: product.vendorUserId, vendorName: product.vendorName, name: product.name, unitPrice, originalUnitPrice: product.price, quantity: row.quantity, lineTotal, discountAmount, promotionId: promo?.id, commissionRate, commissionAmount, vendorPayout: lineTotal - commissionAmount });
         }
 
-        const result = createOrderFromCart(store, user, parsed.value);
-        if (result.error) {
-          sendError(response, result.error.status, result.error.code, result.error.message);
-          return;
+        const itemsSubtotal = orderItems.reduce((t, i) => t + i.lineTotal, 0);
+        const deliveryFee = calcDeliveryFee(parsed.value.deliveryOption);
+        const now = new Date().toISOString();
+        const paymentStatus = paymentStatusForMethod(parsed.value.paymentMethod);
+        const paymentId = randomUUID();
+        const order = {
+          id: `KM-${randomUUID().slice(0, 8).toUpperCase()}`,
+          customerUserId: user.id, customerName: user.name, customerPhone: user.phone,
+          deliveryOption: parsed.value.deliveryOption, deliveryAddress: parsed.value.deliveryOption === "delivery" ? parsed.value.deliveryAddress : undefined,
+          deliveryArea: parsed.value.deliveryArea, deliveryFee,
+          paymentMethod: parsed.value.paymentMethod, paymentReference: `KM-PAY-${randomUUID().slice(0, 10).toUpperCase()}`,
+          paymentStatus, itemsSubtotal, subtotal: itemsSubtotal + deliveryFee,
+          commissionTotal: orderItems.reduce((t, i) => t + i.commissionAmount, 0),
+          vendorPayoutTotal: orderItems.reduce((t, i) => t + i.vendorPayout, 0),
+        };
+        const payment = { id: paymentId, orderId: order.id, reference: order.paymentReference, method: order.paymentMethod, gateway: paymentGatewayForMethod(order.paymentMethod), amount: order.subtotal, currency: "NGN", status: paymentStatus, verifiedAt: paymentStatus === "paid" ? now : null };
+
+        await dbCreateOrderWithItems(order, orderItems, payment);
+        for (const item of orderItems) await dbDecrementProductQuantity(item.productId, item.quantity);
+        await dbClearCart(user.id);
+
+        await dbCreateNotification({ audience: "customer", recipientUserId: user.id, title: "Order placed", message: `Order ${order.id} has been placed.`, type: "order", orderId: order.id });
+        await dbNotifyAdmins({ title: "New order", message: `Order ${order.id} is awaiting confirmation.`, type: "order", orderId: order.id });
+        for (const vendorId of new Set(orderItems.map((i) => i.vendorUserId))) {
+          await dbCreateNotification({ audience: "vendor", recipientUserId: vendorId, title: "New order", message: `Order ${order.id} includes your product.`, type: "order", orderId: order.id });
         }
 
-        send(response, 201, { order: publicOrder(store, result.order), cart: publicCart(store, user.id) }, headers);
+        const placedOrder = await dbGetOrderWithItems(order.id);
+        send(response, 201, { order: publicOrder(placedOrder), cart: { items: [], subtotal: 0 } }, headers);
+        // Fire-and-forget emails — never block the response
+        if (user.email) void sendEmail({ to: user.email, subject: `Order ${order.id} confirmed — Kano Mart`, html: orderConfirmationEmail(placedOrder, user.name) });
+        for (const vendorId of new Set(orderItems.map((i) => i.vendorUserId))) {
+          dbGetUserById(vendorId).then((v) => {
+            if (v?.email) void sendEmail({ to: v.email, subject: `New order ${order.id} — Kano Mart`, html: vendorNewOrderEmail(v.name, placedOrder) });
+          }).catch(() => {});
+        }
         return;
       }
 
-      if (method === "GET" && requestUrl.pathname === "/orders") {
-        const user = getCurrentUser(request, store);
-        if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "customer") {
-          sendError(response, 403, "forbidden", "Customer access is required.");
-          return;
-        }
+      // ── ORDERS ────────────────────────────────────────────────────────────
 
-        const orders = Array.from(store.orders.values())
-          .filter((order) => order.customerUserId === user.id)
-          .map((order) => publicOrder(store, order));
-        send(response, 200, { orders }, headers);
+      if (method === "GET" && requestUrl.pathname === "/orders") {
+        const user = await dbGetSessionUser(getSessionToken(request));
+        if (!assertAuthenticated(response, user)) return;
+        if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
+        const orders = await dbGetOrdersForCustomer(user.id);
+        send(response, 200, { orders: orders.map(publicOrder) }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/vendor/orders") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
-
-        const orders = Array.from(store.orders.values())
-          .filter((order) => order.items.some((item) => item.vendorUserId === user.id))
-          .map((order) => ({
-            ...publicOrder(store, order),
-            items: order.items.filter((item) => item.vendorUserId === user.id),
-          }));
-        send(response, 200, { orders }, headers);
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
+        const orders = await dbGetOrdersForVendor(user.id);
+        send(response, 200, { orders: orders.map(publicOrder) }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/vendor/reviews") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
-        const reviews = Array.from(store.reviews.values())
-          .filter((review) => review.vendorUserId === user.id)
-          .map((review) => publicReview(store, review, { includeAdminFields: true }));
-        send(response, 200, { reviews }, headers);
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
+        const reviews = await dbGetVendorReviews(user.id);
+        send(response, 200, { reviews: reviews.map(publicReview) }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/vendor/wallet") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
-        const payouts = Array.from(store.payoutRequests.values())
-          .filter((payout) => payout.vendorUserId === user.id)
-          .map(publicPayoutRequest);
-        send(response, 200, { wallet: getVendorWalletSummary(store, user.id), payouts }, headers);
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
+        const wallet = await dbGetVendorWallet(user.id);
+        const payouts = await dbGetPayoutRequests(user.id);
+        send(response, 200, { wallet, payouts: payouts.map(publicPayoutRequest) }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/vendor/payouts") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAuthenticated(response, user)) return;
-        if (user.role !== "vendor") {
-          sendError(response, 403, "forbidden", "Vendor access is required.");
-          return;
-        }
+        if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
         const body = await readJson(request);
         const parsed = validatePayoutInput(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-        const wallet = getVendorWalletSummary(store, user.id);
-        if (parsed.value.amount > wallet.availableBalance) {
-          sendError(response, 409, "insufficient_wallet_balance", "Payout amount exceeds available balance.");
-          return;
-        }
-        const payout = {
-          id: randomUUID(),
-          vendorUserId: user.id,
-          amount: parsed.value.amount,
-          status: "pending",
-          bankName: parsed.value.bankName,
-          accountNumber: parsed.value.accountNumber,
-          accountName: parsed.value.accountName,
-          requestedAt: new Date().toISOString(),
-        };
-        store.payoutRequests.set(payout.id, payout);
-        notifyAdmins(store, {
-          title: "New payout request",
-          message: `${user.name} requested NGN ${payout.amount}.`,
-          type: "payout",
-        });
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+        const wallet = await dbGetVendorWallet(user.id);
+        if (parsed.value.amount > wallet.availableBalance) { sendError(response, 409, "insufficient_wallet_balance", "Payout exceeds available balance."); return; }
+        const payout = await dbCreatePayoutRequest({ id: randomUUID(), vendorUserId: user.id, ...parsed.value });
+        await dbNotifyAdmins({ title: "New payout request", message: `${user.name} requested NGN ${payout.amount}.`, type: "payout" });
         send(response, 201, { payout: publicPayoutRequest(payout) }, headers);
         return;
       }
 
+      // ── ADMIN ─────────────────────────────────────────────────────────────
+
       if (method === "GET" && requestUrl.pathname === "/admin/users") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        send(response, 200, { users: Array.from(store.users.values()).map(publicUser) }, headers);
+        const users = await dbGetAllUsers();
+        send(response, 200, { users: users.map(publicUser) }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/admin/categories") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
         const body = await readJson(request);
         const parsed = validateCategoryInput(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-        const now = new Date().toISOString();
-        const existing = store.categories.get(parsed.value.key);
-        const category = {
-          ...parsed.value,
-          createdAt: existing?.createdAt ?? now,
-          updatedAt: now,
-        };
-        store.categories.set(category.key, category);
-        send(response, existing ? 200 : 201, { category: publicCategory(category) }, headers);
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+        const cat = await dbUpsertCategory(parsed.value);
+        send(response, 200, { category: publicCategory(cat) }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/promotions") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        send(response, 200, { promotions: Array.from(store.promotions.values()).map(publicPromotion) }, headers);
+        const promotions = await dbGetPromotions(false);
+        send(response, 200, { promotions: promotions.map((p) => ({ id: p.id, title: { en: p.titleEn ?? p.title_en, ha: p.titleHa ?? p.title_ha }, type: p.type, discountPercent: p.discountPercent ?? p.discount_percent, code: p.code, productId: p.productId ?? p.product_id, vendorUserId: p.vendorUserId ?? p.vendor_user_id, category: p.category, active: p.active, startsAt: p.startsAt ?? p.starts_at, endsAt: p.endsAt ?? p.ends_at, createdAt: p.createdAt ?? p.created_at })) }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/admin/promotions") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
         const body = await readJson(request);
         const parsed = validatePromotionInput(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-        const now = new Date().toISOString();
-        const promotion = {
-          id: randomUUID(),
-          ...parsed.value,
-          createdAt: now,
-          updatedAt: now,
-        };
-        store.promotions.set(promotion.id, promotion);
-        send(response, 201, { promotion: publicPromotion(promotion) }, headers);
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+        const promo = await dbCreatePromotion(parsed.value);
+        send(response, 201, { promotion: { id: promo.id, title: { en: promo.titleEn ?? promo.title_en, ha: promo.titleHa ?? promo.title_ha }, type: promo.type, discountPercent: promo.discountPercent ?? promo.discount_percent, active: promo.active } }, headers);
         return;
       }
 
-      const adminPromotionMatch = requestUrl.pathname.match(/^\/admin\/promotions\/([^/]+)$/);
-      if (method === "PATCH" && adminPromotionMatch) {
-        const user = getCurrentUser(request, store);
+      const adminPromoMatch = requestUrl.pathname.match(/^\/admin\/promotions\/([^/]+)$/);
+      if (method === "PATCH" && adminPromoMatch) {
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const promotion = store.promotions.get(decodeURIComponent(adminPromotionMatch[1]));
-        if (!promotion) {
-          sendError(response, 404, "promotion_not_found", "Promotion was not found.");
-          return;
-        }
         const body = await readJson(request);
-        const nextPromotion = {
-          ...promotion,
-          active: typeof body.active === "boolean" ? body.active : promotion.active,
-          updatedAt: new Date().toISOString(),
-        };
-        store.promotions.set(nextPromotion.id, nextPromotion);
-        send(response, 200, { promotion: publicPromotion(nextPromotion) }, headers);
+        const promo = await dbUpdatePromotion(decodeURIComponent(adminPromoMatch[1]), typeof body.active === "boolean" ? body.active : true);
+        if (!promo) { sendError(response, 404, "promotion_not_found", "Promotion not found."); return; }
+        send(response, 200, { promotion: promo }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/reviews") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        send(
-          response,
-          200,
-          { reviews: Array.from(store.reviews.values()).map((review) => publicReview(store, review, { includeAdminFields: true })) },
-          headers,
-        );
+        const reviews = await dbGetAllReviews();
+        send(response, 200, { reviews: reviews.map(publicReview) }, headers);
         return;
       }
 
       const adminReviewMatch = requestUrl.pathname.match(/^\/admin\/reviews\/([^/]+)$/);
       if (method === "PATCH" && adminReviewMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const review = store.reviews.get(decodeURIComponent(adminReviewMatch[1]));
-        if (!review) {
-          sendError(response, 404, "review_not_found", "Review was not found.");
-          return;
-        }
-        const decision = validateReviewModeration(await readJson(request));
-        const nextReview = {
-          ...review,
-          hidden: decision.value.hidden,
-          adminNote: decision.value.adminNote || undefined,
-          updatedAt: new Date().toISOString(),
-        };
-        store.reviews.set(nextReview.id, nextReview);
-        send(response, 200, { review: publicReview(store, nextReview, { includeAdminFields: true }) }, headers);
+        const body = await readJson(request);
+        const review = await dbUpdateReview(decodeURIComponent(adminReviewMatch[1]), Boolean(body.hidden), sanitizeText(body.adminNote ?? "", 500));
+        if (!review) { sendError(response, 404, "review_not_found", "Review not found."); return; }
+        send(response, 200, { review: publicReview(review) }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/payouts") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        send(response, 200, { payouts: Array.from(store.payoutRequests.values()).map(publicPayoutRequest) }, headers);
+        const payouts = await dbGetPayoutRequests(null);
+        send(response, 200, { payouts: payouts.map(publicPayoutRequest) }, headers);
         return;
       }
 
       const adminPayoutMatch = requestUrl.pathname.match(/^\/admin\/payouts\/([^/]+)$/);
       if (method === "PATCH" && adminPayoutMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const payout = store.payoutRequests.get(decodeURIComponent(adminPayoutMatch[1]));
-        if (!payout) {
-          sendError(response, 404, "payout_not_found", "Payout request was not found.");
-          return;
-        }
-        if (payout.status !== "pending") {
-          sendError(response, 409, "payout_already_reviewed", "Payout request has already been reviewed.");
-          return;
-        }
+        const payoutId = decodeURIComponent(adminPayoutMatch[1]);
+        const payouts = await dbGetPayoutRequests(null);
+        const payout = payouts.find((p) => p.id === payoutId);
+        if (!payout) { sendError(response, 404, "payout_not_found", "Payout not found."); return; }
+        if (payout.status !== "pending") { sendError(response, 409, "payout_already_reviewed", "Payout already reviewed."); return; }
         const decision = validatePayoutDecision(await readJson(request));
-        if (!decision.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors);
-          return;
+        if (!decision.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors); return; }
+        if (decision.value.status === "approved") {
+          const wallet = await dbGetVendorWallet(payout.vendorUserId ?? payout.vendor_user_id);
+          if (payout.amount > wallet.availableBalance) { sendError(response, 409, "insufficient_wallet_balance", "Payout exceeds available balance."); return; }
         }
-        const wallet = getVendorWalletSummary(store, payout.vendorUserId);
-        if (decision.value.status === "approved" && payout.amount > wallet.availableBalance) {
-          sendError(response, 409, "insufficient_wallet_balance", "Payout amount exceeds available balance.");
-          return;
-        }
-        const nextPayout = updatePayoutStatus(store, payout, decision.value);
-        createNotification(store, {
-          audience: "vendor",
-          recipientUserId: nextPayout.vendorUserId,
-          title: `Payout ${nextPayout.status}`,
-          message: `Your payout request for NGN ${nextPayout.amount} was ${nextPayout.status}.`,
-          type: "payout",
-        });
-        send(response, 200, { payout: publicPayoutRequest(nextPayout) }, headers);
+        const vendorId = payout.vendorUserId ?? payout.vendor_user_id;
+        const updated = await dbUpdatePayoutStatus(payoutId, vendorId, decision.value.status, decision.value.adminNote, payout.amount);
+        await dbCreateNotification({ audience: "vendor", recipientUserId: vendorId, title: `Payout ${updated.status}`, message: `Your payout of NGN ${payout.amount} was ${updated.status}.`, type: "payout" });
+        send(response, 200, { payout: publicPayoutRequest(updated) }, headers);
+        dbGetUserById(vendorId).then((v) => {
+          if (v?.email) void sendEmail({ to: v.email, subject: `Payout ${updated.status} — Kano Mart`, html: payoutDecisionEmail(v.name, payout.amount, updated.status === "approved") });
+        }).catch(() => {});
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/analytics") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const totalSales = Array.from(store.orders.values()).reduce((sum, order) => sum + order.subtotal, 0);
-        const bestSellingProducts = new Map();
-        for (const order of store.orders.values()) {
-          for (const item of order.items) {
-            const current = bestSellingProducts.get(item.productId) ?? { productId: item.productId, quantity: 0, sales: 0 };
-            current.quantity += item.quantity;
-            current.sales += item.lineTotal;
-            bestSellingProducts.set(item.productId, current);
-          }
-        }
-        send(
-          response,
-          200,
-          {
-            analytics: {
-              totalSales,
-              totalOrders: store.orders.size,
-              cancelledOrders: Array.from(store.orders.values()).filter((order) => order.status === "cancelled").length,
-              customerGrowth: Array.from(store.users.values()).filter((item) => item.role === "customer").length,
-              vendorGrowth: Array.from(store.users.values()).filter((item) => item.role === "vendor").length,
-              productViews: Array.from(store.productViews.values()).sort((a, b) => b.views - a.views),
-              popularSearches: store.searchEvents.reduce((items, event) => {
-                const current = items.find((item) => item.query === event.query);
-                if (current) current.count += 1;
-                else items.push({ query: event.query, count: 1 });
-                return items;
-              }, []),
-              bestSellingProducts: Array.from(bestSellingProducts.values()).sort((a, b) => b.quantity - a.quantity),
-            },
-          },
-          headers,
-        );
+        const analytics = await dbGetAnalytics();
+        send(response, 200, { analytics }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/orders") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        send(response, 200, { orders: Array.from(store.orders.values()).map((order) => publicOrder(store, order)) }, headers);
+        const orders = await dbGetAllOrders();
+        send(response, 200, { orders: orders.map(publicOrder) }, headers);
         return;
       }
 
       const adminOrderMatch = requestUrl.pathname.match(/^\/admin\/orders\/([^/]+)$/);
       if (method === "PATCH" && adminOrderMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-
-        const order = store.orders.get(decodeURIComponent(adminOrderMatch[1]));
-        if (!order) {
-          sendError(response, 404, "order_not_found", "Order was not found.");
-          return;
-        }
-
+        const orderId = decodeURIComponent(adminOrderMatch[1]);
+        const order = await dbGetOrderWithItems(orderId);
+        if (!order) { sendError(response, 404, "order_not_found", "Order not found."); return; }
         const body = await readJson(request);
         const parsed = validateOrderStatusInput(body);
-        if (!parsed.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors);
-          return;
-        }
-
-        const result = updateOrderStatus(store, order, parsed.value);
-        if (result.error) {
-          sendError(response, result.error.status, result.error.code, result.error.message);
-          return;
-        }
-
-        send(response, 200, { order: publicOrder(store, result.order) }, headers);
+        if (!parsed.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", parsed.errors); return; }
+        const allowed = getAllowedNextStatuses(order);
+        if (!allowed.includes(parsed.value.status)) { sendError(response, 409, "invalid_order_transition", `Cannot move from ${order.status} to ${parsed.value.status}.`); return; }
+        await dbUpdateOrderStatus(orderId, parsed.value.status, parsed.value.deliveryPerson);
+        await dbCreateNotification({ audience: "customer", recipientUserId: order.customerUserId, title: parsed.value.status === "delivered" ? "Order delivered" : "Order updated", message: `Order ${orderId} is now ${parsed.value.status}.`, type: parsed.value.status === "delivered" ? "delivery" : "order", orderId });
+        const updated = await dbGetOrderWithItems(orderId);
+        send(response, 200, { order: publicOrder(updated) }, headers);
+        dbGetUserById(order.customerUserId).then((c) => {
+          if (c?.email) void sendEmail({ to: c.email, subject: `Order ${orderId} update — Kano Mart`, html: orderStatusEmail({ ...order, status: parsed.value.status }, c.name) });
+        }).catch(() => {});
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/payments") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        send(response, 200, { payments: Array.from(store.payments.values()).map(publicPayment) }, headers);
+        const payments = await dbGetAllPayments();
+        send(response, 200, { payments: payments.map(publicPayment) }, headers);
         return;
       }
 
       const adminPaymentMatch = requestUrl.pathname.match(/^\/admin\/payments\/([^/]+)$/);
       if (method === "PATCH" && adminPaymentMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-
-        const payment = store.payments.get(decodeURIComponent(adminPaymentMatch[1]));
-        if (!payment) {
-          sendError(response, 404, "payment_not_found", "Payment was not found.");
-          return;
-        }
-
+        const paymentId = decodeURIComponent(adminPaymentMatch[1]);
+        const payment = await dbGetPaymentById(paymentId);
+        if (!payment) { sendError(response, 404, "payment_not_found", "Payment not found."); return; }
         const body = await readJson(request);
         const decision = validatePaymentDecision(body);
-        if (!decision.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors);
-          return;
+        if (!decision.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors); return; }
+        const order = await dbGetOrderWithItems(payment.orderId);
+        if (decision.value.status === "paid" && order?.status === "cancelled") { sendError(response, 409, "order_cancelled", "Cannot confirm payment for a cancelled order."); return; }
+        await dbUpdatePaymentStatus(paymentId, payment.orderId, decision.value.status, decision.value.adminNote);
+        const updatedPayment = await dbGetPaymentById(paymentId);
+        const updatedOrder = await dbGetOrderWithItems(payment.orderId);
+        await dbCreateNotification({ audience: "customer", recipientUserId: updatedOrder.customerUserId, title: decision.value.status === "paid" ? "Payment successful" : decision.value.status === "failed" ? "Payment failed" : "Payment refunded", message: `Payment for order ${payment.orderId} is ${decision.value.status}.`, type: "payment", orderId: payment.orderId });
+        if (decision.value.status === "paid") {
+          for (const vendorId of new Set(updatedOrder.items.map((i) => i.vendorUserId))) {
+            await dbCreateNotification({ audience: "vendor", recipientUserId: vendorId, title: "Payment confirmed", message: `Payment confirmed for order ${payment.orderId}.`, type: "payment", orderId: payment.orderId });
+          }
         }
-
-        const result = updatePaymentStatus(store, payment, decision.value);
-        if (result?.error) {
-          sendError(response, result.error.status, result.error.code, result.error.message);
-          return;
-        }
-        send(response, 200, { payment: publicPayment(result), order: publicOrder(store, store.orders.get(result.orderId)) }, headers);
+        send(response, 200, { payment: publicPayment(updatedPayment), order: publicOrder(updatedOrder) }, headers);
+        dbGetUserById(updatedOrder.customerUserId).then((c) => {
+          if (c?.email) void sendEmail({ to: c.email, subject: `Payment ${decision.value.status} for order ${payment.orderId} — Kano Mart`, html: paymentStatusEmail(updatedOrder, c.name, decision.value.status) });
+        }).catch(() => {});
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/products") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-
         const status = requestUrl.searchParams.get("status");
-        const products = Array.from(store.products.values())
-          .filter((product) => !status || product.moderationStatus === status)
-          .map((product) => publicProduct(store, product, { includeAdminFields: true }));
-
-        send(response, 200, { products }, headers);
+        const products = await dbGetAllProducts(status);
+        send(response, 200, { products: products.map((p) => publicProduct(p, { includeAdminFields: true })) }, headers);
         return;
       }
 
       const productModerationMatch = requestUrl.pathname.match(/^\/admin\/products\/([^/]+)$/);
       if (method === "PATCH" && productModerationMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-
-        const product = store.products.get(decodeURIComponent(productModerationMatch[1]));
-        if (!product) {
-          sendError(response, 404, "product_not_found", "Product was not found.");
-          return;
-        }
-
+        const productId = decodeURIComponent(productModerationMatch[1]);
+        const product = await dbGetProductById(productId, true);
+        if (!product) { sendError(response, 404, "product_not_found", "Product not found."); return; }
         const body = await readJson(request);
         const decision = validateProductModeration(body);
-        if (!decision.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors);
-          return;
-        }
-
-        const nextProduct = updateProductModeration(product, decision.value);
-        store.products.set(nextProduct.id, nextProduct);
-        createNotification(store, {
-          audience: "vendor",
-          recipientUserId: nextProduct.vendorUserId,
-          title: `Product ${nextProduct.moderationStatus}`,
-          message: `${nextProduct.name.en} was ${nextProduct.moderationStatus}.`,
-          type: "product",
-          productId: nextProduct.id,
-        });
-        send(response, 200, { product: publicProduct(store, nextProduct, { includeAdminFields: true }) }, headers);
+        if (!decision.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors); return; }
+        const updated = await dbUpdateProductModeration(productId, decision.value.status, decision.value.reviewNote);
+        await dbCreateNotification({ audience: "vendor", recipientUserId: product.vendorUserId, title: `Product ${decision.value.status}`, message: `${product.name.en} was ${decision.value.status}.`, type: "product", productId });
+        send(response, 200, { product: publicProduct(updated, { includeAdminFields: true }) }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/vendor-applications") {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-
         const status = requestUrl.searchParams.get("status");
-        const applications = Array.from(store.vendorApplications.values())
-          .filter((application) => !status || application.status === status)
-          .map((application) => publicVendorApplication(store, application));
-
-        send(response, 200, { applications }, headers);
+        const apps = await dbGetAllVendorApplications(status);
+        send(response, 200, { applications: apps.map(publicVendorApplication) }, headers);
         return;
       }
 
       const vendorDecisionMatch = requestUrl.pathname.match(/^\/admin\/vendor-applications\/([^/]+)$/);
       if (method === "PATCH" && vendorDecisionMatch) {
-        const user = getCurrentUser(request, store);
+        const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-
-        const application = findVendorApplicationById(store, decodeURIComponent(vendorDecisionMatch[1]));
-        if (!application) {
-          sendError(response, 404, "vendor_application_not_found", "Vendor application was not found.");
-          return;
-        }
-
+        const appRow = await dbGetVendorApplicationById(decodeURIComponent(vendorDecisionMatch[1]));
+        if (!appRow) { sendError(response, 404, "vendor_application_not_found", "Application not found."); return; }
         const body = await readJson(request);
         const decision = validateVendorDecision(body);
-        if (!decision.valid) {
-          sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors);
-          return;
-        }
-
-        const nextApplication = updateVendorApplicationStatus(store, application, decision.value);
-        send(response, 200, { application: publicVendorApplication(store, nextApplication) }, headers);
+        if (!decision.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors); return; }
+        await dbUpdateVendorApplication(appRow.id, appRow.user_id, decision.value.status, decision.value.adminNote);
+        await dbCreateNotification({ audience: "vendor", recipientUserId: appRow.user_id, title: decision.value.status === "approved" ? "Vendor approved" : "Vendor rejected", message: `Your vendor application was ${decision.value.status}.`, type: "vendor" });
+        const updated = await dbGetVendorApplicationById(appRow.id);
+        send(response, 200, { application: publicVendorApplication(updated) }, headers);
+        dbGetUserById(appRow.user_id).then((v) => {
+          if (v?.email) void sendEmail({ to: v.email, subject: decision.value.status === "approved" ? `Your store is approved! — Kano Mart` : `Vendor application update — Kano Mart`, html: vendorApprovalEmail(v.name, appRow.business_name, decision.value.status === "approved") });
+        }).catch(() => {});
         return;
       }
 
       sendError(response, 404, "not_found", "Route not found.");
+
     } catch (error) {
-      sendError(
-        response,
-        error.status ?? 500,
-        error.code ?? "internal_error",
-        error.status ? error.message : "Something went wrong.",
-      );
+      console.error("[api error]", method, requestUrl.pathname, error?.message ?? error);
+      void captureException(error, { method, path: requestUrl.pathname });
+      sendError(response, error.status ?? 500, error.code ?? "internal_error", error.status ? error.message : "Something went wrong.");
     }
   }
 
-  return { handle, store };
+  return { handle };
 }
 
-export async function inject(app, options = {}) {
-  const body = typeof options.body === "string" ? options.body : options.body ? JSON.stringify(options.body) : "";
-  const requestHeaders = {
-    host: "kano-mart.test",
-    ...(options.headers ?? {}),
-  };
-  const chunks = body ? [Buffer.from(body)] : [];
+// ── Vercel handler ────────────────────────────────────────────────────────────
 
-  const request = {
-    method: options.method ?? "GET",
-    url: options.path ?? "/",
-    headers: requestHeaders,
-    async *[Symbol.asyncIterator]() {
-      for (const chunk of chunks) yield chunk;
-    },
-  };
-
-  return await new Promise((resolve) => {
-    const response = {
-      status: 200,
-      headers: {},
-      writeHead(status, headers = {}) {
-        this.status = status;
-        this.headers = Object.fromEntries(
-          Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]),
-        );
-      },
-      end(payload = "") {
-        const text = String(payload);
-        resolve({
-          status: this.status,
-          headers: this.headers,
-          body: text ? JSON.parse(text) : null,
-        });
-      },
-    };
-
-    app.handle(request, response);
-  });
+let _app;
+export default async function handler(request, response) {
+  _app ??= createApp({ allowedOrigin: process.env.CORS_ORIGIN ?? "*", publicApiBasePath: "/api" });
+  if (request.url?.startsWith("/api")) request.url = request.url.slice(4) || "/";
+  return _app.handle(request, response);
 }
+
+// ── Local dev server ──────────────────────────────────────────────────────────
 
 export function startServer(options = {}) {
   const app = createApp(options);
@@ -2540,25 +2189,11 @@ export function startServer(options = {}) {
   return { app, server };
 }
 
-let vercelAppPromise;
-
-export default async function handler(request, response) {
-  vercelAppPromise ??= createRemoteStoreApp({
-    allowedOrigin: process.env.CORS_ORIGIN ?? "*",
-    publicApiBasePath: "/api",
-  });
-  const vercelApp = await vercelAppPromise;
-  if (request.url?.startsWith("/api")) {
-    request.url = request.url.slice(4) || "/";
-  }
-  return vercelApp.handle(request, response);
-}
-
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { server } = startServer();
   server.on("listening", () => {
-    const address = server.address();
-    const port = typeof address === "object" && address ? address.port : process.env.PORT ?? 8787;
-    console.log(`Kano Mart API listening on http://localhost:${port}`);
+    const addr = server.address();
+    const port = typeof addr === "object" && addr ? addr.port : process.env.PORT ?? 8787;
+    console.log(`Kano Mart API (Postgres) listening on http://localhost:${port}`);
   });
 }
