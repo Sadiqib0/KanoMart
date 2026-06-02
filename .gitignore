@@ -1,7 +1,10 @@
 node_modules/
+dist/
+public/
 .DS_Store
 .vercel
-public/
+.idea/
+*.iml
 .env
 .env.*
 !.env.example

@@ -5,6 +5,7 @@ import { state, elements } from "./state";
 import { escapeHtml, getCopy, parsePrice, formatPrice } from "./utils";
 import { showToast } from "./toast";
 import { getProductById } from "../backend/products";
+import { api } from "./api-client";
 
 export function getCartItems(): CartItem[] {
   return getStoredList<CartItem>(storageKeys.cart);
@@ -37,13 +38,18 @@ export function addToCart(productId: string): void {
 
   const items = getCartItems();
   const existing = items.find((i) => i.productId === productId);
+  const newQuantity = (existing?.quantity ?? 0) + 1;
   if (existing) {
-    existing.quantity += 1;
+    existing.quantity = newQuantity;
   } else {
     items.push({ productId, quantity: 1, addedAt: new Date().toISOString() });
   }
   setStoredList(storageKeys.cart, items);
   syncCart();
+
+  if (state.currentUser?.token) {
+    api.addCartItem(productId, newQuantity).catch(() => undefined);
+  }
 
   showToast({ message: getCopy(`Added: ${product.name.en}`, `An saka: ${product.name.ha}`) });
 }
@@ -56,12 +62,24 @@ export function updateQuantity(productId: string, delta: number): void {
   const updated = items.filter((i) => i.quantity > 0);
   setStoredList(storageKeys.cart, updated);
   syncCart();
+
+  if (state.currentUser?.token) {
+    if (item.quantity > 0) {
+      api.updateCartItem(productId, item.quantity).catch(() => undefined);
+    } else {
+      api.removeCartItem(productId).catch(() => undefined);
+    }
+  }
 }
 
 export function removeFromCart(productId: string): void {
   const items = getCartItems().filter((i) => i.productId !== productId);
   setStoredList(storageKeys.cart, items);
   syncCart();
+
+  if (state.currentUser?.token) {
+    api.removeCartItem(productId).catch(() => undefined);
+  }
 }
 
 export function clearCart(): void {

@@ -20,7 +20,7 @@ export function renderAdminGate(): void {
     elements.adminGate.hidden = true;
     elements.adminContent.hidden = false;
   } else {
-    elements.adminGate.hidden = true;
+    elements.adminGate.hidden = false;
     elements.adminContent.hidden = true;
   }
 }

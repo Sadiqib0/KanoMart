@@ -835,7 +835,7 @@
               </label>
               <label>
                 <span data-en="Value / price" data-ha="Kima / farashi">Value / price</span>
-                <input type="number" name="productValue" min="1" step="1" required placeholder="15000" />
+                <input type="text" inputmode="numeric" name="productValue" required placeholder="e.g. 15000" autocomplete="off" />
               </label>
               <label>
                 <span data-en="Quantity available" data-ha="Adadin da ake da shi">Quantity available</span>
@@ -1144,6 +1144,279 @@
               </thead>
               <tbody id="searchHistoryTable"></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ═══ LOGIN PAGE ═══ -->
+      <section class="auth-page app-page" id="loginPage" data-page="login" aria-labelledby="login-page-heading" hidden>
+        <!-- Left: brand panel -->
+        <div class="auth-brand-panel">
+          <div class="auth-brand-content">
+            <a href="#home" class="auth-brand-logo" data-route="home" aria-label="Kano Mart home">
+              <span class="brand-mark" aria-hidden="true">KM</span>
+              <strong>Kano Mart</strong>
+            </a>
+            <h1 class="auth-brand-headline">Your local marketplace, wherever you are.</h1>
+            <p class="auth-brand-sub">Shop from trusted vendors around Kano — or manage your store. All in one place.</p>
+            <ul class="auth-trust-list" aria-label="Why Kano Mart">
+              <li>Thousands of products from verified local vendors</li>
+              <li>Fast delivery across Kano and major areas</li>
+              <li>Secure payments with multiple options</li>
+              <li>Full English and Hausa language support</li>
+            </ul>
+          </div>
+        </div>
+        <!-- Right: form panel -->
+        <div class="auth-form-panel">
+          <div class="auth-card">
+            <!-- Mobile logo (shown when brand panel is hidden) -->
+            <a href="#home" class="auth-mobile-logo" data-route="home" aria-label="Kano Mart home">
+              <span class="brand-mark" aria-hidden="true">KM</span>
+              <strong>Kano Mart</strong>
+            </a>
+            <h2 class="auth-card-heading" id="login-page-heading">Sign in to your account</h2>
+            <p class="auth-card-subheading">
+              New to Kano Mart? <a href="#signup" data-route="signup">Create a free account</a>
+            </p>
+            <!-- Role tabs -->
+            <div class="auth-role-tabs" role="tablist" aria-label="Choose account type">
+              <button type="button" class="auth-role-tab is-active" data-role-tab="customer"
+                role="tab" aria-selected="true">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                </svg>
+                Customer
+              </button>
+              <button type="button" class="auth-role-tab" data-role-tab="vendor"
+                role="tab" aria-selected="false">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                  <polyline points="9,22 9,12 15,12 15,22"/>
+                </svg>
+                Vendor
+              </button>
+            </div>
+            <p class="auth-role-hint">Sign in to shop from trusted local vendors around Kano.</p>
+            <!-- Form -->
+            <form class="auth-form" id="loginForm" novalidate>
+              <div class="form-field" data-field="identifier">
+                <label for="loginIdentifier">Email or phone number</label>
+                <input type="text" id="loginIdentifier" name="identifier"
+                  autocomplete="username" required
+                  placeholder="08012345678 or name@email.com" />
+                <span class="field-error" data-error="identifier" hidden></span>
+              </div>
+              <div class="form-field" data-field="password">
+                <label for="loginPassword">Password</label>
+                <div class="pw-input-wrap">
+                  <input type="password" id="loginPassword" name="password"
+                    autocomplete="current-password" required placeholder="Enter your password" />
+                  <button type="button" class="pw-toggle" aria-label="Show password">
+                    <svg class="eye-open" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <svg class="eye-closed" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" hidden>
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22"/>
+                    </svg>
+                  </button>
+                </div>
+                <span class="field-error" data-error="password" hidden></span>
+              </div>
+              <div class="auth-form-row">
+                <label class="auth-check-label">
+                  <input type="checkbox" name="rememberMe" />
+                  <span>Remember me</span>
+                </label>
+                <span class="forgot-pw-note">Forgot password? <em>Coming soon</em></span>
+              </div>
+              <div class="auth-form-error" role="alert"></div>
+              <button type="submit" class="auth-submit-btn" id="loginSubmitBtn">Sign in</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ SIGNUP PAGE ═══ -->
+      <section class="auth-page app-page" id="signupPage" data-page="signup" aria-labelledby="signup-page-heading" hidden>
+        <!-- Left: brand panel -->
+        <div class="auth-brand-panel">
+          <div class="auth-brand-content">
+            <a href="#home" class="auth-brand-logo" data-route="home" aria-label="Kano Mart home">
+              <span class="brand-mark" aria-hidden="true">KM</span>
+              <strong>Kano Mart</strong>
+            </a>
+            <h1 class="auth-brand-headline">Join the Kano marketplace community.</h1>
+            <p class="auth-brand-sub" id="signupBrandSub">Create your account in minutes and start shopping from trusted local vendors.</p>
+            <ul class="auth-trust-list" aria-label="Benefits of joining">
+              <li>Free for customers — no hidden fees</li>
+              <li>Browse hundreds of products from Kano vendors</li>
+              <li>Vendors: reach real customers from day one</li>
+              <li>Verified, secure marketplace platform</li>
+            </ul>
+          </div>
+        </div>
+        <!-- Right: form panel -->
+        <div class="auth-form-panel">
+          <div class="auth-card">
+            <!-- Mobile logo -->
+            <a href="#home" class="auth-mobile-logo" data-route="home" aria-label="Kano Mart home">
+              <span class="brand-mark" aria-hidden="true">KM</span>
+              <strong>Kano Mart</strong>
+            </a>
+            <h2 class="auth-card-heading" id="signup-page-heading">Create your account</h2>
+            <p class="auth-card-subheading">
+              Already have an account? <a href="#login" data-route="login">Sign in</a>
+            </p>
+            <!-- Role tabs -->
+            <div class="auth-role-tabs" role="tablist" aria-label="Choose account type">
+              <button type="button" class="auth-role-tab is-active" data-role-tab="customer"
+                role="tab" aria-selected="true">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                </svg>
+                Customer
+              </button>
+              <button type="button" class="auth-role-tab" data-role-tab="vendor"
+                role="tab" aria-selected="false">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                  <polyline points="9,22 9,12 15,12 15,22"/>
+                </svg>
+                Vendor / Seller
+              </button>
+            </div>
+            <p class="auth-role-hint">Join thousands of customers shopping from local vendors.</p>
+            <!-- Form -->
+            <form class="auth-form" id="signupForm" novalidate>
+
+              <!-- Customer: Full name -->
+              <div class="form-field" data-field="fullName" data-customer-only>
+                <label for="signupFullName">Full name</label>
+                <input type="text" id="signupFullName" name="fullName"
+                  autocomplete="name" data-required="true"
+                  placeholder="e.g. Amina Bello" />
+                <span class="field-error" data-error="fullName" hidden></span>
+              </div>
+
+              <!-- Vendor: Business name -->
+              <div class="form-field" data-field="businessName" data-vendor-only hidden>
+                <label for="signupBusinessName">Business / Store name</label>
+                <input type="text" id="signupBusinessName" name="businessName"
+                  autocomplete="organization" data-required="true"
+                  placeholder="e.g. Amina Fashion House" />
+                <span class="field-error" data-error="businessName" hidden></span>
+              </div>
+
+              <!-- Vendor: Owner name -->
+              <div class="form-field" data-field="ownerName" data-vendor-only hidden>
+                <label for="signupOwnerName">Owner full name</label>
+                <input type="text" id="signupOwnerName" name="ownerName"
+                  autocomplete="name" data-required="true"
+                  placeholder="e.g. Amina Bello" />
+                <span class="field-error" data-error="ownerName" hidden></span>
+              </div>
+
+              <!-- Shared: Email -->
+              <div class="form-field" data-field="email">
+                <label for="signupEmail">Email address</label>
+                <input type="email" id="signupEmail" name="email"
+                  autocomplete="email" required
+                  placeholder="name@example.com" />
+                <span class="field-error" data-error="email" hidden></span>
+              </div>
+
+              <!-- Shared: Phone -->
+              <div class="form-field" data-field="phone">
+                <label for="signupPhone">Phone number</label>
+                <input type="tel" id="signupPhone" name="phone"
+                  autocomplete="tel" required
+                  placeholder="08012345678" />
+                <span class="field-error" data-error="phone" hidden></span>
+              </div>
+
+              <!-- Vendor: Category -->
+              <div class="form-field" data-field="category" data-vendor-only hidden>
+                <label for="signupCategory">Business category</label>
+                <select id="signupCategory" name="category" data-required="true">
+                  <option value="">Select a category…</option>
+                  <option value="food">Food &amp; Groceries</option>
+                  <option value="fashion">Fashion &amp; Clothing</option>
+                  <option value="children">Children &amp; School Supplies</option>
+                  <option value="essentials">Essentials &amp; Daily Needs</option>
+                </select>
+                <span class="field-error" data-error="category" hidden></span>
+              </div>
+
+              <!-- Vendor: Area -->
+              <div class="form-field" data-field="area" data-vendor-only hidden>
+                <label for="signupArea">Business location / area</label>
+                <input type="text" id="signupArea" name="area"
+                  autocomplete="address-level2" data-required="true"
+                  placeholder="e.g. Kantin Kwari, Tarauni, Sabon Gari" />
+                <span class="field-error" data-error="area" hidden></span>
+              </div>
+
+              <!-- Vendor info note -->
+              <div class="vendor-signup-note" data-vendor-only hidden>
+                <strong>📋 About vendor accounts</strong>
+                Products you list will appear in the marketplace after admin review. This typically takes 1–2 business days.
+              </div>
+
+              <!-- Shared: Password -->
+              <div class="form-field" data-field="password">
+                <label for="signupPassword">Password</label>
+                <div class="pw-input-wrap">
+                  <input type="password" id="signupPassword" name="password"
+                    autocomplete="new-password" required minlength="8"
+                    placeholder="At least 8 characters" />
+                  <button type="button" class="pw-toggle" aria-label="Show password">
+                    <svg class="eye-open" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <svg class="eye-closed" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" hidden>
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22"/>
+                    </svg>
+                  </button>
+                </div>
+                <span class="field-error" data-error="password" hidden></span>
+              </div>
+
+              <!-- Shared: Confirm password -->
+              <div class="form-field" data-field="confirmPassword">
+                <label for="signupConfirmPassword">Confirm password</label>
+                <div class="pw-input-wrap">
+                  <input type="password" id="signupConfirmPassword" name="confirmPassword"
+                    autocomplete="new-password" required
+                    placeholder="Re-enter your password" />
+                  <button type="button" class="pw-toggle" aria-label="Show password">
+                    <svg class="eye-open" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <svg class="eye-closed" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" hidden>
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22"/>
+                    </svg>
+                  </button>
+                </div>
+                <span class="field-error" data-error="confirmPassword" hidden></span>
+              </div>
+
+              <!-- Shared: Terms -->
+              <div class="form-field auth-terms-field" data-field="terms">
+                <label class="auth-check-label">
+                  <input type="checkbox" id="signupTerms" name="terms" />
+                  <span>I agree to the <a href="#" onclick="return false" tabindex="-1">Terms of Service</a> and <a href="#" onclick="return false" tabindex="-1">Privacy Policy</a></span>
+                </label>
+                <span class="field-error" data-error="terms" hidden></span>
+              </div>
+
+              <div class="auth-form-error" role="alert"></div>
+
+              <button type="submit" class="auth-submit-btn" id="signupSubmitBtn">
+                Create my account
+              </button>
+            </form>
           </div>
         </div>
       </section>

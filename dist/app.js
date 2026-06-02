@@ -28,7 +28,6 @@ import {
   reviewVendorRequest,
   sanitizePlainText,
   saveUserProfile,
-  saveVendorRequest,
   seedReviews,
   setActiveLanguageButtons,
   setLiveVendorRequests,
@@ -39,7 +38,7 @@ import {
   updateUserProfile,
   vendorProfiles,
   verifyPassword
-} from "./chunk-TYRQO5WA.js";
+} from "./chunk-VOTUQWEH.js";
 
 // src/backend/products.ts
 var categoryCopy = {
@@ -253,6 +252,129 @@ function showToast({ message, type = "success", duration = 2e3 }) {
   }, duration);
 }
 
+// src/frontend/api-client.ts
+var DEFAULT_API_BASE_URL = "/api";
+var API_TOKEN_KEY = "kanoMart.apiToken";
+function getApiBaseUrl() {
+  const configured = globalThis.localStorage?.getItem("kanoMart.apiBaseUrl")?.trim();
+  return configured || DEFAULT_API_BASE_URL;
+}
+function getApiToken() {
+  return globalThis.localStorage?.getItem(API_TOKEN_KEY) ?? "";
+}
+function saveApiToken(token) {
+  if (token) globalThis.localStorage?.setItem(API_TOKEN_KEY, token);
+}
+function clearApiToken() {
+  globalThis.localStorage?.removeItem(API_TOKEN_KEY);
+}
+async function apiRequest(path, options = {}) {
+  const token = options.token ?? getApiToken();
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: options.method ?? (options.body ? "POST" : "GET"),
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      ...token ? { authorization: `Bearer ${token}` } : {}
+    },
+    body: options.body ? JSON.stringify(options.body) : void 0
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error?.message ?? "API request failed");
+  }
+  return payload;
+}
+var api = {
+  // Health
+  health: () => apiRequest("/health"),
+  // Auth
+  me: () => apiRequest("/me"),
+  login: (identifier, password) => apiRequest("/auth/login", { body: { identifier, password } }),
+  register: (body) => apiRequest("/auth/register", { body }),
+  logout: () => apiRequest("/auth/logout", { method: "POST" }),
+  // Catalog
+  categories: () => apiRequest("/categories"),
+  products: (params = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.category) qs.set("category", params.category);
+    const query = qs.toString();
+    return apiRequest(`/products${query ? `?${query}` : ""}`);
+  },
+  product: (id) => apiRequest(`/products/${encodeURIComponent(id)}`),
+  productReviews: (productId) => apiRequest(`/products/${encodeURIComponent(productId)}/reviews`),
+  // Notifications
+  notifications: () => apiRequest("/notifications"),
+  markNotificationRead: (id) => apiRequest(`/notifications/${encodeURIComponent(id)}`, { method: "PATCH", body: {} }),
+  // Wishlist
+  wishlist: () => apiRequest("/wishlist"),
+  addToWishlist: (productId) => apiRequest("/wishlist", { body: { productId } }),
+  removeFromWishlist: (productId) => apiRequest(`/wishlist/${encodeURIComponent(productId)}`, { method: "DELETE" }),
+  // Cart
+  cart: () => apiRequest("/cart"),
+  addCartItem: (productId, quantity) => apiRequest("/cart/items", { body: { productId, quantity } }),
+  updateCartItem: (productId, quantity) => apiRequest(`/cart/items/${encodeURIComponent(productId)}`, {
+    method: "PATCH",
+    body: { quantity }
+  }),
+  removeCartItem: (productId) => apiRequest(`/cart/items/${encodeURIComponent(productId)}`, { method: "DELETE" }),
+  // Checkout & Orders
+  checkout: (body) => apiRequest("/checkout", { body }),
+  orders: () => apiRequest("/orders"),
+  // Reviews
+  createReview: (body) => apiRequest("/reviews", { body }),
+  // Vendor
+  vendorApplication: () => apiRequest("/vendor/application"),
+  vendorProducts: () => apiRequest("/vendor/products"),
+  createVendorProduct: (body) => apiRequest("/vendor/products", { body }),
+  updateVendorProduct: (id, listingStatus) => apiRequest(`/vendor/products/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: { listingStatus }
+  }),
+  uploadVendorImage: (body) => apiRequest("/vendor/uploads", { body }),
+  vendorOrders: () => apiRequest("/vendor/orders"),
+  vendorReviews: () => apiRequest("/vendor/reviews"),
+  vendorWallet: () => apiRequest("/vendor/wallet"),
+  requestPayout: (body) => apiRequest("/vendor/payouts", { body }),
+  // Admin — Users
+  adminUsers: () => apiRequest("/admin/users"),
+  // Admin — Categories
+  adminCreateCategory: (body) => apiRequest("/admin/categories", { body }),
+  // Admin — Vendor applications
+  adminVendorApplications: (status) => apiRequest(
+    `/admin/vendor-applications${status ? `?status=${encodeURIComponent(status)}` : ""}`
+  ),
+  updateVendorApplication: (id, body) => apiRequest(`/admin/vendor-applications/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body
+  }),
+  // Admin — Products
+  adminProducts: (status) => apiRequest(`/admin/products${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  updateAdminProduct: (id, body) => apiRequest(`/admin/products/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  // Admin — Orders
+  adminOrders: () => apiRequest("/admin/orders"),
+  updateAdminOrder: (id, body) => apiRequest(`/admin/orders/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  // Admin — Payments
+  adminPayments: () => apiRequest("/admin/payments"),
+  updateAdminPayment: (id, body) => apiRequest(`/admin/payments/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body
+  }),
+  // Admin — Reviews
+  adminReviews: () => apiRequest("/admin/reviews"),
+  updateAdminReview: (id, body) => apiRequest(`/admin/reviews/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  // Admin — Promotions
+  adminPromotions: () => apiRequest("/admin/promotions"),
+  createAdminPromotion: (body) => apiRequest("/admin/promotions", { body }),
+  updateAdminPromotion: (id, body) => apiRequest(`/admin/promotions/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  // Admin — Payouts
+  adminPayouts: () => apiRequest("/admin/payouts"),
+  updateAdminPayout: (id, body) => apiRequest(`/admin/payouts/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  // Admin — Analytics
+  adminAnalytics: () => apiRequest("/admin/analytics")
+};
+
 // src/frontend/wishlist.ts
 function getWishlist() {
   return getStoredList(storageKeys.wishlist);
@@ -266,12 +388,18 @@ function toggleWishlist(productId, productName) {
   if (idx === -1) {
     list.push(productId);
     showToast({ message: getCopy(`Saved: ${productName}`, `An ajiye: ${productName}`) });
+    if (state.currentUser?.token) {
+      api.addToWishlist(productId).catch(() => void 0);
+    }
   } else {
     list.splice(idx, 1);
     showToast({
       message: getCopy("Removed from wishlist", "An cire daga jerin da aka ajiye"),
       type: "info"
     });
+    if (state.currentUser?.token) {
+      api.removeFromWishlist(productId).catch(() => void 0);
+    }
   }
   setStoredList(storageKeys.wishlist, list);
   syncWishlistCount();
@@ -405,6 +533,9 @@ function addReview(productId, reviewerName, rating, comment) {
       message: `${product.name.en} received a ${review.rating}-star review.`,
       type: "review"
     });
+  }
+  if (getApiToken()) {
+    api.createReview({ productId, rating, comment }).catch(() => void 0);
   }
 }
 function hideReview(reviewId, adminNote = "Removed by admin") {
@@ -843,13 +974,17 @@ function addToCart(productId) {
   }
   const items = getCartItems();
   const existing = items.find((i) => i.productId === productId);
+  const newQuantity = (existing?.quantity ?? 0) + 1;
   if (existing) {
-    existing.quantity += 1;
+    existing.quantity = newQuantity;
   } else {
     items.push({ productId, quantity: 1, addedAt: (/* @__PURE__ */ new Date()).toISOString() });
   }
   setStoredList(storageKeys.cart, items);
   syncCart();
+  if (state.currentUser?.token) {
+    api.addCartItem(productId, newQuantity).catch(() => void 0);
+  }
   showToast({ message: getCopy(`Added: ${product.name.en}`, `An saka: ${product.name.ha}`) });
 }
 function updateQuantity(productId, delta) {
@@ -860,11 +995,21 @@ function updateQuantity(productId, delta) {
   const updated = items.filter((i) => i.quantity > 0);
   setStoredList(storageKeys.cart, updated);
   syncCart();
+  if (state.currentUser?.token) {
+    if (item.quantity > 0) {
+      api.updateCartItem(productId, item.quantity).catch(() => void 0);
+    } else {
+      api.removeCartItem(productId).catch(() => void 0);
+    }
+  }
 }
 function removeFromCart(productId) {
   const items = getCartItems().filter((i) => i.productId !== productId);
   setStoredList(storageKeys.cart, items);
   syncCart();
+  if (state.currentUser?.token) {
+    api.removeCartItem(productId).catch(() => void 0);
+  }
 }
 function clearCart() {
   setStoredList(storageKeys.cart, []);
@@ -975,6 +1120,12 @@ function getDiscountedPrice(amount, promotion) {
 }
 
 // src/frontend/orders.ts
+var liveOrders = null;
+async function fetchLiveOrders() {
+  const res = await api.orders();
+  liveOrders = res.orders;
+  return liveOrders;
+}
 function getOrders() {
   return getStoredList(storageKeys.orders);
 }
@@ -1122,6 +1273,33 @@ function renderOrderTimeline(order) {
   `;
 }
 function renderOrdersPanel() {
+  if (liveOrders !== null && liveOrders.length > 0) {
+    return liveOrders.slice(0, 10).map((order) => {
+      const itemSummary = (order.items ?? []).map((i) => {
+        const name = typeof i.name === "object" ? i.name.en ?? "" : String(i.name ?? i.productId ?? "");
+        return `${escapeHtml(name)} \xD7${i.quantity}`;
+      }).join(", ");
+      const paymentStatus = order.paymentStatus ?? "pending";
+      const deliveryOption = order.deliveryOption ?? "delivery";
+      const subtotal = order.subtotal ?? 0;
+      const deliveryFee = order.deliveryFee ?? 0;
+      return `
+          <div class="order-card">
+            <div class="order-card-header">
+              <strong>${escapeHtml(order.id)}</strong>
+              <span class="order-status order-status-${escapeHtml(order.status)}">${escapeHtml(order.status)}</span>
+            </div>
+            <p class="order-items">${itemSummary}</p>
+            <div class="order-meta">
+              <span>${escapeHtml(formatPrice(subtotal))}</span>
+              <span>${escapeHtml(getCopy(`Payment: ${paymentStatus}`, `Biya: ${paymentStatus}`))}</span>
+              <span>${escapeHtml(deliveryOption === "pickup" ? getCopy("Pickup", "Dauka") : getCopy(`Delivery fee: ${formatPrice(deliveryFee)}`, `Kudin kai kaya: ${formatPrice(deliveryFee)}`))}</span>
+              <span>${escapeHtml(formatDate(order.createdAt))}</span>
+            </div>
+          </div>
+        `;
+    }).join("");
+  }
   const orders = getUserOrders();
   if (orders.length === 0) {
     return `<p class="muted">${getCopy("No orders yet.", "Babu oda tukuna.")}</p>`;
@@ -1634,7 +1812,7 @@ function renderAdminDashboard() {
   const orders = getOrders();
   elements.totalSearches.textContent = String(getUserProfiles().filter((user) => user.role === "customer").length);
   elements.failedSearches.textContent = String(vendors.length);
-  elements.savedVendors.textContent = `${vendorCounts.pending} / ${vendors.length}`;
+  elements.savedVendors.textContent = String(vendorCounts.pending);
   elements.topDemand.textContent = `${productCounts.approved} / ${orders.length}`;
   renderRankList(elements.popularSearches, popular, getCopy("No searches yet.", "Babu bincike tukuna."));
   renderRankList(
@@ -1791,8 +1969,8 @@ function buildCheckoutModal() {
             <span>${getCopy("Payment method", "Hanyar biya")}</span>
             <select name="paymentMethod" required>
               <option value="" disabled selected>${getCopy("Choose", "Zaba")}</option>
-              <option value="delivery">${getCopy("Pay on delivery", "Biya idan an kawo")}</option>
-              <option value="transfer">${getCopy("Manual bank transfer", "Tura kudi ta banki")}</option>
+              <option value="pay_on_delivery">${getCopy("Pay on delivery", "Biya idan an kawo")}</option>
+              <option value="manual_transfer">${getCopy("Manual bank transfer", "Tura kudi ta banki")}</option>
               <option value="card">${getCopy("Card payment (later online gateway)", "Biyan kati daga baya")}</option>
               <option value="ussd">${getCopy("USSD (later online gateway)", "USSD daga baya")}</option>
               <option value="wallet">${getCopy("Wallet (later)", "Wallet daga baya")}</option>
@@ -1825,19 +2003,69 @@ function openCheckoutModal() {
     if (e.target === modal) closeCheckoutModal();
   });
   modal.querySelector("#checkoutForm")?.addEventListener("submit", (e) => {
+    void handleCheckoutSubmit(e);
+  });
+  async function handleCheckoutSubmit(e) {
     e.preventDefault();
     const form = e.target;
+    const submitBtn = form.querySelector("button[type='submit']");
     const data = new FormData(form);
     const errorEl = modal.querySelector("#checkoutError");
+    const deliveryOption = String(data.get("deliveryOption") || "delivery") === "pickup" ? "pickup" : "delivery";
+    const deliveryAddress = String(data.get("deliveryAddress") || "");
+    const deliveryArea = String(data.get("deliveryArea") || "");
+    const paymentMethod = String(data.get("paymentMethod") || "");
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = getCopy("Placing order\u2026", "Ana sanya oda\u2026");
+    }
+    errorEl.textContent = "";
+    if (state.currentUser?.token) {
+      try {
+        const result = await api.checkout({
+          deliveryOption,
+          deliveryAddress,
+          deliveryArea,
+          paymentMethod
+        });
+        clearCart();
+        modal.querySelector("#checkoutFormView").hidden = true;
+        const successView2 = modal.querySelector("#checkoutSuccessView");
+        successView2.hidden = false;
+        modal.querySelector("#checkoutOrderId").textContent = getCopy(
+          `Order ID: ${result.order.id} - Payment ${result.order.paymentStatus ?? "pending"}`,
+          `Lambar oda: ${result.order.id} - Biya ${result.order.paymentStatus ?? "pending"}`
+        );
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = getCopy("Place order", "Sanya oda");
+        }
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message) {
+          errorEl.textContent = message;
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = getCopy("Place order", "Sanya oda");
+          }
+          return;
+        }
+      }
+    }
     const order = placeOrder(
       String(data.get("customerName") || ""),
       String(data.get("customerPhone") || ""),
-      String(data.get("deliveryArea") || ""),
-      String(data.get("paymentMethod") || ""),
-      String(data.get("deliveryOption") || "delivery") === "pickup" ? "pickup" : "delivery",
-      String(data.get("deliveryAddress") || ""),
-      String(data.get("deliveryOption") || "delivery") === "pickup" ? 0 : DEFAULT_DELIVERY_FEE
+      deliveryArea,
+      paymentMethod,
+      deliveryOption,
+      deliveryAddress,
+      deliveryOption === "pickup" ? 0 : DEFAULT_DELIVERY_FEE
     );
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = getCopy("Place order", "Sanya oda");
+    }
     if (!order) {
       errorEl.textContent = getCopy("Cart is empty.", "Kwandona a fanko.");
       return;
@@ -1849,7 +2077,7 @@ function openCheckoutModal() {
       `Order ID: ${order.id} - Payment ${order.paymentStatus}`,
       `Lambar oda: ${order.id} - Biya ${order.paymentStatus}`
     );
-  });
+  }
   modal.querySelector(".checkout-done")?.addEventListener("click", () => closeCheckoutModal());
 }
 function closeCheckoutModal() {
@@ -1858,68 +2086,6 @@ function closeCheckoutModal() {
   modal.classList.remove("modal-visible");
   modal.addEventListener("transitionend", () => modal.remove(), { once: true });
 }
-
-// src/frontend/api-client.ts
-var DEFAULT_API_BASE_URL = "/api";
-var API_TOKEN_KEY = "kanoMart.apiToken";
-function getApiBaseUrl() {
-  const configured = globalThis.localStorage?.getItem("kanoMart.apiBaseUrl")?.trim();
-  return configured || DEFAULT_API_BASE_URL;
-}
-function getApiToken() {
-  return globalThis.localStorage?.getItem(API_TOKEN_KEY) ?? "";
-}
-function saveApiToken(token) {
-  if (token) globalThis.localStorage?.setItem(API_TOKEN_KEY, token);
-}
-function clearApiToken() {
-  globalThis.localStorage?.removeItem(API_TOKEN_KEY);
-}
-async function apiRequest(path, options = {}) {
-  const token = options.token ?? getApiToken();
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    method: options.method ?? (options.body ? "POST" : "GET"),
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      ...token ? { authorization: `Bearer ${token}` } : {}
-    },
-    body: options.body ? JSON.stringify(options.body) : void 0
-  });
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error?.message ?? "API request failed");
-  }
-  return payload;
-}
-var api = {
-  health: () => apiRequest("/health"),
-  me: () => apiRequest("/me"),
-  products: (query = "") => apiRequest(`/products${query ? `?q=${encodeURIComponent(query)}` : ""}`),
-  login: (identifier, password) => apiRequest("/auth/login", {
-    body: { identifier, password }
-  }),
-  register: (body) => apiRequest("/auth/register", { body }),
-  logout: () => apiRequest("/auth/logout", { method: "POST" }),
-  uploadVendorImage: (body) => apiRequest("/vendor/uploads", { body }),
-  vendorProducts: () => apiRequest("/vendor/products"),
-  createVendorProduct: (body) => apiRequest("/vendor/products", { body }),
-  adminVendorApplications: () => apiRequest("/admin/vendor-applications"),
-  updateVendorApplication: (id, body) => apiRequest(`/admin/vendor-applications/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body
-  }),
-  adminProducts: () => apiRequest("/admin/products"),
-  updateAdminProduct: (id, body) => apiRequest(`/admin/products/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body
-  }),
-  cart: () => apiRequest("/cart"),
-  addCartItem: (productId, quantity) => apiRequest("/cart/items", {
-    body: { productId, quantity }
-  }),
-  checkout: (body) => apiRequest("/checkout", { body })
-};
 
 // src/frontend/auth.ts
 var MOCK_OTP = "123456";
@@ -2100,16 +2266,33 @@ function buildAuthModal() {
   `;
   return el;
 }
-function openAuthModal() {
+function openAuthModal(prefill) {
   const existing = document.getElementById("authModal");
-  if (existing) {
-    existing.hidden = false;
-    return;
-  }
+  if (existing) existing.remove();
   const modal = buildAuthModal();
   document.body.appendChild(modal);
   wireAuthModal(modal);
   requestAnimationFrame(() => modal.classList.add("modal-visible"));
+  if (prefill?.phone) {
+    const phoneInput = modal.querySelector("#authPhone");
+    if (phoneInput) phoneInput.value = prefill.phone;
+  }
+  if (prefill?.role === "vendor") {
+    const accountType = modal.querySelector("#authAccountType");
+    if (accountType) accountType.value = "vendor";
+  }
+  if (prefill?.businessName) {
+    const businessNameInput = modal.querySelector("#authBusinessName");
+    if (businessNameInput) businessNameInput.value = prefill.businessName;
+  }
+  if (prefill?.area) {
+    const areaInput = modal.querySelector("#authArea");
+    if (areaInput) areaInput.value = prefill.area;
+  }
+  if (prefill?.category) {
+    const categorySelect = modal.querySelector("#authCategory");
+    if (categorySelect) categorySelect.value = prefill.category;
+  }
   modal.querySelector("#authPhone")?.focus();
 }
 function closeAuthModal() {
@@ -2177,10 +2360,15 @@ function wireAuthModal(modal) {
   });
   async function handleOtpSubmit(e) {
     e.preventDefault();
+    const submitBtn = otpForm.querySelector("button[type='submit']");
     const otp = (modal.querySelector("#authOtp")?.value || "").trim();
     if (otp !== MOCK_OTP) {
       otpError.textContent = getCopy("Invalid code. Try: 123456", "Lambar ba daidai ba. Gwada: 123456");
       return;
+    }
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = getCopy("Signing in\u2026", "Ana shiga\u2026");
     }
     let apiSession = null;
     if (needsSignup) {
@@ -2286,6 +2474,10 @@ function wireAuthModal(modal) {
         }
       }
     }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = getCopy("Verify", "Tabbatar");
+    }
     otpError.textContent = "";
     const session = apiSession ?? createSessionForPhone(pendingPhone);
     saveSession(session);
@@ -2353,7 +2545,7 @@ function buildUserPanel() {
 }
 function openUserPanel() {
   if (!state.currentUser) {
-    openAuthModal();
+    window.location.hash = "login";
     return;
   }
   const existing = document.getElementById("userPanel");
@@ -2365,6 +2557,12 @@ function openUserPanel() {
   const panel = buildUserPanel();
   document.body.appendChild(panel);
   requestAnimationFrame(() => panel.classList.add("modal-visible"));
+  if (state.currentUser.role === "customer" && state.currentUser.token) {
+    fetchLiveOrders().then(() => {
+      const listEl = panel.querySelector("#userOrdersList");
+      if (listEl) listEl.innerHTML = renderOrdersPanel();
+    }).catch(() => void 0);
+  }
   panel.querySelector(".modal-close")?.addEventListener("click", closeUserPanel);
   panel.addEventListener("click", (e) => {
     if (e.target === panel) closeUserPanel();
@@ -2548,6 +2746,21 @@ function openProductModal(productId) {
   });
   document.addEventListener("keydown", handleModalKeydown);
   modal.querySelector("#modalAddToCart")?.focus();
+  api.productReviews(productId).then((res) => {
+    const listEl = modal.querySelector("#modalReviewList");
+    if (!listEl || !res.reviews.length) return;
+    listEl.innerHTML = res.reviews.slice(0, 5).map(
+      (r) => `
+          <div class="review-item">
+            <div class="review-header">
+              <span class="review-stars">${renderStars(r.rating)}</span>
+              <strong>${escapeHtml(r.reviewerName ?? "")}</strong>
+              <span class="review-date">${escapeHtml(formatDate(r.createdAt))}</span>
+            </div>
+            <p>${escapeHtml(r.comment)}</p>
+          </div>`
+    ).join("");
+  }).catch(() => void 0);
 }
 function closeProductModal() {
   const modal = document.getElementById("productModal");
@@ -2570,7 +2783,7 @@ function renderAdminGate() {
     elements.adminGate.hidden = true;
     elements.adminContent.hidden = false;
   } else {
-    elements.adminGate.hidden = true;
+    elements.adminGate.hidden = false;
     elements.adminContent.hidden = true;
   }
 }
@@ -2646,12 +2859,6 @@ function mapApiProduct(product) {
     tags: [nameEn, nameHa, product.category, product.vendorName, product.area, ...product.tags ?? []].filter(Boolean).map((item) => String(item).toLowerCase())
   };
 }
-async function refreshLiveProducts(query = "") {
-  const response = await api.products(query);
-  const products2 = response.products.map(mapApiProduct);
-  setLiveProducts(products2);
-  return products2;
-}
 function mapApiVendorApplication(application) {
   return {
     id: application.id,
@@ -2664,6 +2871,12 @@ function mapApiVendorApplication(application) {
     reviewNote: application.adminNote,
     createdAt: application.createdAt
   };
+}
+async function refreshLiveProducts(params = {}) {
+  const response = await api.products(params);
+  const products2 = response.products.map(mapApiProduct);
+  setLiveProducts(products2);
+  return products2;
 }
 async function refreshLiveVendorProducts() {
   const response = await api.vendorProducts();
@@ -2681,9 +2894,306 @@ async function refreshLiveAdminQueues() {
     }
   }
 }
+var liveAdminData = null;
+async function fetchLiveAdminData() {
+  const [ordersRes, paymentsRes, reviewsRes, promotionsRes, payoutsRes, analyticsRes, usersRes] = await Promise.all([
+    api.adminOrders().catch(() => ({ orders: [] })),
+    api.adminPayments().catch(() => ({ payments: [] })),
+    api.adminReviews().catch(() => ({ reviews: [] })),
+    api.adminPromotions().catch(() => ({ promotions: [] })),
+    api.adminPayouts().catch(() => ({ payouts: [] })),
+    api.adminAnalytics().catch(() => ({ analytics: null })),
+    api.adminUsers().catch(() => ({ users: [] }))
+  ]);
+  liveAdminData = {
+    orders: ordersRes.orders,
+    payments: paymentsRes.payments,
+    reviews: reviewsRes.reviews,
+    promotions: promotionsRes.promotions,
+    payouts: payoutsRes.payouts,
+    analytics: analyticsRes.analytics,
+    users: usersRes.users
+  };
+  return liveAdminData;
+}
+var liveVendorData = null;
+async function fetchLiveVendorData() {
+  const [ordersRes, reviewsRes, walletRes] = await Promise.all([
+    api.vendorOrders().catch(() => ({ orders: [] })),
+    api.vendorReviews().catch(() => ({ reviews: [] })),
+    api.vendorWallet().catch(() => ({ wallet: null, payouts: [] }))
+  ]);
+  liveVendorData = {
+    orders: ordersRes.orders,
+    reviews: reviewsRes.reviews,
+    wallet: walletRes.wallet,
+    payouts: walletRes.payouts
+  };
+  return liveVendorData;
+}
+var liveNotifications = [];
+async function fetchLiveNotifications() {
+  const res = await api.notifications().catch(() => ({ notifications: [] }));
+  liveNotifications = res.notifications;
+  return liveNotifications;
+}
+var liveCategories = [];
+async function fetchLiveCategories() {
+  const res = await api.categories().catch(() => ({ categories: [] }));
+  liveCategories = res.categories;
+  return liveCategories;
+}
+async function refreshSession() {
+  const res = await api.me().catch(() => null);
+  return res?.user ?? null;
+}
+var liveVendorApplication = null;
+async function fetchLiveVendorApplication() {
+  const res = await api.vendorApplication().catch(() => null);
+  liveVendorApplication = res?.application ?? null;
+  return liveVendorApplication;
+}
+
+// src/frontend/auth-pages.ts
+function isValidEmail(v) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
+}
+function isValidPhone(v) {
+  const digits = v.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15;
+}
+function validateLogin(id, pw) {
+  const e = {};
+  if (!id.trim()) e.identifier = "Email or phone number is required.";
+  else if (id.includes("@") && !isValidEmail(id)) e.identifier = "Enter a valid email address.";
+  if (!pw) e.password = "Password is required.";
+  else if (pw.length < 8) e.password = "Password must be at least 8 characters.";
+  return e;
+}
+function validateCustomer(d) {
+  const e = {};
+  if (!d.fullName?.trim()) e.fullName = "Full name is required.";
+  if (!d.email?.trim()) e.email = "Email address is required.";
+  else if (!isValidEmail(d.email)) e.email = "Enter a valid email address.";
+  if (!d.phone?.trim()) e.phone = "Phone number is required.";
+  else if (!isValidPhone(d.phone)) e.phone = "Enter a valid Nigerian phone number (at least 10 digits).";
+  if (!d.password) e.password = "Password is required.";
+  else if (d.password.length < 8) e.password = "Password must be at least 8 characters.";
+  if (d.password !== d.confirmPassword) e.confirmPassword = "Passwords do not match.";
+  if (!d.terms) e.terms = "You must accept the terms and conditions to continue.";
+  return e;
+}
+function validateVendor(d) {
+  const e = {};
+  if (!d.businessName?.trim()) e.businessName = "Business or store name is required.";
+  if (!d.ownerName?.trim()) e.ownerName = "Owner full name is required.";
+  if (!d.email?.trim()) e.email = "Email address is required.";
+  else if (!isValidEmail(d.email)) e.email = "Enter a valid email address.";
+  if (!d.phone?.trim()) e.phone = "Phone number is required.";
+  else if (!isValidPhone(d.phone)) e.phone = "Enter a valid Nigerian phone number (at least 10 digits).";
+  if (!d.category) e.category = "Please select your business category.";
+  if (!d.area?.trim()) e.area = "Business location or area is required.";
+  if (!d.password) e.password = "Password is required.";
+  else if (d.password.length < 8) e.password = "Password must be at least 8 characters.";
+  if (d.password !== d.confirmPassword) e.confirmPassword = "Passwords do not match.";
+  if (!d.terms) e.terms = "You must accept the terms and conditions to continue.";
+  return e;
+}
+function applyErrors(form, errors) {
+  form.querySelectorAll(".field-error").forEach((el) => {
+    el.textContent = "";
+    el.hidden = true;
+  });
+  form.querySelectorAll("[data-field]").forEach((el) => el.classList.remove("has-error"));
+  for (const [field, msg] of Object.entries(errors)) {
+    const errEl = form.querySelector(`[data-error="${field}"]`);
+    const fieldEl = form.querySelector(`[data-field="${field}"]`);
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.hidden = false;
+    }
+    if (fieldEl) fieldEl.classList.add("has-error");
+  }
+}
+function clearErrors(form) {
+  form.querySelectorAll(".field-error").forEach((el) => {
+    el.textContent = "";
+    el.hidden = true;
+  });
+  form.querySelectorAll("[data-field]").forEach((el) => el.classList.remove("has-error"));
+  const fe = form.querySelector(".auth-form-error");
+  if (fe) fe.textContent = "";
+}
+function setLoading(btn, loading, label) {
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.textContent = label;
+  btn.classList.toggle("is-loading", loading);
+}
+function wirePasswordToggles(root) {
+  root.querySelectorAll(".pw-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = btn.previousElementSibling;
+      if (!input || input.tagName !== "INPUT") return;
+      const showing = input.type !== "password";
+      input.type = showing ? "password" : "text";
+      btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+      btn.classList.toggle("is-showing", !showing);
+      const eyeOpen = btn.querySelector(".eye-open");
+      const eyeClosed = btn.querySelector(".eye-closed");
+      if (eyeOpen) eyeOpen.hidden = !showing;
+      if (eyeClosed) eyeClosed.hidden = showing;
+    });
+  });
+}
+function wireRoleTabs(root, onChange) {
+  root.querySelectorAll("[data-role-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      root.querySelectorAll("[data-role-tab]").forEach((t) => {
+        t.classList.remove("is-active");
+        t.setAttribute("aria-selected", "false");
+      });
+      tab.classList.add("is-active");
+      tab.setAttribute("aria-selected", "true");
+      onChange(tab.dataset.roleTab ?? "customer");
+    });
+  });
+}
+function buildSession(user, token) {
+  return {
+    id: user.id,
+    token,
+    phone: user.phone,
+    email: user.email,
+    firstName: user.firstName ?? "",
+    lastName: user.lastName ?? "",
+    name: user.name ?? ([user.firstName, user.lastName].filter(Boolean).join(" ") || user.phone),
+    role: user.role,
+    vendorStatus: user.vendorStatus,
+    deliveryAddress: user.deliveryAddress,
+    preferredLanguage: user.preferredLanguage,
+    createdAt: user.createdAt ?? (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function initLoginPage() {
+  const page = document.getElementById("loginPage");
+  if (!page) return;
+  let currentRole = "customer";
+  wirePasswordToggles(page);
+  wireRoleTabs(page, (role) => {
+    currentRole = role;
+    updateLoginRoleHint(page, role);
+  });
+  const form = page.querySelector("#loginForm");
+  if (!form) return;
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void submitLogin(form, currentRole);
+  });
+}
+function updateLoginRoleHint(page, role) {
+  const hint = page.querySelector(".auth-role-hint");
+  if (!hint) return;
+  hint.textContent = role === "vendor" ? "Sign in to access your vendor dashboard and manage your store." : "Sign in to shop from trusted local vendors around Kano.";
+}
+async function submitLogin(form, role) {
+  clearErrors(form);
+  const data = new FormData(form);
+  const identifier = String(data.get("identifier") ?? "").trim();
+  const password = String(data.get("password") ?? "");
+  const errors = validateLogin(identifier, password);
+  if (Object.keys(errors).length) {
+    applyErrors(form, errors);
+    form.querySelector(".has-error input")?.focus();
+    return;
+  }
+  const btn = form.querySelector("#loginSubmitBtn");
+  const formErr = form.querySelector(".auth-form-error");
+  setLoading(btn, true, "Signing in\u2026");
+  try {
+    const res = await api.login(identifier, password);
+    saveSession(buildSession(res.user, res.token));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Sign in failed. Please check your details and try again.";
+    if (formErr) formErr.textContent = msg;
+    setLoading(btn, false, "Sign in");
+  }
+}
+function initSignupPage() {
+  const page = document.getElementById("signupPage");
+  if (!page) return;
+  let currentRole = "customer";
+  wirePasswordToggles(page);
+  wireRoleTabs(page, (role) => {
+    currentRole = role;
+    applySignupRole(page, role);
+  });
+  applySignupRole(page, "customer");
+  const form = page.querySelector("#signupForm");
+  if (!form) return;
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void submitSignup(form, currentRole);
+  });
+}
+function applySignupRole(page, role) {
+  page.querySelectorAll("[data-customer-only]").forEach((el) => {
+    el.hidden = role !== "customer";
+  });
+  page.querySelectorAll("[data-vendor-only]").forEach((el) => {
+    el.hidden = role !== "vendor";
+  });
+  const hint = page.querySelector(".auth-role-hint");
+  if (hint) {
+    hint.textContent = role === "vendor" ? "Create your store and start selling to real customers in Kano." : "Join thousands of customers shopping from trusted local vendors.";
+  }
+  const btn = page.querySelector("#signupSubmitBtn");
+  if (btn && !btn.disabled) {
+    btn.textContent = role === "vendor" ? "Create vendor account" : "Create my account";
+  }
+  const brandSub = page.querySelector("#signupBrandSub");
+  if (brandSub) {
+    brandSub.textContent = role === "vendor" ? "Set up your store in minutes and reach thousands of customers across Kano." : "Create your account in minutes and start shopping from trusted local vendors.";
+  }
+}
+async function submitSignup(form, role) {
+  clearErrors(form);
+  const data = new FormData(form);
+  const fields = {};
+  for (const [k, v] of data.entries()) {
+    if (typeof v === "string") fields[k] = v;
+  }
+  fields.terms = data.get("terms") ? "yes" : "";
+  const errors = role === "vendor" ? validateVendor(fields) : validateCustomer(fields);
+  if (Object.keys(errors).length) {
+    applyErrors(form, errors);
+    form.querySelector(".has-error input, .has-error select")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    form.querySelector(".has-error input, .has-error select")?.focus();
+    return;
+  }
+  const btn = form.querySelector("#signupSubmitBtn");
+  const formErr = form.querySelector(".auth-form-error");
+  setLoading(btn, true, "Creating account\u2026");
+  try {
+    const [firstName, ...rest] = (role === "vendor" ? fields.ownerName : fields.fullName).trim().split(/\s+/);
+    const lastName = rest.join(" ");
+    const payload = role === "vendor" ? { phone: fields.phone, email: fields.email, password: fields.password, firstName, lastName, role: "vendor", businessName: fields.businessName, area: fields.area, category: fields.category } : { phone: fields.phone, email: fields.email, password: fields.password, firstName, lastName, role: "customer" };
+    const res = await api.register(payload);
+    saveSession(buildSession(res.user, res.token));
+    showToast({
+      message: role === "vendor" ? getCopy("Vendor account created! Your application is under review.", "An \u0199ir\u0199iri asusun dillali! Ana duba bu\u0199atarka.") : getCopy("Account created! Welcome to Kano Mart.", "An \u0199ir\u0199iri asusu! Barka da zuwa Kano Mart.")
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Sign up failed. Please try again.";
+    if (formErr) formErr.textContent = msg;
+    const defaultLabel = role === "vendor" ? "Create vendor account" : "Create my account";
+    setLoading(btn, false, defaultLabel);
+  }
+}
 
 // src/frontend/app.ts
-var routes = /* @__PURE__ */ new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin"]);
+var routes = /* @__PURE__ */ new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
+var AUTH_ROUTES = /* @__PURE__ */ new Set(["login", "signup"]);
 var SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
 function getCurrentRoute() {
   const raw = window.location.hash.replace("#", "") || "home";
@@ -2705,6 +3215,7 @@ function canAccessRoute(route) {
   if (route === "admin") return role === "admin";
   if (route === "customer") return role === "customer";
   if (route === "orders") return role === "customer";
+  if (AUTH_ROUTES.has(route)) return role === "guest";
   return true;
 }
 function setRoute(route = getCurrentRoute()) {
@@ -2727,6 +3238,7 @@ function setRoute(route = getCurrentRoute()) {
       link.setAttribute("aria-current", isActive ? "page" : "false");
     }
   });
+  document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
 }
@@ -2878,7 +3390,10 @@ async function refreshLiveCatalog() {
 async function refreshLiveAdminDashboard() {
   if (state.currentUser?.role !== "admin" || !state.currentUser.token) return;
   try {
-    await refreshLiveAdminQueues();
+    await Promise.all([
+      refreshLiveAdminQueues(),
+      fetchLiveAdminData()
+    ]);
     if (state.lastQuery) {
       state.lastResults = getSearchResults(state.lastQuery);
       updateResultCopy(state.lastQuery, state.lastResults);
@@ -2893,8 +3408,13 @@ async function refreshLiveAdminDashboard() {
 async function refreshLiveVendorDashboard() {
   if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
   try {
-    await refreshLiveVendorProducts();
+    await Promise.all([
+      refreshLiveVendorProducts(),
+      fetchLiveVendorData(),
+      fetchLiveVendorApplication()
+    ]);
     renderVendorProducts();
+    renderVendorCommerce();
   } catch {
   }
 }
@@ -2952,27 +3472,31 @@ function setLanguage(language) {
 function handleVendorRequestSubmit(event) {
   event.preventDefault();
   const formData = new FormData(elements.vendorForm);
-  const vendorRequest = saveVendorRequest({
-    businessName: sanitizePlainText(String(formData.get("businessName") || ""), 80),
-    phone: sanitizePlainText(String(formData.get("phone") || ""), 24),
-    area: sanitizePlainText(String(formData.get("area") || ""), 80),
-    category: sanitizePlainText(String(formData.get("category") || ""), 40)
-  });
-  createNotification({
-    audience: "admin",
-    title: "New vendor application",
-    message: `${vendorRequest.businessName} is awaiting approval.`,
-    type: "vendor"
-  });
-  if (state.currentUser && normalizePhone(state.currentUser.phone) === normalizePhone(vendorRequest.phone)) {
-    saveSession(createSessionForPhone(vendorRequest.phone));
+  const businessName = sanitizePlainText(String(formData.get("businessName") || ""), 80);
+  const phone = sanitizePlainText(String(formData.get("phone") || ""), 24);
+  const area = sanitizePlainText(String(formData.get("area") || ""), 80);
+  const category = sanitizePlainText(String(formData.get("category") || ""), 40);
+  if (!businessName) {
+    elements.vendorMessage.textContent = getCopy("Business name is required.", "Ana bu\u0199atar sunan kasuwanci.");
+    return;
   }
-  elements.vendorForm.reset();
+  if (!phone || phone.replace(/\D/g, "").length < 10) {
+    elements.vendorMessage.textContent = getCopy("Enter a valid phone number.", "Shigar da lambar waya mai inganci.");
+    return;
+  }
+  if (!area) {
+    elements.vendorMessage.textContent = getCopy("Market area is required.", "Ana bu\u0199atar yankin kasuwa.");
+    return;
+  }
+  if (!category) {
+    elements.vendorMessage.textContent = getCopy("Please select a category.", "Da fatan za a za\u0253i rukuni.");
+    return;
+  }
   elements.vendorMessage.textContent = getCopy(
-    "Vendor request saved for admin review.",
-    "An ajiye bukatar rajista domin admin ya duba."
+    "Complete your sign-up to submit the request.",
+    "Kammala rajistarka domin tura bu\u0199atar."
   );
-  renderAdminDashboard();
+  openAuthModal({ phone, role: "vendor", businessName, area, category });
 }
 function readImageAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -3103,9 +3627,20 @@ async function handleVendorProductSubmit(event) {
   }
   const data = new FormData(form);
   const image = data.get("productImage");
-  const priceValue = Number(data.get("productValue") || 0);
-  if (!(image instanceof File) || !image.name || priceValue <= 0) {
-    if (message) message.textContent = getCopy("Add a valid product image and price.", "Saka hoton kaya da farashi mai kyau.");
+  const rawPriceStr = String(data.get("productValue") ?? "").replace(/[^\d.]/g, "");
+  const priceValue = rawPriceStr ? Number(rawPriceStr) : 0;
+  if (!(image instanceof File) || !image.name || image.size === 0) {
+    if (message) message.textContent = getCopy(
+      "Please choose a product image (JPEG, PNG, or WebP).",
+      "Da fatan za a za\u0253i hoton kaya (JPEG, PNG, ko WebP)."
+    );
+    return;
+  }
+  if (!Number.isFinite(priceValue) || priceValue <= 0) {
+    if (message) message.textContent = getCopy(
+      "Enter a valid price (numbers only, e.g. 15000).",
+      "Shigar da farashi mai inganci (lambobi kawai, misali 15000)."
+    );
     return;
   }
   try {
@@ -3329,13 +3864,15 @@ document.querySelector("#vendorProductsList")?.addEventListener("click", (event)
     message: action === "active" ? getCopy("Product restored to catalog.", "An mayar da kaya kasuwa.") : getCopy("Product removed from active catalog.", "An cire kaya daga kasuwa."),
     type: action === "active" ? "success" : "info"
   });
+  if (state.currentUser?.token) {
+    api.updateVendorProduct(productId, action).catch(() => void 0);
+  }
 });
 document.querySelector("#vendorCommerceList")?.addEventListener("click", (event) => {
   const button = event.target?.closest("[data-vendor-order-ready]");
   const orderId = button?.dataset.vendorOrderReady;
   if (!orderId) return;
   const order = advanceOrderStatus(orderId);
-  if (order?.status === "preparing_order") advanceOrderStatus(orderId);
   renderVendorCommerce();
   renderAdminDashboard();
   showToast({
@@ -3360,15 +3897,29 @@ elements.adminContent.addEventListener("submit", (event) => {
     const data = new FormData(form);
     const target = sanitizePlainText(String(data.get("target") || ""), 80);
     const type = String(data.get("type") || "seasonal_campaign");
+    const titleText = sanitizePlainText(String(data.get("title") || ""), 80);
+    const discountPercent = Number(data.get("discountPercent") || 0) || void 0;
     createPromotion({
-      title: sanitizePlainText(String(data.get("title") || ""), 80),
+      title: titleText,
       type,
-      discountPercent: Number(data.get("discountPercent") || 0) || void 0,
+      discountPercent,
       code: type === "discount_code" ? target : void 0,
       vendor: type === "featured_vendor" ? target : void 0,
       productId: type === "featured_product" ? target : void 0,
       category: type === "seasonal_campaign" || type === "flash_sale" ? target.toLowerCase() : void 0
     });
+    if (state.currentUser?.token) {
+      api.createAdminPromotion({
+        title: { en: titleText, ha: titleText },
+        type,
+        discountPercent: discountPercent ?? 1,
+        code: type === "discount_code" ? target || void 0 : void 0,
+        productId: type === "featured_product" ? target || void 0 : void 0,
+        vendorUserId: type === "featured_vendor" ? target || void 0 : void 0,
+        category: type === "seasonal_campaign" || type === "flash_sale" ? target.toLowerCase() || void 0 : void 0,
+        active: true
+      }).catch(() => void 0);
+    }
     form.reset();
     renderCatalogPreview(false);
     renderAdminDashboard();
@@ -3433,6 +3984,9 @@ elements.adminContent.addEventListener("click", (event) => {
     if (reviewButton?.dataset.reviewId) {
       const review = hideReview(reviewButton.dataset.reviewId);
       if (!review) return;
+      if (state.currentUser?.token) {
+        api.updateAdminReview(reviewButton.dataset.reviewId, { hidden: true }).catch(() => void 0);
+      }
       renderAdminDashboard();
       showToast({
         message: getCopy("Review removed from public listings.", "An cire ra'ayi daga fili."),
@@ -3445,6 +3999,14 @@ elements.adminContent.addEventListener("click", (event) => {
       const action2 = paymentButton.dataset.paymentAction;
       const payment = action2 === "confirm" ? confirmPayment(paymentButton.dataset.paymentId) : action2 === "fail" ? failPayment(paymentButton.dataset.paymentId) : action2 === "refund" ? refundPayment(paymentButton.dataset.paymentId) : null;
       if (!payment) return;
+      if (state.currentUser?.token) {
+        const apiStatus = action2 === "confirm" ? "paid" : action2 === "fail" ? "failed" : action2 === "refund" ? "refunded" : null;
+        if (apiStatus) {
+          api.updateAdminPayment(paymentButton.dataset.paymentId, {
+            status: apiStatus
+          }).catch(() => void 0);
+        }
+      }
       renderAdminDashboard();
       renderVendorCommerce();
       showToast({
@@ -3457,6 +4019,9 @@ elements.adminContent.addEventListener("click", (event) => {
     if (orderButton?.dataset.orderAdvance) {
       const order = advanceOrderStatus(orderButton.dataset.orderAdvance);
       if (!order) return;
+      if (state.currentUser?.token) {
+        api.updateAdminOrder(orderButton.dataset.orderAdvance, { status: order.status }).catch(() => void 0);
+      }
       renderAdminDashboard();
       renderVendorCommerce();
       showToast({
@@ -3470,6 +4035,12 @@ elements.adminContent.addEventListener("click", (event) => {
     const action = withdrawalButton.dataset.withdrawalAction;
     const withdrawal = action === "approved" ? approveWithdrawal(withdrawalButton.dataset.withdrawalId, "Approved from prototype admin dashboard") : action === "rejected" ? rejectWithdrawal(withdrawalButton.dataset.withdrawalId, "Rejected from prototype admin dashboard") : null;
     if (!withdrawal) return;
+    if (state.currentUser?.token && (action === "approved" || action === "rejected")) {
+      api.updateAdminPayout(withdrawalButton.dataset.withdrawalId, {
+        status: action,
+        adminNote: action === "approved" ? "Approved from admin dashboard" : "Rejected from admin dashboard"
+      }).catch(() => void 0);
+    }
     renderAdminDashboard();
     renderVendorCommerce();
     showToast({
@@ -3510,6 +4081,8 @@ window.addEventListener("kanoMart:signed-in", () => {
   renderAdminGate();
   renderAdminDashboard();
   void refreshLiveAdminDashboard();
+  void refreshLiveVendorDashboard();
+  void fetchLiveNotifications();
   const nextRoute = getDefaultRouteForRole();
   window.history.replaceState(null, "", `#${nextRoute}`);
   setRoute(nextRoute);
@@ -3540,9 +4113,15 @@ syncSidebarLabels();
 void refreshLiveCatalog();
 void refreshLiveAdminDashboard();
 void refreshLiveVendorDashboard();
+if (state.currentUser?.token) {
+  void refreshSession().catch(() => void 0);
+}
+void fetchLiveCategories();
+initLoginPage();
+initSignupPage();
 var scheduleEnhancements = "requestIdleCallback" in window ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 }) : (callback) => window.setTimeout(callback, 350);
 scheduleEnhancements(() => {
-  import("./frontend-enhancements-7X3E23RF.js").then(({ initFrontendEnhancements }) => {
+  import("./frontend-enhancements-GHCFJLLH.js").then(({ initFrontendEnhancements }) => {
     initFrontendEnhancements();
   });
 });

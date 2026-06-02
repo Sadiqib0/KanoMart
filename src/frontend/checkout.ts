@@ -1,8 +1,9 @@
 import { state } from "./state";
 import { getCopy, escapeHtml, formatPrice } from "./utils";
-import { getCartItems, getCartProduct, getCartSubtotal } from "./cart";
+import { getCartItems, getCartProduct, getCartSubtotal, clearCart } from "./cart";
 import { placeOrder } from "./orders";
 import { showToast } from "./toast";
+import { api } from "./api-client";
 
 const DEFAULT_DELIVERY_FEE = 1200;
 
@@ -77,8 +78,8 @@ function buildCheckoutModal(): HTMLElement {
             <span>${getCopy("Payment method", "Hanyar biya")}</span>
             <select name="paymentMethod" required>
               <option value="" disabled selected>${getCopy("Choose", "Zaba")}</option>
-              <option value="delivery">${getCopy("Pay on delivery", "Biya idan an kawo")}</option>
-              <option value="transfer">${getCopy("Manual bank transfer", "Tura kudi ta banki")}</option>
+              <option value="pay_on_delivery">${getCopy("Pay on delivery", "Biya idan an kawo")}</option>
+              <option value="manual_transfer">${getCopy("Manual bank transfer", "Tura kudi ta banki")}</option>
               <option value="card">${getCopy("Card payment (later online gateway)", "Biyan kati daga baya")}</option>
               <option value="ussd">${getCopy("USSD (later online gateway)", "USSD daga baya")}</option>
               <option value="wallet">${getCopy("Wallet (later)", "Wallet daga baya")}</option>
@@ -113,20 +114,65 @@ export function openCheckoutModal(): void {
   modal.addEventListener("click", (e) => { if (e.target === modal) closeCheckoutModal(); });
 
   modal.querySelector<HTMLFormElement>("#checkoutForm")?.addEventListener("submit", (e) => {
+    void handleCheckoutSubmit(e);
+  });
+
+  async function handleCheckoutSubmit(e: SubmitEvent): Promise<void> {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
+    const submitBtn = form.querySelector<HTMLButtonElement>("button[type='submit']");
     const data = new FormData(form);
     const errorEl = modal.querySelector<HTMLElement>("#checkoutError")!;
+
+    const deliveryOption = String(data.get("deliveryOption") || "delivery") === "pickup" ? "pickup" : "delivery";
+    const deliveryAddress = String(data.get("deliveryAddress") || "");
+    const deliveryArea = String(data.get("deliveryArea") || "");
+    const paymentMethod = String(data.get("paymentMethod") || "");
+
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = getCopy("Placing order…", "Ana sanya oda…"); }
+    errorEl.textContent = "";
+
+    // Try live API checkout first if user is authenticated
+    if (state.currentUser?.token) {
+      try {
+        const result = await api.checkout({
+          deliveryOption,
+          deliveryAddress,
+          deliveryArea,
+          paymentMethod,
+        });
+        clearCart();
+        modal.querySelector<HTMLElement>("#checkoutFormView")!.hidden = true;
+        const successView = modal.querySelector<HTMLElement>("#checkoutSuccessView")!;
+        successView.hidden = false;
+        modal.querySelector<HTMLElement>("#checkoutOrderId")!.textContent = getCopy(
+          `Order ID: ${result.order.id} - Payment ${result.order.paymentStatus ?? "pending"}`,
+          `Lambar oda: ${result.order.id} - Biya ${result.order.paymentStatus ?? "pending"}`
+        );
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Place order", "Sanya oda"); }
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message) {
+          errorEl.textContent = message;
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Place order", "Sanya oda"); }
+          return;
+        }
+        // Fall through to local checkout on network error
+      }
+    }
 
     const order = placeOrder(
       String(data.get("customerName") || ""),
       String(data.get("customerPhone") || ""),
-      String(data.get("deliveryArea") || ""),
-      String(data.get("paymentMethod") || ""),
-      String(data.get("deliveryOption") || "delivery") === "pickup" ? "pickup" : "delivery",
-      String(data.get("deliveryAddress") || ""),
-      String(data.get("deliveryOption") || "delivery") === "pickup" ? 0 : DEFAULT_DELIVERY_FEE
+      deliveryArea,
+      paymentMethod,
+      deliveryOption,
+      deliveryAddress,
+      deliveryOption === "pickup" ? 0 : DEFAULT_DELIVERY_FEE
     );
+
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Place order", "Sanya oda"); }
 
     if (!order) {
       errorEl.textContent = getCopy("Cart is empty.", "Kwandona a fanko.");
@@ -141,7 +187,7 @@ export function openCheckoutModal(): void {
         `Order ID: ${order.id} - Payment ${order.paymentStatus}`,
         `Lambar oda: ${order.id} - Biya ${order.paymentStatus}`
       );
-  });
+  }
 
   modal.querySelector(".checkout-done")?.addEventListener("click", () => closeCheckoutModal());
 }

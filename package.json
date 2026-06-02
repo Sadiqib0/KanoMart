@@ -7,7 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "esbuild src/frontend/app.ts --bundle --outdir=dist --target=es2020 --format=esm --splitting",
+    "clean": "rm -rf dist",
+    "build": "npm run clean && esbuild src/frontend/app.ts --bundle --outdir=dist --target=es2020 --format=esm --splitting",
     "api:dev": "node api/server.mjs",
     "api:dev:persist": "API_DATA_FILE=./data/kano-mart-api.json node api/server.mjs",
     "api:check": "node --check api/server.mjs",

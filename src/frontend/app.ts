@@ -41,10 +41,22 @@ import { recordProductView } from "../backend/analytics";
 import { createPromotion } from "../backend/promotions";
 import { saveCommissionSettings, setVendorSubscription } from "../backend/marketplace-settings";
 import type { PromotionType, VendorPlanId } from "../backend/types";
-import { refreshLiveAdminQueues, refreshLiveProducts, refreshLiveVendorProducts } from "./live-api";
+import {
+  refreshLiveAdminQueues,
+  refreshLiveProducts,
+  refreshLiveVendorProducts,
+  fetchLiveAdminData,
+  fetchLiveVendorData,
+  fetchLiveNotifications,
+  fetchLiveCategories,
+  fetchLiveVendorApplication,
+  refreshSession,
+} from "./live-api";
 import { api } from "./api-client";
+import { initLoginPage, initSignupPage } from "./auth-pages";
 
-const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin"]);
+const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
+const AUTH_ROUTES = new Set(["login", "signup"]);
 const SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
 
 function getCurrentRoute(): string {
@@ -70,6 +82,8 @@ function canAccessRoute(route: string): boolean {
   if (route === "admin") return role === "admin";
   if (route === "customer") return role === "customer";
   if (route === "orders") return role === "customer";
+  // Authenticated users should not land on login/signup — redirect to their dashboard
+  if (AUTH_ROUTES.has(route)) return role === "guest";
   return true;
 }
 
@@ -93,6 +107,8 @@ function setRoute(route = getCurrentRoute()): void {
       link.setAttribute("aria-current", isActive ? "page" : "false");
     }
   });
+  // Toggle full-page auth layout (hides sidebar + header)
+  document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
 }
@@ -259,7 +275,10 @@ async function refreshLiveCatalog(): Promise<void> {
 async function refreshLiveAdminDashboard(): Promise<void> {
   if (state.currentUser?.role !== "admin" || !state.currentUser.token) return;
   try {
-    await refreshLiveAdminQueues();
+    await Promise.all([
+      refreshLiveAdminQueues(),
+      fetchLiveAdminData(),
+    ]);
     if (state.lastQuery) {
       state.lastResults = getSearchResults(state.lastQuery);
       updateResultCopy(state.lastQuery, state.lastResults);
@@ -276,8 +295,13 @@ async function refreshLiveAdminDashboard(): Promise<void> {
 async function refreshLiveVendorDashboard(): Promise<void> {
   if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
   try {
-    await refreshLiveVendorProducts();
+    await Promise.all([
+      refreshLiveVendorProducts(),
+      fetchLiveVendorData(),
+      fetchLiveVendorApplication(),
+    ]);
     renderVendorProducts();
+    renderVendorCommerce();
   } catch {
     // Local vendor dashboard remains usable if live sync is unavailable.
   }
@@ -351,27 +375,24 @@ function setLanguage(language: Language): void {
 function handleVendorRequestSubmit(event: SubmitEvent): void {
   event.preventDefault();
   const formData = new FormData(elements.vendorForm);
-  const vendorRequest = persistVendorRequest({
-    businessName: sanitizePlainText(String(formData.get("businessName") || ""), 80),
-    phone: sanitizePlainText(String(formData.get("phone") || ""), 24),
-    area: sanitizePlainText(String(formData.get("area") || ""), 80),
-    category: sanitizePlainText(String(formData.get("category") || ""), 40),
-  });
-  createNotification({
-    audience: "admin",
-    title: "New vendor application",
-    message: `${vendorRequest.businessName} is awaiting approval.`,
-    type: "vendor",
-  });
-  if (state.currentUser && normalizePhone(state.currentUser.phone) === normalizePhone(vendorRequest.phone)) {
-    saveSession(createSessionForPhone(vendorRequest.phone));
-  }
-  elements.vendorForm.reset();
+  const businessName = sanitizePlainText(String(formData.get("businessName") || ""), 80);
+  const phone = sanitizePlainText(String(formData.get("phone") || ""), 24);
+  const area = sanitizePlainText(String(formData.get("area") || ""), 80);
+  const category = sanitizePlainText(String(formData.get("category") || ""), 40);
+
+  if (!businessName) { elements.vendorMessage.textContent = getCopy("Business name is required.", "Ana buƙatar sunan kasuwanci."); return; }
+  if (!phone || phone.replace(/\D/g, "").length < 10) { elements.vendorMessage.textContent = getCopy("Enter a valid phone number.", "Shigar da lambar waya mai inganci."); return; }
+  if (!area) { elements.vendorMessage.textContent = getCopy("Market area is required.", "Ana buƙatar yankin kasuwa."); return; }
+  if (!category) { elements.vendorMessage.textContent = getCopy("Please select a category.", "Da fatan za a zaɓi rukuni."); return; }
+
+  // Hand off to the auth modal which calls the live API.
+  // The vendor will complete their account (name + password) there,
+  // and the registration will land in the admin approval queue.
   elements.vendorMessage.textContent = getCopy(
-    "Vendor request saved for admin review.",
-    "An ajiye bukatar rajista domin admin ya duba."
+    "Complete your sign-up to submit the request.",
+    "Kammala rajistarka domin tura buƙatar."
   );
-  renderAdminDashboard();
+  openAuthModal({ phone, role: "vendor", businessName, area, category });
 }
 
 function readImageAsDataUrl(file: File): Promise<string> {
@@ -546,9 +567,25 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
 
   const data = new FormData(form);
   const image = data.get("productImage");
-  const priceValue = Number(data.get("productValue") || 0);
-  if (!(image instanceof File) || !image.name || priceValue <= 0) {
-    if (message) message.textContent = getCopy("Add a valid product image and price.", "Saka hoton kaya da farashi mai kyau.");
+
+  // Strip commas, spaces and currency symbols before parsing — iOS formats
+  // number inputs as "20,000" which makes type="number" return "" from FormData.
+  const rawPriceStr = String(data.get("productValue") ?? "").replace(/[^\d.]/g, "");
+  const priceValue = rawPriceStr ? Number(rawPriceStr) : 0;
+
+  // Validate image and price with specific messages so the vendor knows which field failed
+  if (!(image instanceof File) || !image.name || image.size === 0) {
+    if (message) message.textContent = getCopy(
+      "Please choose a product image (JPEG, PNG, or WebP).",
+      "Da fatan za a zaɓi hoton kaya (JPEG, PNG, ko WebP)."
+    );
+    return;
+  }
+  if (!Number.isFinite(priceValue) || priceValue <= 0) {
+    if (message) message.textContent = getCopy(
+      "Enter a valid price (numbers only, e.g. 15000).",
+      "Shigar da farashi mai inganci (lambobi kawai, misali 15000)."
+    );
     return;
   }
 
@@ -801,13 +838,16 @@ document.querySelector<HTMLElement>("#vendorProductsList")?.addEventListener("cl
         : getCopy("Product removed from active catalog.", "An cire kaya daga kasuwa."),
     type: action === "active" ? "success" : "info",
   });
+
+  if (state.currentUser?.token) {
+    api.updateVendorProduct(productId, action).catch(() => undefined);
+  }
 });
 document.querySelector<HTMLElement>("#vendorCommerceList")?.addEventListener("click", (event) => {
   const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-order-ready]");
   const orderId = button?.dataset.vendorOrderReady;
   if (!orderId) return;
   const order = advanceOrderStatus(orderId);
-  if (order?.status === "preparing_order") advanceOrderStatus(orderId);
   renderVendorCommerce();
   renderAdminDashboard();
   showToast({
@@ -834,15 +874,31 @@ elements.adminContent.addEventListener("submit", (event) => {
     const data = new FormData(form);
     const target = sanitizePlainText(String(data.get("target") || ""), 80);
     const type = String(data.get("type") || "seasonal_campaign") as PromotionType;
+    const titleText = sanitizePlainText(String(data.get("title") || ""), 80);
+    const discountPercent = Number(data.get("discountPercent") || 0) || undefined;
     createPromotion({
-      title: sanitizePlainText(String(data.get("title") || ""), 80),
+      title: titleText,
       type,
-      discountPercent: Number(data.get("discountPercent") || 0) || undefined,
+      discountPercent,
       code: type === "discount_code" ? target : undefined,
       vendor: type === "featured_vendor" ? target : undefined,
       productId: type === "featured_product" ? target : undefined,
       category: type === "seasonal_campaign" || type === "flash_sale" ? target.toLowerCase() : undefined,
     });
+
+    if (state.currentUser?.token) {
+      api.createAdminPromotion({
+        title: { en: titleText, ha: titleText },
+        type,
+        discountPercent: discountPercent ?? 1,
+        code: type === "discount_code" ? target || undefined : undefined,
+        productId: type === "featured_product" ? target || undefined : undefined,
+        vendorUserId: type === "featured_vendor" ? target || undefined : undefined,
+        category: type === "seasonal_campaign" || type === "flash_sale" ? target.toLowerCase() || undefined : undefined,
+        active: true,
+      }).catch(() => undefined);
+    }
+
     form.reset();
     renderCatalogPreview(false);
     renderAdminDashboard();
@@ -914,6 +970,11 @@ elements.adminContent.addEventListener("click", (event) => {
     if (reviewButton?.dataset.reviewId) {
       const review = hideReview(reviewButton.dataset.reviewId);
       if (!review) return;
+
+      if (state.currentUser?.token) {
+        api.updateAdminReview(reviewButton.dataset.reviewId, { hidden: true }).catch(() => undefined);
+      }
+
       renderAdminDashboard();
       showToast({
         message: getCopy("Review removed from public listings.", "An cire ra'ayi daga fili."),
@@ -934,6 +995,16 @@ elements.adminContent.addEventListener("click", (event) => {
               ? refundPayment(paymentButton.dataset.paymentId)
               : null;
       if (!payment) return;
+
+      if (state.currentUser?.token) {
+        const apiStatus = action === "confirm" ? "paid" : action === "fail" ? "failed" : action === "refund" ? "refunded" : null;
+        if (apiStatus) {
+          api.updateAdminPayment(paymentButton.dataset.paymentId, {
+            status: apiStatus as "paid" | "failed" | "refunded",
+          }).catch(() => undefined);
+        }
+      }
+
       renderAdminDashboard();
       renderVendorCommerce();
       showToast({
@@ -947,6 +1018,11 @@ elements.adminContent.addEventListener("click", (event) => {
     if (orderButton?.dataset.orderAdvance) {
       const order = advanceOrderStatus(orderButton.dataset.orderAdvance);
       if (!order) return;
+
+      if (state.currentUser?.token) {
+        api.updateAdminOrder(orderButton.dataset.orderAdvance, { status: order.status }).catch(() => undefined);
+      }
+
       renderAdminDashboard();
       renderVendorCommerce();
       showToast({
@@ -966,6 +1042,15 @@ elements.adminContent.addEventListener("click", (event) => {
           ? rejectWithdrawal(withdrawalButton.dataset.withdrawalId, "Rejected from prototype admin dashboard")
           : null;
     if (!withdrawal) return;
+
+    if (state.currentUser?.token && (action === "approved" || action === "rejected")) {
+      // withdrawalId maps to a payoutRequest id — sync to the live /admin/payouts/:id endpoint
+      api.updateAdminPayout(withdrawalButton.dataset.withdrawalId, {
+        status: action,
+        adminNote: action === "approved" ? "Approved from admin dashboard" : "Rejected from admin dashboard",
+      }).catch(() => undefined);
+    }
+
     renderAdminDashboard();
     renderVendorCommerce();
     showToast({
@@ -1012,6 +1097,8 @@ window.addEventListener("kanoMart:signed-in", () => {
   renderAdminGate();
   renderAdminDashboard();
   void refreshLiveAdminDashboard();
+  void refreshLiveVendorDashboard();
+  void fetchLiveNotifications();
   const nextRoute = getDefaultRouteForRole();
   window.history.replaceState(null, "", `#${nextRoute}`);
   setRoute(nextRoute);
@@ -1046,6 +1133,18 @@ syncSidebarLabels();
 void refreshLiveCatalog();
 void refreshLiveAdminDashboard();
 void refreshLiveVendorDashboard();
+
+// Validate stored session token and refresh user data
+if (state.currentUser?.token) {
+  void refreshSession().catch(() => undefined);
+}
+
+// Pre-fetch categories from the live API for dynamic catalog support
+void fetchLiveCategories();
+
+// Initialise the dedicated login and signup pages
+initLoginPage();
+initSignupPage();
 
 const scheduleEnhancements =
   "requestIdleCallback" in window

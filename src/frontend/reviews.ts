@@ -3,6 +3,7 @@ import { storageKeys, seedReviews, products } from "../backend/data";
 import { getStoredList, setStoredList, createId } from "../backend/storage";
 import { escapeHtml, getCopy, formatDate, renderStars } from "./utils";
 import { createNotification } from "../backend/notifications";
+import { api, getApiToken } from "./api-client";
 
 export function getAllReviews(): Review[] {
   const stored = getStoredList<Review>(storageKeys.reviews);
@@ -47,6 +48,11 @@ export function addReview(productId: string, reviewerName: string, rating: numbe
       message: `${product.name.en} received a ${review.rating}-star review.`,
       type: "review",
     });
+  }
+
+  // Fire live API in parallel if a session token exists
+  if (getApiToken()) {
+    api.createReview({ productId, rating, comment }).catch(() => undefined);
   }
 }
 

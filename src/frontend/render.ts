@@ -530,7 +530,7 @@ export function renderAdminDashboard(): void {
 
   elements.totalSearches.textContent = String(getUserProfiles().filter((user) => user.role === "customer").length);
   elements.failedSearches.textContent = String(vendors.length);
-  elements.savedVendors.textContent = `${vendorCounts.pending} / ${vendors.length}`;
+  elements.savedVendors.textContent = String(vendorCounts.pending);
   elements.topDemand.textContent = `${productCounts.approved} / ${orders.length}`;
 
   renderRankList(elements.popularSearches, popular, getCopy("No searches yet.", "Babu bincike tukuna."));

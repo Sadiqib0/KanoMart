@@ -10,6 +10,20 @@ import { calculateCommission, settleDeliveredOrder } from "../backend/wallet";
 import { getCommissionRateForVendor } from "../backend/marketplace-settings";
 import { getDiscountedPrice, getPromotionForProduct } from "../backend/promotions";
 import { notifyMany } from "../backend/notifications";
+import { api, type ApiOrder } from "./api-client";
+
+// Cache of live orders fetched from the API
+let liveOrders: ApiOrder[] | null = null;
+
+export function getLiveOrders(): ApiOrder[] | null {
+  return liveOrders;
+}
+
+export async function fetchLiveOrders(): Promise<ApiOrder[]> {
+  const res = await api.orders();
+  liveOrders = res.orders;
+  return liveOrders;
+}
 
 export function getOrders(): Order[] {
   return getStoredList<Order>(storageKeys.orders);
@@ -190,6 +204,40 @@ export function renderOrderTimeline(order: Order): string {
 }
 
 export function renderOrdersPanel(): string {
+  // Prefer live API orders when available; fall back to local store
+  if (liveOrders !== null && liveOrders.length > 0) {
+    return liveOrders
+      .slice(0, 10)
+      .map((order) => {
+        const itemSummary = (order.items ?? [])
+          .map((i) => {
+            const name = typeof i.name === "object" ? (i.name.en ?? "") : String(i.name ?? i.productId ?? "");
+            return `${escapeHtml(name)} ×${i.quantity}`;
+          })
+          .join(", ");
+        const paymentStatus = order.paymentStatus ?? "pending";
+        const deliveryOption = order.deliveryOption ?? "delivery";
+        const subtotal = order.subtotal ?? 0;
+        const deliveryFee = order.deliveryFee ?? 0;
+        return `
+          <div class="order-card">
+            <div class="order-card-header">
+              <strong>${escapeHtml(order.id)}</strong>
+              <span class="order-status order-status-${escapeHtml(order.status)}">${escapeHtml(order.status)}</span>
+            </div>
+            <p class="order-items">${itemSummary}</p>
+            <div class="order-meta">
+              <span>${escapeHtml(formatPrice(subtotal))}</span>
+              <span>${escapeHtml(getCopy(`Payment: ${paymentStatus}`, `Biya: ${paymentStatus}`))}</span>
+              <span>${escapeHtml(deliveryOption === "pickup" ? getCopy("Pickup", "Dauka") : getCopy(`Delivery fee: ${formatPrice(deliveryFee)}`, `Kudin kai kaya: ${formatPrice(deliveryFee)}`))}</span>
+              <span>${escapeHtml(formatDate(order.createdAt))}</span>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
   const orders = getUserOrders();
 
   if (orders.length === 0) {

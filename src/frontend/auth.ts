@@ -16,6 +16,7 @@ import {
 } from "../backend/users";
 import { normalizePhone } from "../backend/phone";
 import { api, type ApiAuthResponse, clearApiToken, saveApiToken } from "./api-client";
+import { fetchLiveOrders, renderOrdersPanel } from "./orders";
 
 const MOCK_OTP = "123456";
 
@@ -217,16 +218,44 @@ function buildAuthModal(): HTMLElement {
   return el;
 }
 
-export function openAuthModal(): void {
+export type AuthModalPrefill = {
+  phone?: string;
+  role?: "customer" | "vendor";
+  businessName?: string;
+  area?: string;
+  category?: string;
+};
+
+export function openAuthModal(prefill?: AuthModalPrefill): void {
   const existing = document.getElementById("authModal");
-  if (existing) {
-    existing.hidden = false;
-    return;
-  }
+  if (existing) existing.remove();
+
   const modal = buildAuthModal();
   document.body.appendChild(modal);
   wireAuthModal(modal);
   requestAnimationFrame(() => modal.classList.add("modal-visible"));
+
+  if (prefill?.phone) {
+    const phoneInput = modal.querySelector<HTMLInputElement>("#authPhone");
+    if (phoneInput) phoneInput.value = prefill.phone;
+  }
+  if (prefill?.role === "vendor") {
+    const accountType = modal.querySelector<HTMLSelectElement>("#authAccountType");
+    if (accountType) accountType.value = "vendor";
+  }
+  if (prefill?.businessName) {
+    const businessNameInput = modal.querySelector<HTMLInputElement>("#authBusinessName");
+    if (businessNameInput) businessNameInput.value = prefill.businessName;
+  }
+  if (prefill?.area) {
+    const areaInput = modal.querySelector<HTMLInputElement>("#authArea");
+    if (areaInput) areaInput.value = prefill.area;
+  }
+  if (prefill?.category) {
+    const categorySelect = modal.querySelector<HTMLSelectElement>("#authCategory");
+    if (categorySelect) categorySelect.value = prefill.category;
+  }
+
   modal.querySelector<HTMLInputElement>("#authPhone")?.focus();
 }
 
@@ -311,11 +340,13 @@ function wireAuthModal(modal: HTMLElement): void {
 
   async function handleOtpSubmit(e: SubmitEvent): Promise<void> {
     e.preventDefault();
+    const submitBtn = otpForm.querySelector<HTMLButtonElement>("button[type='submit']");
     const otp = (modal.querySelector<HTMLInputElement>("#authOtp")?.value || "").trim();
     if (otp !== MOCK_OTP) {
       otpError.textContent = getCopy("Invalid code. Try: 123456", "Lambar ba daidai ba. Gwada: 123456");
       return;
     }
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = getCopy("Signing in…", "Ana shiga…"); }
     let apiSession: UserSession | null = null;
     if (needsSignup) {
       const firstName = (modal.querySelector<HTMLInputElement>("#authFirstName")?.value || "").trim();
@@ -421,6 +452,7 @@ function wireAuthModal(modal: HTMLElement): void {
         }
       }
     }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Verify", "Tabbatar"); }
     otpError.textContent = "";
     const session = apiSession ?? createSessionForPhone(pendingPhone);
     saveSession(session);
@@ -499,7 +531,8 @@ function buildUserPanel(): HTMLElement {
 
 export function openUserPanel(): void {
   if (!state.currentUser) {
-    openAuthModal();
+    // Route unauthenticated users to the proper sign-in page
+    window.location.hash = "login";
     return;
   }
   const existing = document.getElementById("userPanel");
@@ -511,6 +544,16 @@ export function openUserPanel(): void {
   const panel = buildUserPanel();
   document.body.appendChild(panel);
   requestAnimationFrame(() => panel.classList.add("modal-visible"));
+
+  // Fetch live orders for customers and re-render the orders list
+  if (state.currentUser.role === "customer" && state.currentUser.token) {
+    fetchLiveOrders()
+      .then(() => {
+        const listEl = panel.querySelector<HTMLElement>("#userOrdersList");
+        if (listEl) listEl.innerHTML = renderOrdersPanel();
+      })
+      .catch(() => undefined);
+  }
 
   panel.querySelector(".modal-close")?.addEventListener("click", closeUserPanel);
   panel.addEventListener("click", (e) => { if (e.target === panel) closeUserPanel(); });

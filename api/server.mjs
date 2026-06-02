@@ -146,7 +146,7 @@ async function checkRedisAuthRateLimit(config, ip) {
     method: "POST",
     headers: { authorization: `Bearer ${config.token}` },
   });
-  if (!incrRes.ok) return true;
+  if (!incrRes.ok) return false;
   const count = (await incrRes.json()).result;
   if (count === 1) {
     fetch(`${config.url}/expire/${encodeURIComponent(key)}/${window}`, {
@@ -213,7 +213,8 @@ function normalizeEmail(value = "") {
 
 function hashPassword(password) {
   const salt = randomUUID().replace(/-/g, "");
-  const iterations = Number(process.env.PASSWORD_HASH_ITERATIONS ?? (process.env.NODE_ENV === "test" ? 1_000 : 210_000));
+  const minIterations = process.env.NODE_ENV === "test" ? 1_000 : 100_000;
+  const iterations = Math.max(minIterations, Number(process.env.PASSWORD_HASH_ITERATIONS ?? (process.env.NODE_ENV === "test" ? 1_000 : 210_000)));
   const hash = pbkdf2Sync(String(password), salt, iterations, 32, "sha256").toString("hex");
   return `pbkdf2_sha256$${iterations}$${salt}$${hash}`;
 }
@@ -998,6 +999,12 @@ function validatePaymentDecision(input) {
 
 function updatePaymentStatus(store, payment, decision) {
   const now = new Date().toISOString();
+
+  const order = store.orders.get(payment.orderId);
+  if (decision.status === "paid" && order?.status === "cancelled") {
+    return { error: { status: 409, code: "order_cancelled", message: "Cannot confirm payment for a cancelled order." } };
+  }
+
   const nextPayment = {
     ...payment,
     status: decision.status,
@@ -1008,7 +1015,6 @@ function updatePaymentStatus(store, payment, decision) {
   };
   store.payments.set(nextPayment.id, nextPayment);
 
-  const order = store.orders.get(payment.orderId);
   if (order) {
     const nextOrder = {
       ...order,
@@ -1298,7 +1304,7 @@ function updatePayoutStatus(store, payout, decision) {
   if (decision.status === "approved") {
     const entry = {
       id: randomUUID(),
-      orderId: nextPayout.id,
+      orderId: `payout:${nextPayout.id}`,
       productId: "payout",
       vendorUserId: nextPayout.vendorUserId,
       type: "vendor_withdrawal_debit",
@@ -1808,6 +1814,7 @@ export function createApp(options = {}) {
             query,
             createdAt: new Date().toISOString(),
           });
+          if (store.searchEvents.length > 10_000) store.searchEvents = store.searchEvents.slice(-5_000);
         }
         const products = Array.from(store.products.values())
           .filter((product) => product.moderationStatus === "approved" && product.listingStatus === "active")
@@ -2380,8 +2387,12 @@ export function createApp(options = {}) {
           return;
         }
 
-        const nextPayment = updatePaymentStatus(store, payment, decision.value);
-        send(response, 200, { payment: publicPayment(nextPayment), order: publicOrder(store, store.orders.get(nextPayment.orderId)) }, headers);
+        const result = updatePaymentStatus(store, payment, decision.value);
+        if (result?.error) {
+          sendError(response, result.error.status, result.error.code, result.error.message);
+          return;
+        }
+        send(response, 200, { payment: publicPayment(result), order: publicOrder(store, store.orders.get(result.orderId)) }, headers);
         return;
       }
 

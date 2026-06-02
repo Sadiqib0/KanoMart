@@ -1,13 +1,14 @@
 import type { Product } from "../backend/types";
 import { vendorProfiles } from "../backend/data";
 import { state } from "./state";
-import { escapeHtml, getCopy, getLocalizedValue, renderStars } from "./utils";
+import { escapeHtml, getCopy, getLocalizedValue, renderStars, formatDate } from "./utils";
 import { addToCart } from "./cart";
 import { toggleWishlist, isWishlisted, syncWishlistCount } from "./wishlist";
 import { getAverageRating, getProductReviews, addReview, renderReviewList, renderReviewForm } from "./reviews";
 import { showToast } from "./toast";
 import { getProductById } from "../backend/products";
 import { openAuthModal } from "./auth";
+import { api } from "./api-client";
 
 let activeProductId: string | null = null;
 
@@ -167,6 +168,28 @@ export function openProductModal(productId: string): void {
 
   document.addEventListener("keydown", handleModalKeydown);
   modal.querySelector<HTMLElement>("#modalAddToCart")?.focus();
+
+  // Fetch live reviews from API and overlay them in the modal
+  api.productReviews(productId)
+    .then((res) => {
+      const listEl = modal.querySelector<HTMLElement>("#modalReviewList");
+      if (!listEl || !res.reviews.length) return;
+      listEl.innerHTML = res.reviews
+        .slice(0, 5)
+        .map(
+          (r) => `
+          <div class="review-item">
+            <div class="review-header">
+              <span class="review-stars">${renderStars(r.rating)}</span>
+              <strong>${escapeHtml(r.reviewerName ?? "")}</strong>
+              <span class="review-date">${escapeHtml(formatDate(r.createdAt))}</span>
+            </div>
+            <p>${escapeHtml(r.comment)}</p>
+          </div>`
+        )
+        .join("");
+    })
+    .catch(() => undefined);
 }
 
 export function closeProductModal(): void {

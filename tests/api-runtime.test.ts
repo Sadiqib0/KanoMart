@@ -101,6 +101,12 @@ describe("Kano Mart API runtime readiness", () => {
         storedSnapshot = String(init?.body ?? "");
         return new Response(JSON.stringify({ result: "OK" }), { status: 200 });
       }
+      if (requestUrl.includes("/incr/")) {
+        return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+      }
+      if (requestUrl.includes("/expire/")) {
+        return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+      }
       return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);

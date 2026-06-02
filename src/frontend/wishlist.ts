@@ -4,6 +4,7 @@ import { state, elements } from "./state";
 import { escapeHtml, getCopy } from "./utils";
 import { showToast } from "./toast";
 import { getProductById } from "../backend/products";
+import { api } from "./api-client";
 
 export function getWishlist(): string[] {
   return getStoredList<string>(storageKeys.wishlist);
@@ -19,12 +20,18 @@ export function toggleWishlist(productId: string, productName: string): void {
   if (idx === -1) {
     list.push(productId);
     showToast({ message: getCopy(`Saved: ${productName}`, `An ajiye: ${productName}`) });
+    if (state.currentUser?.token) {
+      api.addToWishlist(productId).catch(() => undefined);
+    }
   } else {
     list.splice(idx, 1);
     showToast({
       message: getCopy("Removed from wishlist", "An cire daga jerin da aka ajiye"),
       type: "info",
     });
+    if (state.currentUser?.token) {
+      api.removeFromWishlist(productId).catch(() => undefined);
+    }
   }
   setStoredList(storageKeys.wishlist, list);
   syncWishlistCount();
