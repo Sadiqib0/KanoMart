@@ -229,44 +229,6 @@
             Search and buy food, groceries, fashion, school items, and everyday essentials from trusted Kano vendors.
           </p>
 
-          <form class="search-form" id="searchForm" role="search">
-            <label class="sr-only" for="marketSearch" data-en="Search for any desired item" data-ha="Nemi kayan da kake so">
-              Search for any desired item
-            </label>
-            <svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
-              <circle cx="10.8" cy="10.8" r="7.2" />
-              <path d="m16.1 16.1 4.4 4.4" />
-            </svg>
-            <input
-              id="marketSearch"
-              type="search"
-              autocomplete="off"
-              placeholder="Search rice, yaduka, school bags, perfume..."
-              data-placeholder-en="Search rice, yaduka, school bags, perfume..."
-              data-placeholder-ha="Nemi shinkafa, yaduka, jakar makaranta, turare..."
-              required
-            />
-            <button type="submit" data-en="Search" data-ha="Nema">Search</button>
-          </form>
-
-          <div class="quick-searches" role="group" aria-label="Popular quick searches">
-            <button type="button" data-query-en="rice" data-query-ha="shinkafa" data-en="Rice" data-ha="Shinkafa">Rice</button>
-            <button type="button" data-query-en="fabrics" data-query-ha="yaduka" data-en="Fabrics" data-ha="Yaduka">Fabrics</button>
-            <button type="button" data-query-en="school bags" data-query-ha="jakunkunan makaranta" data-en="School bags" data-ha="Jakunkunan makaranta">School bags</button>
-            <button type="button" data-query-en="perfumes" data-query-ha="turare" data-en="Perfumes" data-ha="Turare">Perfumes</button>
-          </div>
-
-          <!-- Auth CTAs — visible only to guests -->
-          <div class="hero-auth-cta" data-roles="guest" aria-label="Get started">
-            <a href="#signup" data-route="signup" class="hero-cta-primary">
-              <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-              Get started free
-            </a>
-            <a href="#login" data-route="login" class="hero-cta-ghost">
-              Sign in
-            </a>
-          </div>
-
           <div class="hero-market-strip" aria-label="Marketplace snapshot">
             <span data-en="Verified Kano sellers" data-ha="Tabbatattun dillalan Kano">Verified Kano sellers</span>
             <span data-en="Food, fashion, school items" data-ha="Abinci, kaya, kayan makaranta">Food, fashion, school items</span>
@@ -470,6 +432,36 @@
 
       <!-- Results -->
       <section class="results-section app-page" id="catalog" data-page="catalog" aria-labelledby="resultsTitle">
+
+        <!-- Search bar lives here in the catalog view -->
+        <div class="catalog-search-bar">
+          <form class="search-form" id="searchForm" role="search">
+            <label class="sr-only" for="marketSearch" data-en="Search for any desired item" data-ha="Nemi kayan da kake so">
+              Search for any desired item
+            </label>
+            <svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+              <circle cx="10.8" cy="10.8" r="7.2" />
+              <path d="m16.1 16.1 4.4 4.4" />
+            </svg>
+            <input
+              id="marketSearch"
+              type="search"
+              autocomplete="off"
+              placeholder="Search rice, yaduka, school bags, perfume..."
+              data-placeholder-en="Search rice, yaduka, school bags, perfume..."
+              data-placeholder-ha="Nemi shinkafa, yaduka, jakar makaranta, turare..."
+              required
+            />
+            <button type="submit" data-en="Search" data-ha="Nema">Search</button>
+          </form>
+          <div class="quick-searches" role="group" aria-label="Popular quick searches">
+            <button type="button" data-query-en="rice" data-query-ha="shinkafa" data-en="Rice" data-ha="Shinkafa">Rice</button>
+            <button type="button" data-query-en="fabrics" data-query-ha="yaduka" data-en="Fabrics" data-ha="Yaduka">Fabrics</button>
+            <button type="button" data-query-en="school bags" data-query-ha="jakunkunan makaranta" data-en="School bags" data-ha="Jakunkunan makaranta">School bags</button>
+            <button type="button" data-query-en="perfumes" data-query-ha="turare" data-en="Perfumes" data-ha="Turare">Perfumes</button>
+          </div>
+        </div>
+
         <div class="section-heading">
           <p class="eyebrow" data-en="Marketplace search" data-ha="Neman kaya">Marketplace search</p>
           <h2 id="resultsTitle" data-scroll-fill>Welcome to Kano Mart</h2>
