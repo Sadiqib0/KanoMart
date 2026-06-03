@@ -1138,6 +1138,9 @@ function getDiscountedPrice(amount, promotion) {
 
 // src/frontend/orders.ts
 var liveOrders = null;
+function getLiveOrders() {
+  return liveOrders;
+}
 async function fetchLiveOrders() {
   const res = await api.orders();
   liveOrders = res.orders;
@@ -2948,6 +2951,9 @@ async function refreshLiveAdminQueues() {
   }
 }
 var liveAdminData = null;
+function getLiveAdminData() {
+  return liveAdminData;
+}
 async function fetchLiveAdminData() {
   const [ordersRes, paymentsRes, reviewsRes, promotionsRes, payoutsRes, analyticsRes, usersRes] = await Promise.all([
     api.adminOrders().catch(() => ({ orders: [] })),
@@ -2970,6 +2976,9 @@ async function fetchLiveAdminData() {
   return liveAdminData;
 }
 var liveVendorData = null;
+function getLiveVendorData() {
+  return liveVendorData;
+}
 async function fetchLiveVendorData() {
   const [ordersRes, reviewsRes, walletRes] = await Promise.all([
     api.vendorOrders().catch(() => ({ orders: [] })),
@@ -2985,6 +2994,9 @@ async function fetchLiveVendorData() {
   return liveVendorData;
 }
 var liveNotifications = [];
+function getLiveNotifications() {
+  return liveNotifications;
+}
 async function fetchLiveNotifications() {
   const res = await api.notifications().catch(() => ({ notifications: [] }));
   liveNotifications = res.notifications;
@@ -3001,6 +3013,9 @@ async function refreshSession() {
   return res?.user ?? null;
 }
 var liveVendorApplication = null;
+function getLiveVendorApplication() {
+  return liveVendorApplication;
+}
 async function fetchLiveVendorApplication() {
   const res = await api.vendorApplication().catch(() => null);
   liveVendorApplication = res?.application ?? null;
@@ -3252,6 +3267,748 @@ async function submitSignup(form, role) {
   }
 }
 
+// src/frontend/router/dashboard-routes.ts
+var dashboardRoutes = [
+  { role: "customer", path: "customer/overview", page: "customer", label: "Overview", description: "Orders, saved products, cart, support" },
+  { role: "customer", path: "customer/orders", page: "orders", label: "Orders", description: "Track purchases and receipts" },
+  { role: "customer", path: "customer/wishlist", page: "customer", label: "Wishlist", description: "Saved products and reorder ideas" },
+  { role: "customer", path: "customer/cart", page: "customer", label: "Cart", description: "Checkout-ready basket" },
+  { role: "customer", path: "customer/profile", page: "customer", label: "Profile", description: "Delivery, language, account" },
+  { role: "customer", path: "customer/notifications", page: "customer", label: "Notifications", description: "Order and support updates" },
+  { role: "vendor", path: "vendor/overview", page: "vendor", label: "Overview", description: "Sales, orders, inventory, payouts" },
+  { role: "vendor", path: "vendor/products", page: "vendor", label: "Products", description: "Catalog and moderation state" },
+  { role: "vendor", path: "vendor/inventory", page: "vendor", label: "Inventory", description: "Stock health and alerts" },
+  { role: "vendor", path: "vendor/orders", page: "vendor", label: "Orders", description: "Fulfillment queue" },
+  { role: "vendor", path: "vendor/revenue", page: "vendor", label: "Revenue", description: "Sales and payout performance" },
+  { role: "vendor", path: "vendor/payouts", page: "vendor", label: "Payouts", description: "Wallet and settlement requests" },
+  { role: "vendor", path: "vendor/reviews", page: "vendor", label: "Reviews", description: "Customer feedback" },
+  { role: "vendor", path: "vendor/analytics", page: "vendor", label: "Analytics", description: "Views and top products" },
+  { role: "vendor", path: "vendor/store", page: "vendor", label: "Store", description: "Profile and approval state" },
+  { role: "admin", path: "admin/overview", page: "admin", label: "Overview", description: "Platform control room" },
+  { role: "admin", path: "admin/users", page: "admin", label: "Users", description: "Customers, vendors, admins" },
+  { role: "admin", path: "admin/vendors", page: "admin", label: "Vendors", description: "Applications and seller health" },
+  { role: "admin", path: "admin/products", page: "admin", label: "Products", description: "Catalog and moderation" },
+  { role: "admin", path: "admin/orders", page: "admin", label: "Orders", description: "Fulfillment operations" },
+  { role: "admin", path: "admin/payments", page: "admin", label: "Payments", description: "Payment exceptions and refunds" },
+  { role: "admin", path: "admin/payouts", page: "admin", label: "Payouts", description: "Vendor settlements" },
+  { role: "admin", path: "admin/categories", page: "admin", label: "Categories", description: "Catalog taxonomy" },
+  { role: "admin", path: "admin/reports", page: "admin", label: "Reports", description: "Growth and revenue analysis" },
+  { role: "admin", path: "admin/audit-logs", page: "admin", label: "Audit logs", description: "Admin activity trail" },
+  { role: "admin", path: "admin/system-health", page: "admin", label: "System health", description: "API, DB, storage, email" }
+];
+function getDashboardRoute(path) {
+  return dashboardRoutes.find((route) => route.path === path);
+}
+function getDashboardRoutesForRole(role) {
+  return dashboardRoutes.filter((route) => route.role === role);
+}
+function getDefaultDashboardRoute(role) {
+  if (role === "admin") return "admin/overview";
+  if (role === "vendor") return "vendor/overview";
+  if (role === "customer") return "customer/overview";
+  return "home";
+}
+function getRoutePage(path) {
+  if (path === "my-orders") return "orders";
+  if (path === "results" || path === "categories") return "catalog";
+  return getDashboardRoute(path)?.page ?? (path.split("/")[0] || "home");
+}
+
+// src/frontend/services/dashboard-data.ts
+function getCustomerDashboardData(user) {
+  const liveOrders2 = getLiveOrders();
+  const orders = liveOrders2?.length ? liveOrders2.filter((order) => order.customerUserId === user.id || order.customerPhone === user.phone).map((order) => ({
+    id: order.id,
+    status: order.status,
+    paymentStatus: order.paymentStatus ?? "pending",
+    total: order.subtotal ?? 0,
+    createdAt: order.createdAt,
+    items: order.items?.map((item) => item.name?.en ?? item.productId).filter(Boolean) ?? []
+  })) : getOrders().filter((order) => order.customerPhone === user.phone).map((order) => ({
+    id: order.id,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    total: order.subtotal,
+    createdAt: order.createdAt,
+    items: order.items.map((item) => item.name)
+  }));
+  const wishlistIds = getWishlist();
+  const recommended = getCatalogProducts().filter((product) => !wishlistIds.includes(product.id)).sort((a, b) => (b.quantityAvailable ?? 0) - (a.quantityAvailable ?? 0)).slice(0, 4);
+  const notifications = getLiveNotifications().filter((item) => item.audience === "customer").slice(0, 5);
+  return {
+    orders,
+    activeOrders: orders.filter((order) => !["delivered", "cancelled"].includes(order.status)).slice(0, 3),
+    recentPurchases: orders.slice(0, 4),
+    wishlistCount: wishlistIds.length,
+    cartCount: getCartItems().reduce((total, item) => total + item.quantity, 0),
+    cartSubtotal: getCartSubtotal(),
+    recommended,
+    notifications
+  };
+}
+function getVendorDashboardData(user) {
+  const live = getLiveVendorData();
+  const app = getLiveVendorApplication();
+  const vendor = findVendorByPhone(user.phone);
+  const businessName = app?.businessName || vendor?.businessName || user.name;
+  const liveOrders2 = live?.orders ?? [];
+  const localOrders = getOrders().filter((order) => order.items.some((item) => item.vendor === businessName));
+  const orders = liveOrders2.length ? liveOrders2.map((order) => ({
+    id: order.id,
+    status: order.status,
+    paymentStatus: order.paymentStatus ?? "pending",
+    total: order.subtotal ?? 0,
+    createdAt: order.createdAt
+  })) : localOrders.map((order) => ({
+    id: order.id,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    total: order.items.filter((item) => item.vendor === businessName).reduce((sum, item) => sum + item.lineTotal, 0),
+    createdAt: order.createdAt
+  }));
+  const products2 = getProductsForVendor(user.phone);
+  const wallet = live?.wallet ?? getVendorWalletSummaries().find((summary) => summary.vendor === businessName) ?? null;
+  const reviews = live?.reviews ?? getAllReviews().filter((review) => review.vendor === businessName);
+  const lowStock = products2.filter((product) => (product.quantityAvailable ?? 0) <= 3);
+  const paidSales = orders.filter((order) => order.paymentStatus === "paid").reduce((sum, order) => sum + order.total, 0);
+  return {
+    businessName,
+    approvalStatus: app?.status ?? user.vendorStatus ?? vendor?.status ?? "pending",
+    approvalNote: app?.adminNote ?? vendor?.reviewNote,
+    products: products2,
+    orders,
+    pendingOrders: orders.filter((order) => ["awaiting_confirmation", "preparing_order"].includes(order.status)),
+    lowStock,
+    topProducts: [...products2].sort((a, b) => parsePrice(b.price) - parsePrice(a.price)).slice(0, 5),
+    wallet,
+    payouts: live?.payouts ?? [],
+    reviews: reviews.slice(0, 5),
+    paidSales
+  };
+}
+function getAdminDashboardData() {
+  const live = getLiveAdminData();
+  const localUsers = getUserProfiles();
+  const localVendors = getVendorRequests();
+  const vendorCounts = getVendorStatusCounts(localVendors);
+  const productCounts = getProductStatusCounts();
+  const orders = live?.orders ?? getOrders();
+  const payments = live?.payments ?? getPayments();
+  const users = live?.users ?? localUsers;
+  const vendors = live ? [] : localVendors;
+  const analytics = live?.analytics ?? null;
+  const paymentSummary = getPaymentSummary();
+  const activeVendors = live ? live.users.filter((user) => user.role === "vendor" && user.vendorStatus === "approved").length : vendorCounts.approved;
+  const pendingVendorApprovals = live ? 0 : vendorCounts.pending;
+  const totalRevenue = analytics?.totalSales ?? orders.reduce((sum, order) => sum + (order.subtotal ?? 0), 0);
+  return {
+    users,
+    vendors,
+    orders,
+    payments,
+    payouts: live?.payouts ?? [],
+    reviews: live?.reviews ?? getAllReviews(),
+    promotions: live?.promotions ?? [],
+    analytics,
+    counts: {
+      totalUsers: users.length,
+      activeVendors,
+      pendingVendorApprovals,
+      pendingProductApprovals: productCounts.pending,
+      totalOrders: orders.length,
+      failedPayments: payments.filter((payment) => payment.status === "failed").length,
+      disputes: 0,
+      systemAlerts: 0,
+      products: getAllProducts().length
+    },
+    revenue: {
+      total: totalRevenue,
+      paid: analytics?.totalSales ?? paymentSummary.paidAmount,
+      pending: paymentSummary.pendingAmount,
+      refunded: paymentSummary.refundedAmount,
+      commission: getPlatformCommissionTotal()
+    }
+  };
+}
+function productToMiniMeta(product) {
+  return `${product.vendor} - ${product.price} - ${(product.quantityAvailable ?? 0).toLocaleString()} in stock`;
+}
+
+// src/frontend/components/dashboard/primitives.ts
+function renderStatusBadge(status, label = status) {
+  const normalized = String(status || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+  return `<span class="dash-status dash-status-${escapeHtml(normalized)}">${escapeHtml(label.replace(/_/g, " "))}</span>`;
+}
+function renderStatCard(stat) {
+  return `
+    <article class="dash-stat-card" data-tone="${escapeHtml(stat.tone ?? "neutral")}">
+      <span>${escapeHtml(stat.label)}</span>
+      <strong>${escapeHtml(String(stat.value))}</strong>
+      ${stat.detail ? `<small>${escapeHtml(stat.detail)}</small>` : ""}
+    </article>
+  `;
+}
+function renderStatGrid(stats) {
+  return `<div class="dash-stat-grid">${stats.map(renderStatCard).join("")}</div>`;
+}
+function renderEmptyState(title, body, action) {
+  return `
+    <div class="dash-empty-state">
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(body)}</p>
+      ${action ? renderDashboardAction(action) : ""}
+    </div>
+  `;
+}
+function renderDashboardAction(action) {
+  const tone = action.tone ?? "primary";
+  if (action.href || action.route) {
+    const href = action.href ?? `#${action.route}`;
+    return `<a class="dash-action dash-action-${tone}" href="${escapeHtml(href)}"${action.route ? ` data-route="${escapeHtml(action.route)}"` : ""}>${escapeHtml(action.label)}</a>`;
+  }
+  return `<button class="dash-action dash-action-${tone}" type="button"${action.id ? ` id="${escapeHtml(action.id)}"` : ""}>${escapeHtml(action.label)}</button>`;
+}
+function renderDashboardHeader(input) {
+  return `
+    <header class="dash-page-header">
+      <div>
+        <p class="dash-eyebrow">${escapeHtml(input.eyebrow)}</p>
+        <h2>${escapeHtml(input.title)}</h2>
+        <p>${escapeHtml(input.description)}</p>
+      </div>
+      ${input.actions?.length ? `<div class="dash-header-actions">${input.actions.map(renderDashboardAction).join("")}</div>` : ""}
+    </header>
+  `;
+}
+function renderPanel(input) {
+  return `
+    <section class="dash-panel ${escapeHtml(input.className ?? "")}">
+      <div class="dash-panel-heading">
+        <div>
+          ${input.eyebrow ? `<span>${escapeHtml(input.eyebrow)}</span>` : ""}
+          <h3>${escapeHtml(input.title)}</h3>
+        </div>
+        ${input.action ? renderDashboardAction({ ...input.action, tone: input.action.tone ?? "secondary" }) : ""}
+      </div>
+      <div class="dash-panel-body">${input.body}</div>
+    </section>
+  `;
+}
+function renderMiniRows(rows, empty) {
+  if (rows.length === 0) return renderEmptyState(empty.title, empty.body, empty.action);
+  return `
+    <div class="dash-mini-list">
+      ${rows.map(
+    (row) => `
+            <article class="dash-mini-row">
+              <div>
+                <strong>${escapeHtml(row.title)}</strong>
+                ${row.meta ? `<span>${escapeHtml(row.meta)}</span>` : ""}
+              </div>
+              ${row.value ? `<b>${escapeHtml(row.value)}</b>` : ""}
+              ${row.status ? renderStatusBadge(row.status) : ""}
+              ${row.action ? renderDashboardAction({ ...row.action, tone: row.action.tone ?? "secondary" }) : ""}
+            </article>
+          `
+  ).join("")}
+    </div>
+  `;
+}
+function renderMoney(amount) {
+  return formatPrice(Math.max(0, Number(amount ?? 0) || 0));
+}
+
+// src/frontend/components/dashboard/role-nav.ts
+function renderRoleDashboardNav(role, currentPath) {
+  const routes2 = getDashboardRoutesForRole(role);
+  return `
+    <nav class="dash-role-nav" aria-label="${escapeHtml(role)} dashboard sections">
+      ${routes2.map(
+    (route) => `
+            <a href="#${escapeHtml(route.path)}" data-route="${escapeHtml(route.path)}" class="${route.path === currentPath ? "is-active" : ""}">
+              <strong>${escapeHtml(route.label)}</strong>
+              <span>${escapeHtml(route.description)}</span>
+            </a>
+          `
+  ).join("")}
+    </nav>
+  `;
+}
+
+// src/frontend/pages/customer/overview.ts
+function renderCustomerOverview(user, currentPath = "customer/overview") {
+  const data = getCustomerDashboardData(user);
+  const firstName = user.firstName || user.name.split(" ")[0] || "there";
+  return `
+    <div class="dash-shell dash-shell-customer">
+      ${renderDashboardHeader({
+    eyebrow: "Customer workspace",
+    title: `Welcome back, ${firstName}`,
+    description: "Track active orders, continue shopping, review saved products, and handle support from one clean dashboard.",
+    actions: [
+      { label: "Shop catalog", route: "catalog" },
+      { label: "Open cart", id: "customerCartBtn", tone: "secondary" }
+    ]
+  })}
+
+      ${renderRoleDashboardNav("customer", currentPath)}
+
+      ${renderStatGrid([
+    { label: "Active orders", value: data.activeOrders.length, detail: `${data.orders.length} total orders`, tone: "info" },
+    { label: "Cart subtotal", value: renderMoney(data.cartSubtotal), detail: `${data.cartCount} items ready`, tone: "success" },
+    { label: "Wishlist", value: data.wishlistCount, detail: "Saved products", tone: "warning" },
+    { label: "Unread updates", value: data.notifications.filter((item) => !item.readAt).length, detail: "Notifications", tone: "neutral" }
+  ])}
+
+      <div class="dash-overview-grid">
+        ${renderPanel({
+    eyebrow: "Fulfillment",
+    title: "Active orders",
+    action: { label: "View all", route: "customer/orders" },
+    body: renderMiniRows(
+      data.activeOrders.map((order) => ({
+        title: order.id,
+        meta: `${order.items.slice(0, 2).join(", ") || "Order items"} - ${formatDate(order.createdAt)}`,
+        value: renderMoney(order.total),
+        status: order.status
+      })),
+      {
+        title: "No active orders",
+        body: "Start shopping and your live delivery timeline will appear here.",
+        action: { label: "Browse products", route: "catalog" }
+      }
+    )
+  })}
+
+        ${renderPanel({
+    eyebrow: "Discovery",
+    title: "Recommended products",
+    action: { label: "Shop more", route: "catalog" },
+    body: data.recommended.length ? `<div class="dash-product-rail">${data.recommended.map(
+      (product) => `
+                    <article class="dash-product-card">
+                      <div class="dash-product-thumb" style="--accent: ${escapeHtml(product.accent)}">
+                        ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(getLocalizedValue(product.name))}" loading="lazy" />` : ""}
+                      </div>
+                      <strong>${escapeHtml(getLocalizedValue(product.name))}</strong>
+                      <span>${escapeHtml(product.vendor)}</span>
+                      <b>${escapeHtml(product.price)}</b>
+                    </article>
+                  `
+    ).join("")}</div>` : renderEmptyState("No recommendations yet", "Search or save products to improve recommendations.", { label: "Search catalog", route: "catalog" })
+  })}
+
+        ${renderPanel({
+    eyebrow: "Saved shopping",
+    title: "Wishlist and cart",
+    body: `
+            <div class="dash-action-stack">
+              <button class="dash-command-card" type="button" id="customerWishlistBtn">
+                <strong>Wishlist summary</strong>
+                <span>${data.wishlistCount} saved products waiting for review.</span>
+              </button>
+              <button class="dash-command-card" type="button" id="customerCartBtnSecondary">
+                <strong>Cart checkout</strong>
+                <span>${data.cartCount} items - ${renderMoney(data.cartSubtotal)}</span>
+              </button>
+              <a class="dash-command-card" href="#customer/profile" data-route="customer/profile">
+                <strong>Profile and delivery</strong>
+                <span>Keep your address, language, and contact details current.</span>
+              </a>
+            </div>
+          `
+  })}
+
+        ${renderPanel({
+    eyebrow: "Recent activity",
+    title: "Purchases and notifications",
+    body: `
+            ${renderMiniRows(
+      data.recentPurchases.slice(0, 3).map((order) => ({
+        title: order.id,
+        meta: `${formatDate(order.createdAt)} - payment ${order.paymentStatus}`,
+        value: renderMoney(order.total),
+        status: order.status
+      })),
+      { title: "No purchases yet", body: "Completed orders will appear here for easy reordering." }
+    )}
+            <div class="dash-notification-stack">
+              ${data.notifications.length ? data.notifications.map(
+      (item) => `
+                          <article>
+                            <strong>${escapeHtml(item.title)}</strong>
+                            <span>${escapeHtml(item.message)}</span>
+                            ${item.readAt ? renderStatusBadge("read", "Read") : renderStatusBadge("unread", "Unread")}
+                          </article>
+                        `
+    ).join("") : renderEmptyState("No notifications", "Order, payment, and support updates will appear here.")}
+            </div>
+          `
+  })}
+      </div>
+    </div>
+  `;
+}
+
+// src/frontend/pages/vendor/overview.ts
+function renderApprovalBanner(status, note) {
+  if (status === "approved") {
+    return `
+      <div class="dash-alert dash-alert-success">
+        <strong>Store approved</strong>
+        <span>Your products can be submitted for catalog moderation and orders can flow to this workspace.</span>
+      </div>
+    `;
+  }
+  const rejected = status === "rejected";
+  return `
+    <div class="dash-alert ${rejected ? "dash-alert-danger" : "dash-alert-warning"}">
+      <strong>${rejected ? "Store needs attention" : "Store approval pending"}</strong>
+      <span>${escapeHtml(note || (rejected ? "Review your business details and contact support before resubmitting." : "You can prepare products, but publishing is limited until admin approval."))}</span>
+    </div>
+  `;
+}
+function renderVendorOverview(user, currentPath = "vendor/overview") {
+  const data = getVendorDashboardData(user);
+  return `
+    <div class="dash-shell dash-shell-vendor">
+      ${renderDashboardHeader({
+    eyebrow: "Vendor workspace",
+    title: data.businessName,
+    description: "Manage products, inventory, orders, revenue, payouts, reviews, analytics, and store readiness.",
+    actions: [
+      { label: "Add product", href: "#vendorProductForm" },
+      { label: "Request payout", route: "vendor/payouts", tone: "secondary" }
+    ]
+  })}
+
+      ${renderRoleDashboardNav("vendor", currentPath)}
+
+      <div class="vendor-dash-header dash-hidden-compat">
+        <div class="vendor-dash-title">
+          <p class="eyebrow">Vendor workspace</p>
+          <h2 id="vendorDashBusinessName">${escapeHtml(data.businessName)}</h2>
+        </div>
+        <span class="vendor-status-badge" id="vendorStatusBadge" data-status="${escapeHtml(data.approvalStatus)}">${escapeHtml(data.approvalStatus)}</span>
+      </div>
+
+      ${renderApprovalBanner(data.approvalStatus, data.approvalNote)}
+
+      ${renderStatGrid([
+    { label: "Total sales", value: renderMoney(data.paidSales), detail: "Paid order value", tone: "success" },
+    { label: "Pending orders", value: data.pendingOrders.length, detail: `${data.orders.length} total orders`, tone: "warning" },
+    { label: "Low stock", value: data.lowStock.length, detail: "Products at 3 or fewer units", tone: data.lowStock.length ? "danger" : "neutral" },
+    { label: "Available payout", value: renderMoney(data.wallet?.availableBalance), detail: `${renderMoney(data.wallet?.pendingBalance)} pending`, tone: "info" }
+  ])}
+
+      <div class="dash-overview-grid">
+        ${renderPanel({
+    eyebrow: "Fulfillment",
+    title: "Recent orders",
+    action: { label: "Orders", route: "vendor/orders" },
+    body: renderMiniRows(
+      data.orders.slice(0, 6).map((order) => ({
+        title: order.id,
+        meta: `${formatDate(order.createdAt)} - payment ${order.paymentStatus}`,
+        value: renderMoney(order.total),
+        status: order.status
+      })),
+      { title: "No vendor orders yet", body: "New paid and pending orders will appear here when customers buy your products." }
+    )
+  })}
+
+        ${renderPanel({
+    eyebrow: "Inventory",
+    title: "Low stock products",
+    action: { label: "Inventory", route: "vendor/inventory" },
+    body: renderMiniRows(
+      data.lowStock.slice(0, 5).map((product) => ({
+        title: getLocalizedValue(product.name),
+        meta: productToMiniMeta(product),
+        status: (product.quantityAvailable ?? 0) === 0 ? "out_of_stock" : "low_stock"
+      })),
+      { title: "Inventory is healthy", body: "Products with low or empty stock will be highlighted here." }
+    )
+  })}
+
+        ${renderPanel({
+    eyebrow: "Catalog",
+    title: "Top products",
+    action: { label: "Products", route: "vendor/products" },
+    body: renderMiniRows(
+      data.topProducts.map((product) => ({
+        title: getLocalizedValue(product.name),
+        meta: productToMiniMeta(product),
+        status: product.moderationStatus ?? product.listingStatus ?? "active"
+      })),
+      { title: "No products yet", body: "Add your first product with price, stock, image, and bilingual description." }
+    )
+  })}
+
+        ${renderPanel({
+    eyebrow: "Payouts",
+    title: "Wallet and settlement",
+    action: { label: "Payouts", route: "vendor/payouts" },
+    body: `
+            <div class="dash-money-stack">
+              <article><span>Available</span><strong>${renderMoney(data.wallet?.availableBalance)}</strong></article>
+              <article><span>Pending</span><strong>${renderMoney(data.wallet?.pendingBalance)}</strong></article>
+              <article><span>Commission paid</span><strong>${renderMoney(data.wallet?.totalCommission)}</strong></article>
+            </div>
+            ${data.payouts.length ? renderMiniRows(
+      data.payouts.slice(0, 3).map((payout) => ({
+        title: payout.id,
+        meta: `${payout.bankName ?? "Bank"} - ${payout.requestedAt ? formatDate(payout.requestedAt) : "requested"}`,
+        value: renderMoney(payout.amount),
+        status: payout.status
+      })),
+      { title: "No payout requests", body: "Request payouts once your available balance is ready." }
+    ) : renderEmptyState("No payout requests", "Settlement requests and admin decisions will appear here.")}
+          `
+  })}
+
+        ${renderPanel({
+    eyebrow: "Feedback",
+    title: "Latest reviews",
+    action: { label: "Reviews", route: "vendor/reviews" },
+    body: renderMiniRows(
+      data.reviews.map((review) => ({
+        title: `${review.rating}/5 - ${review.reviewerName ?? "Customer"}`,
+        meta: review.comment,
+        status: review.hidden ? "hidden" : "visible"
+      })),
+      { title: "No reviews yet", body: "Customer reviews will help you monitor quality and trust." }
+    )
+  })}
+
+        ${renderPanel({
+    eyebrow: "Manage",
+    title: "Product operations",
+    className: "dash-panel-wide",
+    body: `
+            <div class="vendor-product-manager dash-embedded-manager" aria-labelledby="vendor-products-title">
+              <div class="vendor-product-heading">
+                <div>
+                  <span>Seller catalog</span>
+                  <h3 id="vendor-products-title">Add and manage products</h3>
+                </div>
+                <p>Products are submitted for admin moderation before appearing in the public catalog.</p>
+              </div>
+              <form class="vendor-product-form" id="vendorProductForm" novalidate>
+                <label><span>Product name (English)</span><input type="text" name="productName" minlength="2" maxlength="90" required placeholder="e.g. Plain black jallabiya" /></label>
+                <label><span>Product name (Hausa)</span><input type="text" name="productNameHa" minlength="2" maxlength="90" placeholder="misali Jallabiya baki" /></label>
+                <label><span>Description (English)</span><input type="text" name="descriptionEn" maxlength="240" placeholder="Short product description" /></label>
+                <label><span>Description (Hausa)</span><input type="text" name="descriptionHa" maxlength="240" placeholder="Takaitaccen bayanin kaya" /></label>
+                <label><span>Value / price</span><input type="text" inputmode="numeric" name="productValue" required placeholder="e.g. 15000" autocomplete="off" /></label>
+                <label><span>Quantity available</span><input type="number" name="quantityAvailable" min="0" step="1" required placeholder="10" /></label>
+                <label><span>Category</span><select name="productCategory" required><option value="food">Food</option><option value="fashion">Fashion</option><option value="children">Children</option><option value="essentials">Essentials</option></select></label>
+                <label><span>Product picture</span><input type="file" name="productImage" accept="image/png,image/jpeg,image/webp" required /></label>
+                <button type="submit">Add product</button>
+                <p class="form-message" id="vendorProductMessage" role="status" aria-live="polite"></p>
+              </form>
+              <div class="vendor-products-list" id="vendorProductsList" aria-live="polite"></div>
+            </div>
+          `
+  })}
+
+        ${renderPanel({
+    eyebrow: "Compatibility",
+    title: "Order queue and notifications",
+    className: "dash-panel-wide",
+    body: `<div class="vendor-commerce-list" id="vendorCommerceList" aria-live="polite"></div>`
+  })}
+      </div>
+    </div>
+  `;
+}
+
+// src/frontend/pages/admin/overview.ts
+function renderAdminOverview(currentPath = "admin/overview") {
+  const data = getAdminDashboardData();
+  const pendingPayments = data.payments.filter((payment) => payment.status === "pending");
+  const failedPayments = data.payments.filter((payment) => payment.status === "failed");
+  const recentOrders = data.orders.slice(0, 6);
+  return `
+    <div class="dash-shell dash-shell-admin">
+      ${renderDashboardHeader({
+    eyebrow: "Marketplace control room",
+    title: "Admin dashboard",
+    description: "Control users, vendors, products, approvals, orders, payments, disputes, categories, reports, audit logs, and system health.",
+    actions: [
+      { label: "Vendor approvals", route: "admin/vendors" },
+      { label: "System health", route: "admin/system-health", tone: "secondary" }
+    ]
+  })}
+
+      ${renderRoleDashboardNav("admin", currentPath)}
+
+      ${renderStatGrid([
+    { label: "Total users", value: data.counts.totalUsers, detail: "Registered accounts", tone: "info" },
+    { label: "Active vendors", value: data.counts.activeVendors, detail: `${data.counts.pendingVendorApprovals} pending vendor approvals`, tone: "success" },
+    { label: "Pending approvals", value: data.counts.pendingVendorApprovals + data.counts.pendingProductApprovals, detail: "Vendor and product queues", tone: "warning" },
+    { label: "Total orders", value: data.counts.totalOrders, detail: `${renderMoney(data.revenue.total)} GMV`, tone: "neutral" },
+    { label: "Revenue", value: renderMoney(data.revenue.paid), detail: `${renderMoney(data.revenue.commission)} commission`, tone: "success" },
+    { label: "Payment issues", value: data.counts.failedPayments, detail: `${pendingPayments.length} pending payments`, tone: data.counts.failedPayments ? "danger" : "neutral" },
+    { label: "Disputes", value: data.counts.disputes, detail: "Requires dispute endpoint", tone: "neutral" },
+    { label: "System alerts", value: data.counts.systemAlerts, detail: "Health checks pending", tone: "neutral" }
+  ])}
+
+      <div class="dash-overview-grid">
+        ${renderPanel({
+    eyebrow: "Approvals",
+    title: "Priority queues",
+    action: { label: "Review vendors", route: "admin/vendors" },
+    body: `
+            <div class="dash-queue-grid">
+              <article>
+                <span>Vendor approvals</span>
+                <strong>${data.counts.pendingVendorApprovals}</strong>
+                <small>New sellers waiting for review</small>
+              </article>
+              <article>
+                <span>Product moderation</span>
+                <strong>${data.counts.pendingProductApprovals}</strong>
+                <small>Listings waiting for catalog approval</small>
+              </article>
+              <article>
+                <span>Payout requests</span>
+                <strong>${data.payouts.filter((payout) => payout.status === "pending").length}</strong>
+                <small>Vendor settlement decisions</small>
+              </article>
+            </div>
+            <div class="dash-legacy-queues">
+              <div class="vendor-approval-list" id="vendorApprovals"></div>
+              <div class="product-moderation-list" id="productModeration"></div>
+            </div>
+          `
+  })}
+
+        ${renderPanel({
+    eyebrow: "Finance",
+    title: "Revenue and payment control",
+    action: { label: "Payments", route: "admin/payments" },
+    body: `
+            <div class="dash-money-stack">
+              <article><span>Paid volume</span><strong>${renderMoney(data.revenue.paid)}</strong></article>
+              <article><span>Pending</span><strong>${renderMoney(data.revenue.pending)}</strong></article>
+              <article><span>Refunded</span><strong>${renderMoney(data.revenue.refunded)}</strong></article>
+              <article><span>Commission</span><strong>${renderMoney(data.revenue.commission)}</strong></article>
+            </div>
+            ${renderMiniRows(
+      [...failedPayments, ...pendingPayments].slice(0, 5).map((payment) => ({
+        title: payment.reference ?? payment.id,
+        meta: `${payment.orderId} - ${payment.method ?? "payment"} - ${formatDate(payment.createdAt)}`,
+        value: renderMoney(payment.amount),
+        status: payment.status
+      })),
+      { title: "No payment exceptions", body: "Pending, failed, and refunded payment actions will appear here." }
+    )}
+          `
+  })}
+
+        ${renderPanel({
+    eyebrow: "Orders",
+    title: "Recent platform activity",
+    action: { label: "Orders", route: "admin/orders" },
+    body: renderMiniRows(
+      recentOrders.map((order) => ({
+        title: order.id,
+        meta: `${"customerName" in order ? order.customerName : order.customerPhone ?? "Customer"} - ${formatDate(order.createdAt)}`,
+        value: renderMoney(order.subtotal),
+        status: order.status
+      })),
+      { title: "No orders yet", body: "Customer orders will appear here once checkout starts." }
+    )
+  })}
+
+        ${renderPanel({
+    eyebrow: "Catalog",
+    title: "Products, categories, and reports",
+    action: { label: "Reports", route: "admin/reports" },
+    body: `
+            <div class="dash-action-stack">
+              <a class="dash-command-card" href="#admin/products" data-route="admin/products">
+                <strong>Product control</strong>
+                <span>${data.counts.products} products across approved, pending, hidden, and rejected states.</span>
+              </a>
+              <a class="dash-command-card" href="#admin/categories" data-route="admin/categories">
+                <strong>Categories</strong>
+                <span>Manage bilingual taxonomy, search terms, and category merchandising.</span>
+              </a>
+              <a class="dash-command-card" href="#admin/reports" data-route="admin/reports">
+                <strong>Growth reports</strong>
+                <span>Track customer growth, vendor growth, popular searches, and best sellers.</span>
+              </a>
+            </div>
+          `
+  })}
+
+        ${renderPanel({
+    eyebrow: "Risk",
+    title: "Reviews, disputes, and audit trail",
+    action: { label: "Audit logs", route: "admin/audit-logs" },
+    body: `
+            ${renderMiniRows(
+      data.reviews.filter((review) => !review.hidden).slice(0, 5).map((review) => ({
+        title: `${review.rating}/5 - ${review.reviewerName ?? "Customer"}`,
+        meta: review.comment,
+        status: "visible"
+      })),
+      { title: "No visible review risks", body: "Review moderation and dispute queues will appear here." }
+    )}
+            <div class="dash-system-list">
+              <article><strong>Disputes</strong><span>Endpoint required: /admin/disputes</span></article>
+              <article><strong>Audit logs</strong><span>Endpoint required: /admin/audit-logs</span></article>
+            </div>
+          `
+  })}
+
+        ${renderPanel({
+    eyebrow: "Infrastructure",
+    title: "System health",
+    action: { label: "Health", route: "admin/system-health" },
+    body: `
+            <div class="dash-health-grid">
+              <article data-state="ok"><strong>API</strong><span>Health endpoint available</span></article>
+              <article data-state="ok"><strong>Database</strong><span>Reported by /api/health</span></article>
+              <article data-state="pending"><strong>Blob storage</strong><span>Add admin health probe</span></article>
+              <article data-state="pending"><strong>Email</strong><span>Add delivery provider status</span></article>
+            </div>
+            ${renderEmptyState("No critical alerts", "System alerts will show here once health probes and logging are connected.")}
+          `
+  })}
+
+        ${renderPanel({
+    eyebrow: "Legacy operations",
+    title: "Existing admin controls",
+    className: "dash-panel-wide",
+    body: `
+            <div class="dash-legacy-admin-grid">
+              <div hidden>
+                <span id="totalSearches"></span>
+                <span id="failedSearches"></span>
+                <span id="savedVendors"></span>
+                <span id="topDemand"></span>
+              </div>
+              <div class="record-list" id="paymentStatus"></div>
+              <div class="withdrawal-list" id="withdrawalQueue"></div>
+              <div class="record-list" id="orderRecords"></div>
+              <div class="review-moderation-list" id="reviewModeration"></div>
+              <div id="vendorSubscriptionSummary"></div>
+              <div id="advancedAnalytics"></div>
+              <div id="phaseThreeControls"></div>
+              <div id="popularSearches" hidden></div>
+              <div id="failedSearchList" hidden></div>
+              <div id="demandTrends" hidden></div>
+              <table hidden><tbody id="searchHistoryTable"></tbody></table>
+            </div>
+          `
+  })}
+      </div>
+    </div>
+  `;
+}
+
 // src/frontend/app.ts
 var routes = /* @__PURE__ */ new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
 var AUTH_ROUTES = /* @__PURE__ */ new Set(["login", "signup"]);
@@ -3260,19 +4017,19 @@ function getCurrentRoute() {
   const raw = window.location.hash.replace("#", "") || "home";
   if (raw === "results" || raw === "categories") return "catalog";
   if (raw === "my-orders") return "orders";
+  if (getDashboardRoute(raw)) return raw;
   return routes.has(raw) ? raw : "home";
 }
 function getVisitorRole() {
   return state.currentUser?.role ?? "guest";
 }
 function getDefaultRouteForRole(role = getVisitorRole()) {
-  if (role === "admin") return "admin";
-  if (role === "vendor") return "vendor";
-  if (role === "customer") return "customer";
-  return "home";
+  return getDefaultDashboardRoute(role);
 }
 function canAccessRoute(route) {
   const role = getVisitorRole();
+  const dashboardRoute = getDashboardRoute(route);
+  if (dashboardRoute) return dashboardRoute.role === role;
   if (route === "admin") return role === "admin";
   if (route === "customer") return role === "customer";
   if (route === "orders") return role === "customer";
@@ -3280,27 +4037,34 @@ function canAccessRoute(route) {
   return true;
 }
 function setRoute(route = getCurrentRoute()) {
-  let nextRoute = routes.has(route) ? route : "home";
+  let nextRoute = routes.has(route) || getDashboardRoute(route) ? route : "home";
+  const role = getVisitorRole();
+  if (nextRoute === "customer" && role === "customer") nextRoute = "customer/overview";
+  if (nextRoute === "vendor" && role === "vendor") nextRoute = "vendor/overview";
+  if (nextRoute === "admin" && role === "admin") nextRoute = "admin/overview";
   if (!canAccessRoute(nextRoute)) {
     nextRoute = getDefaultRouteForRole();
     if (window.location.hash.replace("#", "") !== nextRoute) {
       window.history.replaceState(null, "", `#${nextRoute}`);
     }
   }
+  const pageRoute = getRoutePage(nextRoute);
   document.querySelectorAll("[data-page]").forEach((section) => {
-    const isActive = section.dataset.page === nextRoute;
+    const isActive = section.dataset.page === pageRoute;
     section.hidden = !isActive;
     section.classList.toggle("is-active-page", isActive);
   });
   document.querySelectorAll("[data-route]").forEach((link) => {
-    const isActive = link.dataset.route === nextRoute;
+    const linkRoute = link.dataset.route ?? "";
+    const isActive = linkRoute === nextRoute || linkRoute === pageRoute || nextRoute.startsWith(`${linkRoute}/`);
     link.classList.toggle("is-active-route", isActive);
     if (link.matches(".primary-nav a")) {
       link.setAttribute("aria-current", isActive ? "page" : "false");
     }
   });
   document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
-  document.body.classList.toggle("on-home", nextRoute === "home");
+  document.body.classList.toggle("on-home", pageRoute === "home");
+  renderActiveDashboardRoute(nextRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
 }
@@ -3445,7 +4209,7 @@ async function refreshLiveCatalog() {
     } else {
       renderCatalogPreview(false);
     }
-    renderAdminDashboard();
+    renderAdminDashboard2();
   } catch {
   }
 }
@@ -3463,44 +4227,30 @@ async function refreshLiveAdminDashboard() {
     } else {
       renderCatalogPreview(false);
     }
-    renderAdminDashboard();
+    renderAdminDashboard2();
   } catch {
   }
 }
-function renderCustomerDashboard() {
+function renderActiveDashboardRoute(route = getCurrentRoute()) {
   const user = state.currentUser;
-  if (!user || user.role !== "customer") return;
-  const nameEl = document.querySelector("#customerWelcomeName");
-  if (nameEl) {
-    const firstName = user.firstName || user.name?.split(" ")[0] || "";
-    nameEl.textContent = firstName ? getCopy(`Welcome back, ${firstName}!`, `Barka da dawo, ${firstName}!`) : getCopy("Welcome back!", "Barka da dawo!");
-  }
-  const orderCount = getOrders().filter((o) => o.customerPhone === user.phone).length;
-  const cartCount = state.cartCount;
-  const wishlistCount = Number(elements.wishlistCountEl.textContent) || 0;
-  const statOrders = document.querySelector("#customerStatOrders");
-  const statCart = document.querySelector("#customerStatCart");
-  const statWishlist = document.querySelector("#customerStatWishlist");
-  if (statOrders) statOrders.textContent = String(orderCount);
-  if (statCart) statCart.textContent = String(cartCount);
-  if (statWishlist) statWishlist.textContent = String(wishlistCount);
-  const recentEl = document.querySelector("#customerRecentOrders");
-  if (!recentEl) return;
-  const recentOrders = getOrders().filter((o) => o.customerPhone === user.phone).slice(0, 3);
-  if (recentOrders.length === 0) {
-    recentEl.innerHTML = `<p class="muted" data-en="No orders yet. Start shopping to see your orders here." data-ha="Babu oda tukuna. Fara sayayya don ganin ododinka a nan.">${getCopy("No orders yet. Start shopping to see your orders here.", "Babu oda tukuna. Fara sayayya don ganin ododinka a nan.")}</p>`;
+  if (user?.role === "customer" && getRoutePage(route) === "customer") {
+    renderCustomerDashboard(route);
     return;
   }
-  recentEl.innerHTML = recentOrders.map((order) => `
-    <div class="customer-order-row">
-      <div class="customer-order-id">
-        <strong>${escapeHtml(order.id)}</strong>
-        <small>${escapeHtml(formatDate(order.createdAt))}</small>
-      </div>
-      <span class="order-status order-status-${escapeHtml(order.status)}">${escapeHtml(order.status.replace(/_/g, " "))}</span>
-      <span class="customer-order-total">${escapeHtml(formatPrice(order.subtotal))}</span>
-    </div>
-  `).join("");
+  if (user?.role === "vendor" && getRoutePage(route) === "vendor") {
+    renderVendorDashboard(route);
+    return;
+  }
+  if (user?.role === "admin" && getRoutePage(route) === "admin") {
+    renderAdminDashboard2(route);
+  }
+}
+function renderCustomerDashboard(route = getCurrentRoute()) {
+  const user = state.currentUser;
+  if (!user || user.role !== "customer") return;
+  const section = document.querySelector("#customer");
+  if (!section) return;
+  section.innerHTML = renderCustomerOverview(user, route);
 }
 function renderOrdersPage() {
   const ordersList = document.querySelector("#myOrdersList");
@@ -3518,12 +4268,9 @@ function renderOrdersPage() {
 function renderLanguageSensitiveViews() {
   syncUserButton();
   syncRoleNavigation();
-  renderCustomerDashboard();
+  renderActiveDashboardRoute();
   renderOrdersPage();
   renderCartPanel();
-  renderVendorProducts();
-  renderVendorCommerce();
-  renderAdminDashboard();
   const userOrdersList = document.querySelector("#userOrdersList");
   if (userOrdersList) userOrdersList.innerHTML = renderOrdersPanel();
   if (document.querySelector("#wishlistModal")) openWishlistPanel();
@@ -3536,8 +4283,7 @@ async function refreshLiveVendorDashboard() {
       fetchLiveVendorData(),
       fetchLiveVendorApplication()
     ]);
-    renderVendorProducts();
-    renderVendorCommerce();
+    renderVendorDashboard();
   } catch {
   }
 }
@@ -3554,7 +4300,7 @@ function performSearch(rawQuery) {
     state.lastResults = results;
     updateResultCopy(query, results);
     renderProductResults(results);
-    renderAdminDashboard();
+    renderAdminDashboard2();
   }, 180);
 }
 function setLanguage(language) {
@@ -3647,6 +4393,15 @@ function renderVendorDashHeader() {
     badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
     badge.dataset.status = status;
   }
+}
+function renderVendorDashboard(route = getCurrentRoute()) {
+  const user = state.currentUser;
+  if (!user || user.role !== "vendor") return;
+  const dashboard = document.querySelector(".vendor-dashboard");
+  if (!dashboard) return;
+  dashboard.innerHTML = renderVendorOverview(user, route);
+  renderVendorProducts();
+  renderVendorCommerce();
 }
 function renderVendorProducts() {
   const list = document.querySelector("#vendorProductsList");
@@ -3751,6 +4506,40 @@ function renderVendorCommerce() {
     </div>
   `;
 }
+function renderAdminDashboard2(route = getCurrentRoute()) {
+  if (state.currentUser?.role !== "admin") {
+    renderAdminDashboard();
+    return;
+  }
+  if (elements.adminContent) {
+    elements.adminContent.innerHTML = renderAdminOverview(route);
+    refreshLegacyAdminElementRefs();
+  }
+  renderAdminDashboard();
+}
+function refreshLegacyAdminElementRefs() {
+  const assign = (key, selector) => {
+    const node = document.querySelector(selector);
+    if (node) {
+      elements[String(key)] = node;
+    }
+  };
+  assign("totalSearches", "#totalSearches");
+  assign("failedSearches", "#failedSearches");
+  assign("savedVendors", "#savedVendors");
+  assign("topDemand", "#topDemand");
+  assign("popularSearches", "#popularSearches");
+  assign("failedSearchList", "#failedSearchList");
+  assign("demandTrends", "#demandTrends");
+  assign("vendorApprovals", "#vendorApprovals");
+  assign("productModeration", "#productModeration");
+  assign("withdrawalQueue", "#withdrawalQueue");
+  assign("vendorPerformance", "#vendorPerformance");
+  assign("orderRecords", "#orderRecords");
+  assign("paymentStatus", "#paymentStatus");
+  assign("reviewModeration", "#reviewModeration");
+  assign("searchHistoryTable", "#searchHistoryTable");
+}
 async function handleVendorProductSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -3830,7 +4619,7 @@ async function handleVendorProductSubmit(event) {
     renderVendorProducts();
     renderVendorCommerce();
     renderCatalogPreview();
-    renderAdminDashboard();
+    renderAdminDashboard2();
   } catch (error) {
     if (message) {
       message.textContent = error instanceof Error && error.message === "Image too large" ? getCopy("Image is too large. Use an image under 1.5MB.", "Hoton ya yi girma. Yi amfani da kasa da 1.5MB.") : getCopy("Could not add product. Check the image and try again.", "Ba a iya saka kaya ba. Duba hoton ka sake gwadawa.");
@@ -3851,7 +4640,7 @@ function applyLocalVendorDecision(id, action) {
     message: `${vendor.businessName} was ${action}.`,
     type: "vendor"
   });
-  renderAdminDashboard();
+  renderAdminDashboard2();
   showToast({
     message: action === "approved" ? getCopy(`${vendor.businessName} approved.`, `An amince da ${vendor.businessName}.`) : getCopy(`${vendor.businessName} rejected.`, `An ki ${vendor.businessName}.`),
     type: action === "approved" ? "success" : "info"
@@ -3874,7 +4663,7 @@ function applyLocalProductDecision(productId, productAction) {
   } else {
     renderCatalogPreview();
   }
-  renderAdminDashboard();
+  renderAdminDashboard2();
   renderVendorCommerce();
   showToast({
     message: getCopy("Product moderation updated.", "An sabunta duba kayan."),
@@ -3899,8 +4688,10 @@ document.addEventListener("click", (event) => {
   const link = event.target?.closest("[data-route]");
   if (!link?.dataset.route) return;
   event.preventDefault();
-  window.location.hash = link.dataset.route;
-  setRoute(link.dataset.route);
+  const hashRoute = link.hash?.replace("#", "");
+  const route = hashRoute && hashRoute.startsWith(`${link.dataset.route}/`) ? hashRoute : link.dataset.route;
+  window.location.hash = route;
+  setRoute(route);
 });
 window.addEventListener("hashchange", () => setRoute());
 elements.loadMoreProducts.addEventListener("click", () => {
@@ -3947,7 +4738,7 @@ elements.resultsGrid.addEventListener("click", (event) => {
   const card = target?.closest(".product-card");
   if (card?.dataset.productId) {
     recordProductView(card.dataset.productId);
-    renderAdminDashboard();
+    renderAdminDashboard2();
     openProductModal(card.dataset.productId);
   }
 });
@@ -3969,11 +4760,17 @@ document.querySelectorAll(".cart-button").forEach((button) => {
 document.querySelectorAll(".wishlist-button").forEach((button) => {
   button.addEventListener("click", openWishlistPanel);
 });
-document.querySelector("#customerCartBtn")?.addEventListener("click", () => {
+document.addEventListener("click", (event) => {
+  const button = event.target?.closest("#customerCartBtn, #customerCartBtnSecondary");
+  if (!button) return;
   renderCartPanel();
   openCart();
 });
-document.querySelector("#customerWishlistBtn")?.addEventListener("click", openWishlistPanel);
+document.addEventListener("click", (event) => {
+  const button = event.target?.closest("#customerWishlistBtn");
+  if (!button) return;
+  openWishlistPanel();
+});
 elements.cartOverlay.addEventListener("click", closeCart);
 document.querySelector(".cart-close")?.addEventListener("click", closeCart);
 elements.checkoutButton.addEventListener("click", () => {
@@ -3988,7 +4785,9 @@ elements.languageButtons.forEach((button) => {
   button.addEventListener("click", () => setLanguage(button.dataset.language === "ha" ? "ha" : "en"));
 });
 elements.vendorForm.addEventListener("submit", handleVendorRequestSubmit);
-document.querySelector("#vendorProductForm")?.addEventListener("submit", (event) => {
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (form?.id !== "vendorProductForm") return;
   void handleVendorProductSubmit(event);
 });
 document.querySelector("#vendorProductsList")?.addEventListener("click", (event) => {
@@ -4000,7 +4799,7 @@ document.querySelector("#vendorProductsList")?.addEventListener("click", (event)
   renderVendorProducts();
   renderVendorCommerce();
   renderCatalogPreview(false);
-  renderAdminDashboard();
+  renderAdminDashboard2();
   showToast({
     message: action === "active" ? getCopy("Product restored to catalog.", "An mayar da kaya kasuwa.") : getCopy("Product removed from active catalog.", "An cire kaya daga kasuwa."),
     type: action === "active" ? "success" : "info"
@@ -4015,7 +4814,7 @@ document.querySelector("#vendorCommerceList")?.addEventListener("click", (event)
   if (!orderId) return;
   const order = advanceOrderStatus(orderId);
   renderVendorCommerce();
-  renderAdminDashboard();
+  renderAdminDashboard2();
   showToast({
     message: getCopy("Order marked ready for pickup or delivery.", "An nuna oda a shirye domin dauka ko kaiwa."),
     type: "success"
@@ -4029,7 +4828,7 @@ elements.adminContent.addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData(form);
     saveCommissionSettings({ defaultRate: Number(data.get("defaultRate") || 10) / 100 });
-    renderAdminDashboard();
+    renderAdminDashboard2();
     showToast({ message: getCopy("Commission settings saved.", "An ajiye saitin kwamishan."), type: "success" });
     return;
   }
@@ -4063,7 +4862,7 @@ elements.adminContent.addEventListener("submit", (event) => {
     }
     form.reset();
     renderCatalogPreview(false);
-    renderAdminDashboard();
+    renderAdminDashboard2();
     showToast({ message: getCopy("Promotion created.", "An kirkiri talla."), type: "success" });
   }
 });
@@ -4073,7 +4872,7 @@ elements.adminContent.addEventListener("change", (event) => {
   const planId = select?.value;
   if (!vendor || !planId || !["free", "standard", "premium"].includes(planId)) return;
   setVendorSubscription(vendor, planId);
-  renderAdminDashboard();
+  renderAdminDashboard2();
   showToast({ message: getCopy("Vendor plan updated.", "An sabunta plan din dillali."), type: "success" });
 });
 elements.adminContent.addEventListener("click", (event) => {
@@ -4084,7 +4883,7 @@ elements.adminContent.addEventListener("click", (event) => {
     if (wallet && wallet.availableBalance > 0) {
       const withdrawal = requestWithdrawal(wallet.vendor, wallet.availableBalance);
       if (withdrawal) {
-        renderAdminDashboard();
+        renderAdminDashboard2();
         showToast({
           message: getCopy("Withdrawal request created.", "An kirkiri bukatar cire kudi."),
           type: "success"
@@ -4128,7 +4927,7 @@ elements.adminContent.addEventListener("click", (event) => {
       if (state.currentUser?.token) {
         api.updateAdminReview(reviewButton.dataset.reviewId, { hidden: true }).catch(() => void 0);
       }
-      renderAdminDashboard();
+      renderAdminDashboard2();
       showToast({
         message: getCopy("Review removed from public listings.", "An cire ra'ayi daga fili."),
         type: "info"
@@ -4148,7 +4947,7 @@ elements.adminContent.addEventListener("click", (event) => {
           }).catch(() => void 0);
         }
       }
-      renderAdminDashboard();
+      renderAdminDashboard2();
       renderVendorCommerce();
       showToast({
         message: getCopy(`Payment ${payment.status}.`, `Biya ${payment.status}.`),
@@ -4163,7 +4962,7 @@ elements.adminContent.addEventListener("click", (event) => {
       if (state.currentUser?.token) {
         api.updateAdminOrder(orderButton.dataset.orderAdvance, { status: order.status }).catch(() => void 0);
       }
-      renderAdminDashboard();
+      renderAdminDashboard2();
       renderVendorCommerce();
       showToast({
         message: getCopy(`Order ${order.id}: ${order.status}`, `Oda ${order.id}: ${order.status}`),
@@ -4182,7 +4981,7 @@ elements.adminContent.addEventListener("click", (event) => {
         adminNote: action === "approved" ? "Approved from admin dashboard" : "Rejected from admin dashboard"
       }).catch(() => void 0);
     }
-    renderAdminDashboard();
+    renderAdminDashboard2();
     renderVendorCommerce();
     showToast({
       message: getCopy(`Withdrawal ${withdrawal.status}.`, `Cire kudi ${withdrawal.status}.`),
@@ -4217,11 +5016,7 @@ elements.userButton.addEventListener("click", openUserPanel);
 window.addEventListener("kanoMart:signed-in", () => {
   syncUserButton();
   syncRoleNavigation();
-  renderVendorProducts();
-  renderVendorCommerce();
   renderAdminGate();
-  renderAdminDashboard();
-  renderCustomerDashboard();
   renderOrdersPage();
   void refreshLiveAdminDashboard();
   void refreshLiveVendorDashboard();
@@ -4229,11 +5024,10 @@ window.addEventListener("kanoMart:signed-in", () => {
   const nextRoute = getDefaultRouteForRole();
   window.history.replaceState(null, "", `#${nextRoute}`);
   setRoute(nextRoute);
+  renderActiveDashboardRoute(nextRoute);
 });
 window.addEventListener("kanoMart:signed-out", () => {
   syncRoleNavigation();
-  renderVendorProducts();
-  renderVendorCommerce();
   renderAdminGate();
   renderOrdersPage();
   setRoute("home");
@@ -4277,7 +5071,7 @@ syncWishlistCount();
 setLanguage(state.language);
 syncUserButton();
 renderAdminGate();
-renderAdminDashboard();
+renderAdminDashboard2();
 renderVendorProducts();
 renderVendorCommerce();
 renderOrdersPage();

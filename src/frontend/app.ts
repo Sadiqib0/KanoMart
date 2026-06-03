@@ -3,7 +3,7 @@ import { storageKeys } from "../backend/data";
 import { state, elements } from "./state";
 import { escapeHtml, formatDate, formatPrice, getCopy, sanitizePlainText, setActiveLanguageButtons } from "./utils";
 import { getSearchResults, saveSearch } from "./search";
-import { renderProductCard, updateResultCopy, renderAdminDashboard } from "./render";
+import { renderProductCard, updateResultCopy, renderAdminDashboard as renderLegacyAdminDashboard } from "./render";
 import { exportSearchHistory, clearPrototypeData } from "./admin";
 import {
   addToCart,
@@ -54,6 +54,10 @@ import {
 } from "./live-api";
 import { api } from "./api-client";
 import { initLoginPage, initSignupPage } from "./auth-pages";
+import { getDashboardRoute, getDefaultDashboardRoute, getRoutePage } from "./router/dashboard-routes";
+import { renderCustomerOverview } from "./pages/customer/overview";
+import { renderVendorOverview } from "./pages/vendor/overview";
+import { renderAdminOverview } from "./pages/admin/overview";
 
 const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
 const AUTH_ROUTES = new Set(["login", "signup"]);
@@ -63,6 +67,7 @@ function getCurrentRoute(): string {
   const raw = window.location.hash.replace("#", "") || "home";
   if (raw === "results" || raw === "categories") return "catalog";
   if (raw === "my-orders") return "orders";
+  if (getDashboardRoute(raw)) return raw;
   return routes.has(raw) ? raw : "home";
 }
 
@@ -71,14 +76,13 @@ function getVisitorRole(): string {
 }
 
 function getDefaultRouteForRole(role = getVisitorRole()): string {
-  if (role === "admin") return "admin";
-  if (role === "vendor") return "vendor";
-  if (role === "customer") return "customer";
-  return "home";
+  return getDefaultDashboardRoute(role);
 }
 
 function canAccessRoute(route: string): boolean {
   const role = getVisitorRole();
+  const dashboardRoute = getDashboardRoute(route);
+  if (dashboardRoute) return dashboardRoute.role === role;
   if (route === "admin") return role === "admin";
   if (route === "customer") return role === "customer";
   if (route === "orders") return role === "customer";
@@ -88,20 +92,26 @@ function canAccessRoute(route: string): boolean {
 }
 
 function setRoute(route = getCurrentRoute()): void {
-  let nextRoute = routes.has(route) ? route : "home";
+  let nextRoute = routes.has(route) || getDashboardRoute(route) ? route : "home";
+  const role = getVisitorRole();
+  if (nextRoute === "customer" && role === "customer") nextRoute = "customer/overview";
+  if (nextRoute === "vendor" && role === "vendor") nextRoute = "vendor/overview";
+  if (nextRoute === "admin" && role === "admin") nextRoute = "admin/overview";
   if (!canAccessRoute(nextRoute)) {
     nextRoute = getDefaultRouteForRole();
     if (window.location.hash.replace("#", "") !== nextRoute) {
       window.history.replaceState(null, "", `#${nextRoute}`);
     }
   }
+  const pageRoute = getRoutePage(nextRoute);
   document.querySelectorAll<HTMLElement>("[data-page]").forEach((section) => {
-    const isActive = section.dataset.page === nextRoute;
+    const isActive = section.dataset.page === pageRoute;
     section.hidden = !isActive;
     section.classList.toggle("is-active-page", isActive);
   });
   document.querySelectorAll<HTMLElement>("[data-route]").forEach((link) => {
-    const isActive = link.dataset.route === nextRoute;
+    const linkRoute = link.dataset.route ?? "";
+    const isActive = linkRoute === nextRoute || linkRoute === pageRoute || nextRoute.startsWith(`${linkRoute}/`);
     link.classList.toggle("is-active-route", isActive);
     if (link.matches(".primary-nav a")) {
       link.setAttribute("aria-current", isActive ? "page" : "false");
@@ -110,7 +120,8 @@ function setRoute(route = getCurrentRoute()): void {
   // Toggle full-page auth layout (hides sidebar + header)
   document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
   // Toggle transparent hero header vs solid sticky header
-  document.body.classList.toggle("on-home", nextRoute === "home");
+  document.body.classList.toggle("on-home", pageRoute === "home");
+  renderActiveDashboardRoute(nextRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
 }
@@ -294,53 +305,27 @@ async function refreshLiveAdminDashboard(): Promise<void> {
   }
 }
 
-function renderCustomerDashboard(): void {
+function renderActiveDashboardRoute(route = getCurrentRoute()): void {
   const user = state.currentUser;
-  if (!user || user.role !== "customer") return;
-
-  // Welcome name
-  const nameEl = document.querySelector<HTMLElement>("#customerWelcomeName");
-  if (nameEl) {
-    const firstName = user.firstName || user.name?.split(" ")[0] || "";
-    nameEl.textContent = firstName
-      ? getCopy(`Welcome back, ${firstName}!`, `Barka da dawo, ${firstName}!`)
-      : getCopy("Welcome back!", "Barka da dawo!");
-  }
-
-  // Quick stats
-  const orderCount = getOrders().filter((o) => o.customerPhone === user.phone).length;
-  const cartCount = state.cartCount;
-  const wishlistCount = Number(elements.wishlistCountEl.textContent) || 0;
-
-  const statOrders = document.querySelector<HTMLElement>("#customerStatOrders");
-  const statCart = document.querySelector<HTMLElement>("#customerStatCart");
-  const statWishlist = document.querySelector<HTMLElement>("#customerStatWishlist");
-  if (statOrders) statOrders.textContent = String(orderCount);
-  if (statCart) statCart.textContent = String(cartCount);
-  if (statWishlist) statWishlist.textContent = String(wishlistCount);
-
-  // Recent orders preview (last 3)
-  const recentEl = document.querySelector<HTMLElement>("#customerRecentOrders");
-  if (!recentEl) return;
-  const recentOrders = getOrders()
-    .filter((o) => o.customerPhone === user.phone)
-    .slice(0, 3);
-
-  if (recentOrders.length === 0) {
-    recentEl.innerHTML = `<p class="muted" data-en="No orders yet. Start shopping to see your orders here." data-ha="Babu oda tukuna. Fara sayayya don ganin ododinka a nan.">${getCopy("No orders yet. Start shopping to see your orders here.", "Babu oda tukuna. Fara sayayya don ganin ododinka a nan.")}</p>`;
+  if (user?.role === "customer" && getRoutePage(route) === "customer") {
+    renderCustomerDashboard(route);
     return;
   }
+  if (user?.role === "vendor" && getRoutePage(route) === "vendor") {
+    renderVendorDashboard(route);
+    return;
+  }
+  if (user?.role === "admin" && getRoutePage(route) === "admin") {
+    renderAdminDashboard(route);
+  }
+}
 
-  recentEl.innerHTML = recentOrders.map((order) => `
-    <div class="customer-order-row">
-      <div class="customer-order-id">
-        <strong>${escapeHtml(order.id)}</strong>
-        <small>${escapeHtml(formatDate(order.createdAt))}</small>
-      </div>
-      <span class="order-status order-status-${escapeHtml(order.status)}">${escapeHtml(order.status.replace(/_/g, " "))}</span>
-      <span class="customer-order-total">${escapeHtml(formatPrice(order.subtotal))}</span>
-    </div>
-  `).join("");
+function renderCustomerDashboard(route = getCurrentRoute()): void {
+  const user = state.currentUser;
+  if (!user || user.role !== "customer") return;
+  const section = document.querySelector<HTMLElement>("#customer");
+  if (!section) return;
+  section.innerHTML = renderCustomerOverview(user, route);
 }
 
 function renderOrdersPage(): void {
@@ -360,12 +345,9 @@ function renderOrdersPage(): void {
 function renderLanguageSensitiveViews(): void {
   syncUserButton();
   syncRoleNavigation();
-  renderCustomerDashboard();
+  renderActiveDashboardRoute();
   renderOrdersPage();
   renderCartPanel();
-  renderVendorProducts();
-  renderVendorCommerce();
-  renderAdminDashboard();
 
   const userOrdersList = document.querySelector<HTMLElement>("#userOrdersList");
   if (userOrdersList) userOrdersList.innerHTML = renderOrdersPanel();
@@ -380,8 +362,7 @@ async function refreshLiveVendorDashboard(): Promise<void> {
       fetchLiveVendorData(),
       fetchLiveVendorApplication(),
     ]);
-    renderVendorProducts();
-    renderVendorCommerce();
+    renderVendorDashboard();
   } catch {
     // Local vendor dashboard remains usable if live sync is unavailable.
   }
@@ -504,6 +485,16 @@ function renderVendorDashHeader(): void {
     badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
     badge.dataset.status = status;
   }
+}
+
+function renderVendorDashboard(route = getCurrentRoute()): void {
+  const user = state.currentUser;
+  if (!user || user.role !== "vendor") return;
+  const dashboard = document.querySelector<HTMLElement>(".vendor-dashboard");
+  if (!dashboard) return;
+  dashboard.innerHTML = renderVendorOverview(user, route);
+  renderVendorProducts();
+  renderVendorCommerce();
 }
 
 function renderVendorProducts(): void {
@@ -648,6 +639,43 @@ function renderVendorCommerce(): void {
       </div>
     </div>
   `;
+}
+
+function renderAdminDashboard(route = getCurrentRoute()): void {
+  if (state.currentUser?.role !== "admin") {
+    renderLegacyAdminDashboard();
+    return;
+  }
+  if (elements.adminContent) {
+    elements.adminContent.innerHTML = renderAdminOverview(route);
+    refreshLegacyAdminElementRefs();
+  }
+  renderLegacyAdminDashboard();
+}
+
+function refreshLegacyAdminElementRefs(): void {
+  const assign = <K extends keyof typeof elements>(key: K, selector: string): void => {
+    const node = document.querySelector(selector);
+    if (node) {
+      (elements as unknown as Record<string, Element>)[String(key)] = node;
+    }
+  };
+
+  assign("totalSearches", "#totalSearches");
+  assign("failedSearches", "#failedSearches");
+  assign("savedVendors", "#savedVendors");
+  assign("topDemand", "#topDemand");
+  assign("popularSearches", "#popularSearches");
+  assign("failedSearchList", "#failedSearchList");
+  assign("demandTrends", "#demandTrends");
+  assign("vendorApprovals", "#vendorApprovals");
+  assign("productModeration", "#productModeration");
+  assign("withdrawalQueue", "#withdrawalQueue");
+  assign("vendorPerformance", "#vendorPerformance");
+  assign("orderRecords", "#orderRecords");
+  assign("paymentStatus", "#paymentStatus");
+  assign("reviewModeration", "#reviewModeration");
+  assign("searchHistoryTable", "#searchHistoryTable");
 }
 
 async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
@@ -826,8 +854,10 @@ document.addEventListener("click", (event) => {
   const link = (event.target as Element | null)?.closest<HTMLAnchorElement>("[data-route]");
   if (!link?.dataset.route) return;
   event.preventDefault();
-  window.location.hash = link.dataset.route;
-  setRoute(link.dataset.route);
+  const hashRoute = link.hash?.replace("#", "");
+  const route = hashRoute && hashRoute.startsWith(`${link.dataset.route}/`) ? hashRoute : link.dataset.route;
+  window.location.hash = route;
+  setRoute(route);
 });
 
 window.addEventListener("hashchange", () => setRoute());
@@ -902,11 +932,17 @@ document.querySelectorAll<HTMLElement>(".wishlist-button").forEach((button) => {
 });
 
 // Customer dashboard shortcuts
-document.querySelector<HTMLButtonElement>("#customerCartBtn")?.addEventListener("click", () => {
+document.addEventListener("click", (event) => {
+  const button = (event.target as Element | null)?.closest<HTMLElement>("#customerCartBtn, #customerCartBtnSecondary");
+  if (!button) return;
   renderCartPanel();
   openCart();
 });
-document.querySelector<HTMLButtonElement>("#customerWishlistBtn")?.addEventListener("click", openWishlistPanel);
+document.addEventListener("click", (event) => {
+  const button = (event.target as Element | null)?.closest<HTMLElement>("#customerWishlistBtn");
+  if (!button) return;
+  openWishlistPanel();
+});
 elements.cartOverlay.addEventListener("click", closeCart);
 document.querySelector<HTMLButtonElement>(".cart-close")?.addEventListener("click", closeCart);
 elements.checkoutButton.addEventListener("click", () => {
@@ -922,7 +958,9 @@ elements.languageButtons.forEach((button) => {
 
 // Vendor form
 elements.vendorForm.addEventListener("submit", handleVendorRequestSubmit);
-document.querySelector<HTMLFormElement>("#vendorProductForm")?.addEventListener("submit", (event) => {
+document.addEventListener("submit", (event) => {
+  const form = event.target as HTMLFormElement | null;
+  if (form?.id !== "vendorProductForm") return;
   void handleVendorProductSubmit(event);
 });
 document.querySelector<HTMLElement>("#vendorProductsList")?.addEventListener("click", (event) => {
@@ -1196,11 +1234,7 @@ elements.userButton.addEventListener("click", openUserPanel);
 window.addEventListener("kanoMart:signed-in", () => {
   syncUserButton();
   syncRoleNavigation();
-  renderVendorProducts();
-  renderVendorCommerce();
   renderAdminGate();
-  renderAdminDashboard();
-  renderCustomerDashboard();
   renderOrdersPage();
   void refreshLiveAdminDashboard();
   void refreshLiveVendorDashboard();
@@ -1208,11 +1242,10 @@ window.addEventListener("kanoMart:signed-in", () => {
   const nextRoute = getDefaultRouteForRole();
   window.history.replaceState(null, "", `#${nextRoute}`);
   setRoute(nextRoute);
+  renderActiveDashboardRoute(nextRoute);
 });
 window.addEventListener("kanoMart:signed-out", () => {
   syncRoleNavigation();
-  renderVendorProducts();
-  renderVendorCommerce();
   renderAdminGate();
   renderOrdersPage();
   setRoute("home");
