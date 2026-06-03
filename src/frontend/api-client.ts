@@ -1,10 +1,20 @@
 const DEFAULT_API_BASE_URL = "/api";
 const API_TOKEN_KEY = "kanoMart.apiToken";
+const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
 type RequestOptions = {
   token?: string;
   body?: unknown;
   method?: "GET" | "POST" | "PATCH" | "DELETE";
+  timeoutMs?: number;
+};
+
+type ApiErrorPayload = {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: unknown;
+  };
 };
 
 export type ApiUser = {
@@ -228,24 +238,69 @@ export function clearApiToken(): void {
   globalThis.localStorage?.removeItem(API_TOKEN_KEY);
 }
 
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly details?: unknown;
+
+  constructor(message: string, options: { status: number; code?: string; details?: unknown }) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = options.status;
+    this.code = options.code ?? "api_request_failed";
+    this.details = options.details;
+  }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = options.token ?? getApiToken();
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    method: options.method ?? (options.body ? "POST" : "GET"),
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
+  let response: Response;
 
-  const payload = (await response.json()) as T & { error?: { message?: string } };
-  if (!response.ok) {
-    throw new Error(payload.error?.message ?? "API request failed");
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
+      method: options.method ?? (options.body ? "POST" : "GET"),
+      credentials: "include",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (error) {
+    const isAbort = error instanceof DOMException && error.name === "AbortError";
+    throw new ApiRequestError(
+      isAbort ? "Request timed out. Check your connection and try again." : "Network request failed. Check your connection and try again.",
+      { status: 0, code: isAbort ? "request_timeout" : "network_error" }
+    );
+  } finally {
+    globalThis.clearTimeout(timeout);
   }
 
-  return payload;
+  const raw = await response.text();
+  let payload: (T & ApiErrorPayload) | ApiErrorPayload = {};
+  if (raw.trim()) {
+    try {
+      payload = JSON.parse(raw) as T & ApiErrorPayload;
+    } catch {
+      throw new ApiRequestError(response.ok ? "Invalid API response." : "API request failed.", {
+        status: response.status,
+        code: "invalid_api_response",
+      });
+    }
+  }
+
+  if (!response.ok) {
+    throw new ApiRequestError(payload.error?.message ?? "API request failed.", {
+      status: response.status,
+      code: payload.error?.code,
+      details: payload.error?.details,
+    });
+  }
+
+  return payload as T;
 }
 
 export const api = {

@@ -161,6 +161,7 @@ export function renderVendorOverview(user: UserSession, currentPath = "vendor/ov
                 </div>
                 <p>Products are submitted for admin moderation before appearing in the public catalog.</p>
               </div>
+              <div class="vendor-product-gate" id="vendorProductGate" role="status" aria-live="polite"></div>
               <form class="vendor-product-form" id="vendorProductForm" novalidate>
                 <label><span>Product name (English)</span><input type="text" name="productName" minlength="2" maxlength="90" required placeholder="e.g. Plain black jallabiya" /></label>
                 <label><span>Product name (Hausa)</span><input type="text" name="productNameHa" minlength="2" maxlength="90" placeholder="misali Jallabiya baki" /></label>
@@ -169,7 +170,7 @@ export function renderVendorOverview(user: UserSession, currentPath = "vendor/ov
                 <label><span>Value / price</span><input type="text" inputmode="numeric" name="productValue" required placeholder="e.g. 15000" autocomplete="off" /></label>
                 <label><span>Quantity available</span><input type="number" name="quantityAvailable" min="0" step="1" required placeholder="10" /></label>
                 <label><span>Category</span><select name="productCategory" required><option value="food">Food</option><option value="fashion">Fashion</option><option value="children">Children</option><option value="essentials">Essentials</option></select></label>
-                <label><span>Product picture</span><input type="file" name="productImage" accept="image/png,image/jpeg,image/webp" required /></label>
+                <label><span>Product picture</span><input type="file" name="productImage" accept="image/png,image/jpeg,image/webp" required /><small>JPEG, PNG, or WebP. Large phone photos are optimized before upload.</small></label>
                 <button type="submit">Add product</button>
                 <p class="form-message" id="vendorProductMessage" role="status" aria-live="polite"></p>
               </form>

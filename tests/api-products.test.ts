@@ -85,6 +85,18 @@ async function createProduct(vendorToken: string, input: Record<string, unknown>
   });
 }
 
+async function uploadVendorImage(vendorToken: string, dataUrl: string) {
+  return await requestJson("/vendor/uploads", {
+    method: "POST",
+    headers: { authorization: `Bearer ${vendorToken}` },
+    body: JSON.stringify({
+      fileName: "product.jpg",
+      mimeType: "image/jpeg",
+      dataUrl,
+    }),
+  });
+}
+
 beforeEach(() => {
   app = createApp({ store: createMemoryStore(), allowedOrigin: "*" });
 });
@@ -103,6 +115,44 @@ describe("Kano Mart API products and catalog", () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe("vendor_not_approved");
+  });
+
+  it("blocks pending vendors from uploading product images", async () => {
+    const vendor = await registerUser({
+      phone: "08098765432",
+      firstName: "Musa",
+      lastName: "Garba",
+      role: "vendor",
+      businessName: "Musa Wears",
+    });
+
+    const response = await uploadVendorImage(vendor.body.token, "data:image/jpeg;base64,abcd");
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("vendor_not_approved");
+  });
+
+  it("accepts approved vendor uploads below the server data-url limit", async () => {
+    const vendor = await createApprovedVendor();
+
+    const response = await uploadVendorImage(vendor.body.token, `data:image/jpeg;base64,${"a".repeat(2_000)}`);
+
+    expect(response.status).toBe(201);
+    expect(response.body.upload).toMatchObject({
+      fileName: "product.jpg",
+      mimeType: "image/jpeg",
+    });
+    expect(response.body.upload.url).toEqual(expect.any(String));
+  });
+
+  it("rejects approved vendor uploads above the server data-url limit", async () => {
+    const vendor = await createApprovedVendor();
+
+    const response = await uploadVendorImage(vendor.body.token, `data:image/jpeg;base64,${"a".repeat(750_001)}`);
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe("validation_failed");
+    expect(response.body.error.details.dataUrl).toBe("Image upload is too large.");
   });
 
   it("lets approved vendors create pending products", async () => {

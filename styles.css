@@ -706,6 +706,37 @@ img {
   gap: 12px;
 }
 
+.vendor-product-gate {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(214, 155, 45, 0.24);
+  border-radius: 14px;
+  background: rgba(214, 155, 45, 0.08);
+  color: #6f4b05;
+  line-height: 1.45;
+}
+
+.vendor-product-gate strong {
+  color: var(--ink);
+}
+
+.vendor-product-gate span {
+  color: inherit;
+}
+
+.vendor-product-gate[data-status="approved"] {
+  border-color: rgba(23, 107, 77, 0.2);
+  background: rgba(23, 107, 77, 0.08);
+  color: var(--green);
+}
+
+.vendor-product-gate[data-status="rejected"] {
+  border-color: rgba(182, 66, 50, 0.2);
+  background: rgba(182, 66, 50, 0.08);
+  color: var(--red);
+}
+
 .vendor-form label {
   display: grid;
   gap: 6px;
@@ -739,6 +770,25 @@ img {
   gap: 6px;
   color: var(--muted);
   font-weight: 800;
+}
+
+.vendor-product-form small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.vendor-product-form input:disabled,
+.vendor-product-form select:disabled {
+  background: #f5f1e9;
+  color: rgba(41, 32, 24, 0.52);
+  cursor: not-allowed;
+}
+
+.vendor-product-form button:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .vendor-products-list {
@@ -2618,6 +2668,18 @@ td {
 .form-message {
   min-height: 1.4em;
   font-size: 0.88rem;
+}
+
+.form-message[data-state="success"] {
+  color: var(--green);
+}
+
+.form-message[data-state="error"] {
+  color: var(--red);
+}
+
+.form-message[data-state="info"] {
+  color: var(--muted);
 }
 
 .muted {
@@ -6833,7 +6895,8 @@ body.is-auth-route .site-header .mobile-brand {
   margin-top: 1px;
 }
 
-.auth-terms-field a {
+.auth-terms-field a,
+.auth-policy-link {
   color: var(--green);
   text-decoration: underline;
   text-underline-offset: 2px;

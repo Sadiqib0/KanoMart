@@ -1,4 +1,4 @@
-import type { Language } from "../backend/types";
+import type { Language, VendorApprovalStatus } from "../backend/types";
 import { storageKeys } from "../backend/data";
 import { state, elements } from "./state";
 import { escapeHtml, formatDate, formatPrice, getCopy, sanitizePlainText, setActiveLanguageButtons } from "./utils";
@@ -25,7 +25,6 @@ import {
   getCatalogProducts,
   getProductsForVendor,
   moderateProduct,
-  saveVendorProduct,
   setVendorProductListingStatus,
 } from "../backend/products";
 import { getCachedSearchResults, paginateProducts, PRODUCT_PAGE_SIZE, renderProductSkeletons } from "./frontend-data";
@@ -50,9 +49,10 @@ import {
   fetchLiveNotifications,
   fetchLiveCategories,
   fetchLiveVendorApplication,
+  getLiveVendorApplication,
   refreshSession,
 } from "./live-api";
-import { api } from "./api-client";
+import { api, ApiRequestError, type ApiUser } from "./api-client";
 import { initLoginPage, initSignupPage } from "./auth-pages";
 import { getDashboardRoute, getDefaultDashboardRoute, getRoutePage } from "./router/dashboard-routes";
 import { renderCustomerOverview } from "./pages/customer/overview";
@@ -62,6 +62,12 @@ import { renderAdminOverview } from "./pages/admin/overview";
 const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
 const AUTH_ROUTES = new Set(["login", "signup"]);
 const SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
+const VENDOR_IMAGE_MAX_SOURCE_BYTES = 8_000_000;
+const VENDOR_IMAGE_MAX_DATA_URL_LENGTH = 700_000;
+const VENDOR_IMAGE_MAX_EDGE = 1_400;
+const VENDOR_IMAGE_QUALITY_STEPS = [0.82, 0.74, 0.66, 0.58];
+const VENDOR_IMAGE_EDGE_STEPS = [1_400, 1_200, 1_000, 800, 640];
+const VENDOR_PRODUCT_CATEGORIES = new Set(["food", "fashion", "children", "essentials"]);
 
 function getCurrentRoute(): string {
   const raw = window.location.hash.replace("#", "") || "home";
@@ -358,11 +364,12 @@ function renderLanguageSensitiveViews(): void {
 async function refreshLiveVendorDashboard(): Promise<void> {
   if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
   try {
-    await Promise.all([
+    const [, , application] = await Promise.all([
       refreshLiveVendorProducts(),
       fetchLiveVendorData(),
       fetchLiveVendorApplication(),
     ]);
+    if (application?.status) syncCurrentVendorStatus(application.status);
     renderVendorDashboard();
   } catch {
     // Local vendor dashboard remains usable if live sync is unavailable.
@@ -454,21 +461,235 @@ function handleVendorRequestSubmit(event: SubmitEvent): void {
   openAuthModal({ phone, role: "vendor", businessName, area, category });
 }
 
+type PreparedVendorImage = {
+  dataUrl: string;
+  fileName: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  originalBytes: number;
+  finalBytes: number;
+  compressed: boolean;
+};
+
+function createVendorFormError(code: string): Error {
+  const error = new Error(code);
+  error.name = "VendorProductFormError";
+  return error;
+}
+
 function readImageAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
-      reject(new Error("Invalid image"));
+      reject(createVendorFormError("unsupported_image"));
       return;
     }
-    if (file.size > 1_500_000) {
-      reject(new Error("Image too large"));
+    if (file.size > VENDOR_IMAGE_MAX_SOURCE_BYTES) {
+      reject(createVendorFormError("source_image_too_large"));
       return;
     }
     const reader = new FileReader();
     reader.addEventListener("load", () => resolve(String(reader.result || "")));
-    reader.addEventListener("error", () => reject(new Error("Could not read image")));
+    reader.addEventListener("error", () => reject(createVendorFormError("image_read_failed")));
     reader.readAsDataURL(file);
   });
+}
+
+function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image), { once: true });
+    image.addEventListener("error", () => reject(createVendorFormError("image_decode_failed")), { once: true });
+    image.src = dataUrl;
+  });
+}
+
+function normalizeVendorImageName(fileName: string, mimeType: PreparedVendorImage["mimeType"]): string {
+  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  const base = sanitizePlainText(fileName.replace(/\.[^.]+$/, ""), 70)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${base || "product-image"}.${ext}`;
+}
+
+function drawVendorImage(image: HTMLImageElement, maxEdge: number, quality: number): string {
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) throw createVendorFormError("image_decode_failed");
+
+  const ratio = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+  const targetWidth = Math.max(1, Math.round(sourceWidth * ratio));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * ratio));
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw createVendorFormError("image_compression_failed");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, targetWidth, targetHeight);
+  context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  if (!dataUrl.startsWith("data:image/jpeg;base64,")) throw createVendorFormError("image_compression_failed");
+  return dataUrl;
+}
+
+async function prepareVendorProductImage(file: File): Promise<PreparedVendorImage> {
+  const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+  if (!allowedMimeTypes.has(file.type)) throw createVendorFormError("unsupported_image");
+
+  const sourceDataUrl = await readImageAsDataUrl(file);
+  if (sourceDataUrl.length <= VENDOR_IMAGE_MAX_DATA_URL_LENGTH) {
+    const mimeType = file.type as PreparedVendorImage["mimeType"];
+    return {
+      dataUrl: sourceDataUrl,
+      fileName: normalizeVendorImageName(file.name, mimeType),
+      mimeType,
+      originalBytes: file.size,
+      finalBytes: sourceDataUrl.length,
+      compressed: false,
+    };
+  }
+
+  const image = await loadImageElement(sourceDataUrl);
+  for (const edge of VENDOR_IMAGE_EDGE_STEPS) {
+    const maxEdge = Math.min(edge, VENDOR_IMAGE_MAX_EDGE);
+    for (const quality of VENDOR_IMAGE_QUALITY_STEPS) {
+      const dataUrl = drawVendorImage(image, maxEdge, quality);
+      if (dataUrl.length <= VENDOR_IMAGE_MAX_DATA_URL_LENGTH) {
+        return {
+          dataUrl,
+          fileName: normalizeVendorImageName(file.name, "image/jpeg"),
+          mimeType: "image/jpeg",
+          originalBytes: file.size,
+          finalBytes: dataUrl.length,
+          compressed: true,
+        };
+      }
+    }
+  }
+
+  throw createVendorFormError("compressed_image_too_large");
+}
+
+function getEffectiveVendorStatus(): VendorApprovalStatus {
+  const user = state.currentUser;
+  if (!user || user.role !== "vendor") return "pending";
+  const application = getLiveVendorApplication();
+  const localVendor = findVendorByPhone(user.phone);
+  return application?.status ?? user.vendorStatus ?? localVendor?.status ?? "pending";
+}
+
+function syncCurrentVendorStatus(status: VendorApprovalStatus): void {
+  const user = state.currentUser;
+  if (!user || user.role !== "vendor" || user.vendorStatus === status) return;
+  user.vendorStatus = status;
+  localStorage.setItem(storageKeys.session, JSON.stringify(user));
+  syncRoleNavigation();
+}
+
+function syncSessionFromApiUser(user: ApiUser | null): void {
+  const current = state.currentUser;
+  if (!current || !user || current.phone !== user.phone) return;
+  state.currentUser = {
+    ...current,
+    id: user.id ?? current.id,
+    email: user.email,
+    firstName: user.firstName ?? current.firstName,
+    lastName: user.lastName ?? current.lastName,
+    name: user.name || [user.firstName, user.lastName].filter(Boolean).join(" ") || current.name,
+    role: user.role,
+    vendorStatus: user.vendorStatus ?? current.vendorStatus,
+    deliveryAddress: user.deliveryAddress,
+    preferredLanguage: user.preferredLanguage ?? current.preferredLanguage,
+    createdAt: user.createdAt ?? current.createdAt,
+  };
+  localStorage.setItem(storageKeys.session, JSON.stringify(state.currentUser));
+  syncUserButton();
+  syncRoleNavigation();
+  renderActiveDashboardRoute();
+}
+
+function setVendorProductMessage(
+  message: HTMLElement | null,
+  text: string,
+  stateName: "info" | "success" | "error" = "info"
+): void {
+  if (!message) return;
+  message.textContent = text;
+  message.dataset.state = stateName;
+}
+
+function getVendorGateCopy(status: VendorApprovalStatus, hasToken: boolean): { title: string; body: string; submit: string } {
+  if (!hasToken) {
+    return {
+      title: getCopy("Sign in again to submit products", "Sake shiga domin tura kaya"),
+      body: getCopy(
+        "Your session is missing live API access. Sign out and sign in again before adding products.",
+        "Zaman shiga bai da damar API live. Fita ka sake shiga kafin saka kaya."
+      ),
+      submit: getCopy("Sign in required", "Ana bukatar shiga"),
+    };
+  }
+  if (status === "approved") {
+    return {
+      title: getCopy("Store approved", "An amince da shago"),
+      body: getCopy(
+        "New products are submitted to admin review before they appear in the customer catalog.",
+        "Sabbin kaya za su je wajen admin kafin su bayyana a kasuwar kwastoma."
+      ),
+      submit: getCopy("Add product", "Saka kaya"),
+    };
+  }
+  if (status === "rejected") {
+    return {
+      title: getCopy("Store not approved", "Ba a amince da shago ba"),
+      body: getCopy(
+        "Your vendor application was not approved. Contact support before adding products.",
+        "Ba a amince da rajistar dillali ba. Tuntubi tallafi kafin saka kaya."
+      ),
+      submit: getCopy("Store not approved", "Ba a amince ba"),
+    };
+  }
+  return {
+    title: getCopy("Vendor approval pending", "Ana jiran amincewar dillali"),
+    body: getCopy(
+      "Admin must approve your store before products can be submitted. You can browse the dashboard while waiting.",
+      "Admin sai ya amince da shagonsa kafin a tura kaya. Za ka iya duba dashboard yayin jira."
+    ),
+    submit: getCopy("Waiting for approval", "Ana jiran amincewa"),
+  };
+}
+
+function renderVendorProductGate(): void {
+  const form = document.querySelector<HTMLFormElement>("#vendorProductForm");
+  const gate = document.querySelector<HTMLElement>("#vendorProductGate");
+  const message = document.querySelector<HTMLElement>("#vendorProductMessage");
+  const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]') ?? null;
+  const user = state.currentUser;
+  if (!form || !user || user.role !== "vendor") return;
+
+  const status = getEffectiveVendorStatus();
+  const canSubmit = Boolean(user.token) && status === "approved";
+  const copy = getVendorGateCopy(status, Boolean(user.token));
+  if (gate) {
+    gate.dataset.status = canSubmit ? "approved" : status;
+    gate.innerHTML = `
+      <strong>${escapeHtml(copy.title)}</strong>
+      <span>${escapeHtml(copy.body)}</span>
+    `;
+  }
+
+  form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button").forEach((control) => {
+    control.disabled = !canSubmit;
+  });
+  if (submit) {
+    submit.textContent = copy.submit;
+    submit.dataset.idleText = copy.submit;
+  }
+  if (!canSubmit && message && !message.textContent.trim()) {
+    setVendorProductMessage(message, copy.body, status === "rejected" || !user.token ? "error" : "info");
+  }
 }
 
 function renderVendorDashHeader(): void {
@@ -476,7 +697,7 @@ function renderVendorDashHeader(): void {
   if (!user || user.role !== "vendor") return;
   const vendor = findVendorByPhone(user.phone);
   const businessName = vendor?.businessName || user.name;
-  const status = user.vendorStatus ?? "pending";
+  const status = getEffectiveVendorStatus();
 
   const nameEl = document.querySelector<HTMLElement>("#vendorDashBusinessName");
   if (nameEl) nameEl.textContent = businessName;
@@ -495,6 +716,7 @@ function renderVendorDashboard(route = getCurrentRoute()): void {
   if (!dashboard) return;
   dashboard.innerHTML = renderVendorOverview(user, route);
   renderVendorProducts();
+  renderVendorProductGate();
   renderVendorCommerce();
 }
 
@@ -679,6 +901,79 @@ function refreshLegacyAdminElementRefs(): void {
   assign("searchHistoryTable", "#searchHistoryTable");
 }
 
+function setVendorProductFormBusy(form: HTMLFormElement, busy: boolean, label?: string): void {
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button").forEach((control) => {
+    control.disabled = busy;
+  });
+  if (submit) {
+    submit.setAttribute("aria-busy", String(busy));
+    submit.textContent = busy ? label ?? getCopy("Submitting...", "Ana turawa...") : submit.dataset.idleText || getCopy("Add product", "Saka kaya");
+  }
+}
+
+function firstValidationDetail(details: unknown): string {
+  if (!details || typeof details !== "object") return "";
+  for (const value of Object.values(details as Record<string, unknown>)) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
+}
+
+function getVendorProductErrorCopy(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.code === "vendor_not_approved") {
+      return getCopy(
+        "Your store is not approved yet. Admin approval is required before products can be submitted.",
+        "Ba a amince da shagonsa ba tukuna. Ana bukatar amincewar admin kafin tura kaya."
+      );
+    }
+    if (error.code === "unauthenticated") {
+      return getCopy("Your session expired. Sign in again before adding products.", "Zaman shiga ya kare. Sake shiga kafin saka kaya.");
+    }
+    if (error.code === "body_too_large" || error.message.toLowerCase().includes("too large")) {
+      return getCopy(
+        "The image is still too large after compression. Use a clearer, smaller photo and try again.",
+        "Hoton har yanzu ya yi girma bayan ragewa. Yi amfani da karamin hoto ka sake gwadawa."
+      );
+    }
+    if (error.code === "validation_failed") {
+      const detail = firstValidationDetail(error.details);
+      return detail || getCopy("Check the product details and try again.", "Duba bayanan kaya ka sake gwadawa.");
+    }
+    if (error.code === "request_timeout" || error.code === "network_error") {
+      return getCopy(
+        "Network problem while submitting. Keep this page open and try again.",
+        "Matsalar network yayin turawa. Bar wannan shafi a bude ka sake gwadawa."
+      );
+    }
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    if (error.name === "VendorProductFormError") {
+      const messages: Record<string, string> = {
+        unsupported_image: getCopy("Use a JPEG, PNG, or WebP product image.", "Yi amfani da hoton JPEG, PNG, ko WebP."),
+        source_image_too_large: getCopy(
+          "Image is too large. Use a product photo under 8MB.",
+          "Hoton ya yi girma. Yi amfani da hoton kaya kasa da 8MB."
+        ),
+        image_read_failed: getCopy("Could not read the image. Choose another photo.", "Ba a iya karanta hoton ba. Zabi wani hoto."),
+        image_decode_failed: getCopy("Could not open the image. Choose another JPEG, PNG, or WebP photo.", "Ba a iya bude hoton ba. Zabi wani JPEG, PNG, ko WebP."),
+        image_compression_failed: getCopy("Could not optimize the image for upload. Choose another photo.", "Ba a iya rage hoton domin turawa ba. Zabi wani hoto."),
+        compressed_image_too_large: getCopy(
+          "Image is still too large after optimization. Crop or retake it and try again.",
+          "Hoton har yanzu ya yi girma bayan ragewa. Yanke ko sake dauka ka gwada."
+        ),
+      };
+      return messages[error.message] ?? getCopy("Could not prepare the image. Try another photo.", "Ba a iya shirya hoton ba. Gwada wani hoto.");
+    }
+    return error.message;
+  }
+
+  return getCopy("Could not add product. Check the details and try again.", "Ba a iya saka kaya ba. Duba bayanai ka sake gwadawa.");
+}
+
 async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   const form =
@@ -689,101 +984,151 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
         : null;
   const message = document.querySelector<HTMLElement>("#vendorProductMessage");
   if (!form) {
-    if (message) message.textContent = getCopy("Could not read the product form. Refresh and try again.", "Ba a iya karanta fom din kaya ba. Sabunta shafin ka sake gwadawa.");
+    setVendorProductMessage(message, getCopy("Could not read the product form. Refresh and try again.", "Ba a iya karanta fom din kaya ba. Sabunta shafin ka sake gwadawa."), "error");
     return;
   }
   const user = state.currentUser;
   if (!user || user.role !== "vendor") {
-    if (message) message.textContent = getCopy("Sign in as a vendor first.", "Shiga a matsayin dan kasuwa tukuna.");
+    setVendorProductMessage(message, getCopy("Sign in as a vendor first.", "Shiga a matsayin dan kasuwa tukuna."), "error");
+    return;
+  }
+
+  const approvalStatus = getEffectiveVendorStatus();
+  if (approvalStatus !== "approved") {
+    const copy = getVendorGateCopy(approvalStatus, Boolean(user.token));
+    setVendorProductMessage(message, copy.body, approvalStatus === "rejected" ? "error" : "info");
+    renderVendorProductGate();
+    return;
+  }
+  if (!user.token) {
+    const copy = getVendorGateCopy(approvalStatus, false);
+    setVendorProductMessage(message, copy.body, "error");
+    renderVendorProductGate();
     return;
   }
 
   const data = new FormData(form);
   const image = data.get("productImage");
+  const name = sanitizePlainText(String(data.get("productName") || ""), 90);
+  const nameHa = sanitizePlainText(String(data.get("productNameHa") || ""), 90);
+  const descriptionEn = sanitizePlainText(String(data.get("descriptionEn") || ""), 240);
+  const descriptionHa = sanitizePlainText(String(data.get("descriptionHa") || ""), 240);
+  const category = sanitizePlainText(String(data.get("productCategory") || "essentials"), 40);
 
   // Strip commas, spaces and currency symbols before parsing — iOS formats
   // number inputs as "20,000" which makes type="number" return "" from FormData.
   const rawPriceStr = String(data.get("productValue") ?? "").replace(/[^\d.]/g, "");
   const priceValue = rawPriceStr ? Number(rawPriceStr) : 0;
+  const quantityAvailable = Number(data.get("quantityAvailable") || 0);
+
+  if (name.length < 2) {
+    setVendorProductMessage(message, getCopy("Enter a product name.", "Shigar da sunan kaya."), "error");
+    return;
+  }
+  if (!VENDOR_PRODUCT_CATEGORIES.has(category)) {
+    setVendorProductMessage(message, getCopy("Choose a valid product category.", "Zabi rukuni mai inganci."), "error");
+    return;
+  }
+  if (!Number.isInteger(quantityAvailable) || quantityAvailable < 0) {
+    setVendorProductMessage(message, getCopy("Enter a valid stock quantity.", "Shigar da yawan kaya mai inganci."), "error");
+    return;
+  }
 
   // Validate image and price with specific messages so the vendor knows which field failed
   if (!(image instanceof File) || !image.name || image.size === 0) {
-    if (message) message.textContent = getCopy(
+    setVendorProductMessage(message, getCopy(
       "Please choose a product image (JPEG, PNG, or WebP).",
       "Da fatan za a zaɓi hoton kaya (JPEG, PNG, ko WebP)."
-    );
+    ), "error");
     return;
   }
   if (!Number.isFinite(priceValue) || priceValue <= 0) {
-    if (message) message.textContent = getCopy(
+    setVendorProductMessage(message, getCopy(
       "Enter a valid price (numbers only, e.g. 15000).",
       "Shigar da farashi mai inganci (lambobi kawai, misali 15000)."
-    );
+    ), "error");
     return;
   }
 
   try {
-    const imageDataUrl = await readImageAsDataUrl(image);
+    setVendorProductFormBusy(form, true, getCopy("Optimizing image...", "Ana rage hoto..."));
+    setVendorProductMessage(
+      message,
+      getCopy("Optimizing the image for fast upload...", "Ana rage hoton domin turawa da sauri..."),
+      "info"
+    );
+    const preparedImage = await prepareVendorProductImage(image);
     const vendor = findVendorByPhone(user.phone);
     const productInput = {
       vendor: vendor?.businessName || user.name,
       vendorPhone: user.phone,
       area: vendor?.area || "Kano",
-      name: String(data.get("productName") || ""),
-      nameHa: String(data.get("productNameHa") || ""),
-      descriptionEn: String(data.get("descriptionEn") || ""),
-      descriptionHa: String(data.get("descriptionHa") || ""),
+      name,
+      nameHa,
+      descriptionEn,
+      descriptionHa,
       priceValue,
-      quantityAvailable: Number(data.get("quantityAvailable") || 0),
-      category: String(data.get("productCategory") || "essentials"),
-      imageDataUrl,
+      quantityAvailable,
+      category,
+      imageDataUrl: preparedImage.dataUrl,
     };
-    saveVendorProduct(productInput);
 
-    let liveMessage = "";
-    if (user.token) {
-      try {
-        const upload = await api.uploadVendorImage({
-          fileName: image.name,
-          mimeType: image.type,
-          dataUrl: imageDataUrl,
-        });
-        await api.createVendorProduct({
-          name: { en: productInput.name, ha: productInput.nameHa || productInput.name },
-          description: { en: productInput.descriptionEn, ha: productInput.descriptionHa || productInput.descriptionEn },
-          category: productInput.category,
-          price: productInput.priceValue,
-          quantityAvailable: productInput.quantityAvailable,
-          area: productInput.area,
-          imageUrl: upload.upload.url,
-          tags: [productInput.name, productInput.category, productInput.area],
-        });
-        await Promise.all([refreshLiveCatalog(), refreshLiveVendorDashboard()]);
-        liveMessage = getCopy(" Submitted for admin review — visible in catalog once approved.", " An tura wa admin — zai bayyana a kasuwa bayan amincewar admin.");
-      } catch (error) {
-        liveMessage = getCopy(
-          " Saved locally. Live submission needs approved vendor access.",
-          " An ajiye a gida. Tura live na bukatar amincewar dillali."
-        );
-      }
-    }
+    setVendorProductFormBusy(form, true, getCopy("Uploading...", "Ana lodawa..."));
+    setVendorProductMessage(message, getCopy("Uploading image...", "Ana loda hoto..."), "info");
+    const upload = await api.uploadVendorImage({
+      fileName: preparedImage.fileName,
+      mimeType: preparedImage.mimeType,
+      dataUrl: preparedImage.dataUrl,
+    });
+
+    setVendorProductFormBusy(form, true, getCopy("Submitting...", "Ana turawa..."));
+    setVendorProductMessage(message, getCopy("Submitting product for admin review...", "Ana tura kaya wajen admin..."), "info");
+    await api.createVendorProduct({
+      name: { en: productInput.name, ha: productInput.nameHa || productInput.name },
+      description: { en: productInput.descriptionEn, ha: productInput.descriptionHa || productInput.descriptionEn },
+      category: productInput.category,
+      price: productInput.priceValue,
+      quantityAvailable: productInput.quantityAvailable,
+      area: productInput.area,
+      imageUrl: upload.upload.url,
+      tags: [productInput.name, productInput.category, productInput.area],
+    });
 
     form.reset();
-    if (message) message.textContent = getCopy(
-      "Product submitted — awaiting admin approval before it appears in the catalog.",
-      "An tura kaya — ana jiran amincewar admin kafin ya bayyana a kasuwa."
-    ) + liveMessage;
+    await Promise.all([refreshLiveCatalog(), refreshLiveVendorDashboard()]).catch(() => undefined);
+    const compressionCopy = preparedImage.compressed
+      ? getCopy(" Image optimized for upload.", " An rage hoton domin turawa.")
+      : "";
+    const currentMessage = document.querySelector<HTMLElement>("#vendorProductMessage") ?? message;
+    setVendorProductMessage(
+      currentMessage,
+      getCopy(
+        "Product submitted for admin review. It will appear in the catalog after approval.",
+        "An tura kaya wajen admin. Zai bayyana a kasuwa bayan amincewa."
+      ) + compressionCopy,
+      "success"
+    );
+    showToast({
+      message: getCopy("Product sent to admin review.", "An tura kaya wajen admin."),
+      type: "success",
+      duration: 3000,
+    });
     renderVendorProducts();
+    renderVendorProductGate();
     renderVendorCommerce();
     renderCatalogPreview();
     renderAdminDashboard();
   } catch (error) {
-    if (message) {
-      message.textContent =
-        error instanceof Error && error.message === "Image too large"
-          ? getCopy("Image is too large. Use an image under 1.5MB.", "Hoton ya yi girma. Yi amfani da kasa da 1.5MB.")
-          : getCopy("Could not add product. Check the image and try again.", "Ba a iya saka kaya ba. Duba hoton ka sake gwadawa.");
+    const errorCopy = getVendorProductErrorCopy(error);
+    setVendorProductMessage(message, errorCopy, "error");
+    showToast({ message: errorCopy, type: "error", duration: 4500 });
+    if (error instanceof ApiRequestError && error.code === "vendor_not_approved") {
+      const application = await fetchLiveVendorApplication().catch(() => null);
+      if (application?.status) syncCurrentVendorStatus(application.status);
     }
+  } finally {
+    setVendorProductFormBusy(form, false);
+    renderVendorProductGate();
   }
 }
 
@@ -973,13 +1318,15 @@ document.addEventListener("submit", (event) => {
   if (form?.id !== "vendorProductForm") return;
   void handleVendorProductSubmit(event);
 });
-document.querySelector<HTMLElement>("#vendorProductsList")?.addEventListener("click", (event) => {
+document.addEventListener("click", (event) => {
   const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-product-action]");
+  if (!button?.closest("#vendorProductsList")) return;
   const productId = button?.dataset.vendorProductId;
   const action = button?.dataset.vendorProductAction;
   if (!productId || (action !== "active" && action !== "out_of_stock" && action !== "taken_down")) return;
   setVendorProductListingStatus(productId, action);
   renderVendorProducts();
+  renderVendorProductGate();
   renderVendorCommerce();
   renderCatalogPreview(false);
   renderAdminDashboard();
@@ -992,11 +1339,14 @@ document.querySelector<HTMLElement>("#vendorProductsList")?.addEventListener("cl
   });
 
   if (state.currentUser?.token) {
-    api.updateVendorProduct(productId, action).catch(() => undefined);
+    api.updateVendorProduct(productId, action).catch((error) => {
+      showToast({ message: getVendorProductErrorCopy(error), type: "error", duration: 3500 });
+    });
   }
 });
-document.querySelector<HTMLElement>("#vendorCommerceList")?.addEventListener("click", (event) => {
+document.addEventListener("click", (event) => {
   const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-order-ready]");
+  if (!button?.closest("#vendorCommerceList")) return;
   const orderId = button?.dataset.vendorOrderReady;
   if (!orderId) return;
   const order = advanceOrderStatus(orderId);
@@ -1313,6 +1663,7 @@ syncUserButton();
 renderAdminGate();
 renderAdminDashboard();
 renderVendorProducts();
+renderVendorProductGate();
 renderVendorCommerce();
 renderOrdersPage();
 syncRoleNavigation();
@@ -1325,7 +1676,7 @@ void refreshLiveVendorDashboard();
 
 // Validate stored session token and refresh user data
 if (state.currentUser?.token) {
-  void refreshSession().catch(() => undefined);
+  void refreshSession().then(syncSessionFromApiUser).catch(() => undefined);
 }
 
 // Pre-fetch categories from the live API for dynamic catalog support
