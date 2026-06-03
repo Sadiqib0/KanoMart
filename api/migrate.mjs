@@ -78,10 +78,15 @@ const statements = [
     vendor_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     file_name TEXT NOT NULL,
     mime_type TEXT NOT NULL,
-    data_url TEXT NOT NULL,
+    data_url TEXT,
+    blob_url TEXT,
     url TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
+
+  // Schema migrations for existing deployments
+  `ALTER TABLE uploads ADD COLUMN IF NOT EXISTS blob_url TEXT`,
+  `ALTER TABLE uploads ALTER COLUMN data_url DROP NOT NULL`,
 
   `CREATE TABLE IF NOT EXISTS cart_items (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

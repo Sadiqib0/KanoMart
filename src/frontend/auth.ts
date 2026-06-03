@@ -563,21 +563,43 @@ export function openUserPanel(): void {
   panel.addEventListener("click", (e) => { if (e.target === panel) closeUserPanel(); });
   panel.querySelector("#signOutBtn")?.addEventListener("click", signOut);
   panel.querySelector<HTMLFormElement>("#profileUpdateForm")?.addEventListener("submit", (event) => {
+    void handleProfileUpdate(event);
+  });
+
+  async function handleProfileUpdate(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
     const data = new FormData(form);
-    const [firstName, ...rest] = String(data.get("name") || "").trim().split(/\s+/);
+    const name = String(data.get("name") || "").trim();
+    const email = String(data.get("email") || "");
+    const deliveryAddress = String(data.get("deliveryAddress") || "");
+    const preferredLanguage = data.get("preferredLanguage") === "ha" ? "ha" : "en" as "en" | "ha";
+
+    const [firstName, ...rest] = name.split(/\s+/);
+    const lastName = rest.join(" ");
+
+    // Sync to live API if authenticated
+    if (state.currentUser?.token) {
+      try {
+        const result = await api.updateMe({ name, email, deliveryAddress, preferredLanguage });
+        const updated = { ...state.currentUser, ...result.user, token: state.currentUser.token };
+        saveSession(updated);
+      } catch {
+        // Fall through to local update on API failure
+      }
+    }
+
+    // Always update local profile store as well
     const updated = updateUserProfile(state.currentUser!.phone, {
       firstName: firstName || state.currentUser!.firstName,
-      lastName: rest.join(" ") || state.currentUser!.lastName,
-      email: String(data.get("email") || ""),
-      deliveryAddress: String(data.get("deliveryAddress") || ""),
-      preferredLanguage: data.get("preferredLanguage") === "ha" ? "ha" : "en",
+      lastName: lastName || state.currentUser!.lastName,
+      email, deliveryAddress, preferredLanguage,
     });
-    if (updated) saveSession(createSessionForPhone(updated.phone));
+    if (updated && !state.currentUser?.token) saveSession(createSessionForPhone(updated.phone));
+
     const message = panel.querySelector<HTMLElement>("#profileUpdateMessage");
     if (message) message.textContent = getCopy("Profile updated.", "An sabunta bayanai.");
-  });
+  }
 }
 
 export function closeUserPanel(): void {

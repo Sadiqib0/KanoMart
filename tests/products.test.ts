@@ -74,7 +74,7 @@ describe("product moderation", () => {
     expect(getProductStatusCounts()).toEqual({ pending: 0, approved: 1, hidden: 0, rejected: 1 });
   });
 
-  it("adds vendor products to the active catalog", () => {
+  it("adds vendor products to the active catalog after admin approval", () => {
     const product = saveVendorProduct({
       vendor: "Musa Wears",
       vendorPhone: "08012345678",
@@ -84,6 +84,12 @@ describe("product moderation", () => {
       category: "fashion",
       imageDataUrl: "data:image/png;base64,test",
     });
+
+    // Products start pending — not visible until approved
+    expect(getCatalogProducts().map((item) => item.id)).not.toContain(product.id);
+    expect(getProductById(product.id, { includeModerated: true })?.imageDataUrl).toBe("data:image/png;base64,test");
+
+    moderateProduct(product.id, "approved");
 
     expect(getCatalogProducts().map((item) => item.id)).toContain(product.id);
     expect(getProductById(product.id)?.imageDataUrl).toBe("data:image/png;base64,test");
@@ -98,6 +104,8 @@ describe("product moderation", () => {
       priceValue: 8000,
       category: "fashion",
     });
+    // Approve so listing-status toggling is observable through the public catalog
+    moderateProduct(product.id, "approved");
 
     setVendorProductListingStatus(product.id, "out_of_stock");
 

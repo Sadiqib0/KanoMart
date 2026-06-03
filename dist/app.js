@@ -306,6 +306,7 @@ var api = {
   health: () => apiRequest("/health"),
   // Auth
   me: () => apiRequest("/me"),
+  updateMe: (body) => apiRequest("/me", { method: "PATCH", body }),
   login: (identifier, password) => apiRequest("/auth/login", { body: { identifier, password } }),
   register: (body) => apiRequest("/auth/register", { body }),
   logout: () => apiRequest("/auth/logout", { method: "POST" }),
@@ -2588,21 +2589,37 @@ function openUserPanel() {
   });
   panel.querySelector("#signOutBtn")?.addEventListener("click", signOut);
   panel.querySelector("#profileUpdateForm")?.addEventListener("submit", (event) => {
+    void handleProfileUpdate(event);
+  });
+  async function handleProfileUpdate(event) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const [firstName, ...rest] = String(data.get("name") || "").trim().split(/\s+/);
+    const name = String(data.get("name") || "").trim();
+    const email = String(data.get("email") || "");
+    const deliveryAddress = String(data.get("deliveryAddress") || "");
+    const preferredLanguage = data.get("preferredLanguage") === "ha" ? "ha" : "en";
+    const [firstName, ...rest] = name.split(/\s+/);
+    const lastName = rest.join(" ");
+    if (state.currentUser?.token) {
+      try {
+        const result = await api.updateMe({ name, email, deliveryAddress, preferredLanguage });
+        const updated2 = { ...state.currentUser, ...result.user, token: state.currentUser.token };
+        saveSession(updated2);
+      } catch {
+      }
+    }
     const updated = updateUserProfile(state.currentUser.phone, {
       firstName: firstName || state.currentUser.firstName,
-      lastName: rest.join(" ") || state.currentUser.lastName,
-      email: String(data.get("email") || ""),
-      deliveryAddress: String(data.get("deliveryAddress") || ""),
-      preferredLanguage: data.get("preferredLanguage") === "ha" ? "ha" : "en"
+      lastName: lastName || state.currentUser.lastName,
+      email,
+      deliveryAddress,
+      preferredLanguage
     });
-    if (updated) saveSession(createSessionForPhone(updated.phone));
+    if (updated && !state.currentUser?.token) saveSession(createSessionForPhone(updated.phone));
     const message = panel.querySelector("#profileUpdateMessage");
     if (message) message.textContent = getCopy("Profile updated.", "An sabunta bayanai.");
-  });
+  }
 }
 function closeUserPanel() {
   const panel = document.getElementById("userPanel");

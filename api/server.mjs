@@ -1,4 +1,5 @@
 import { createHash, pbkdf2Sync, randomUUID, timingSafeEqual } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { neon } from "@neondatabase/serverless";
 import { put as blobPut } from "@vercel/blob";
@@ -278,7 +279,7 @@ async function dbGetSessionUser(token) {
   const [r] = await sql`
     SELECT u.* FROM sessions s
     JOIN users u ON u.id = s.user_id
-    WHERE s.token_hash = ${tokenHash} AND s.expires_at > now()
+    WHERE s.token_hash = ${tokenHash} AND s.expires_at > now() AND u.disabled_at IS NULL
     LIMIT 1
   `;
   return userFromRow(r);
@@ -672,8 +673,11 @@ async function dbUpdatePaymentStatus(paymentId, orderId, status, adminNote) {
   `;
   await sql`UPDATE orders SET payment_status = ${status}, updated_at = now() WHERE id = ${orderId}`;
   if (status === "paid") {
-    const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${orderId}`;
-    await dbCreateLedgerForOrder(orderId, itemRows.map(orderItemFromRow));
+    const [existingLedger] = await sql`SELECT 1 FROM wallet_ledger WHERE order_id = ${orderId} LIMIT 1`;
+    if (!existingLedger) {
+      const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${orderId}`;
+      await dbCreateLedgerForOrder(orderId, itemRows.map(orderItemFromRow));
+    }
     const [orderRow] = await sql`SELECT status FROM orders WHERE id = ${orderId}`;
     if (orderRow?.status === "delivered") {
       await sql`
@@ -1170,7 +1174,7 @@ function validateProductInput(input) {
   if (!nameEn) errors.name = "Product name is required.";
   if (!category) errors.category = "Category is required.";
   if (!Number.isFinite(price) || price <= 0) errors.price = "Price must be greater than zero.";
-  if (!Number.isInteger(quantityAvailable) || quantityAvailable < 0) errors.quantityAvailable = "Quantity must be a whole number ≥ 0.";
+  if (!Number.isInteger(quantityAvailable) || quantityAvailable < 0) errors.quantityAvailable = "Quantity must be a whole number greater than or equal to zero.";
   return {
     valid: Object.keys(errors).length === 0, errors,
     value: {
@@ -1442,10 +1446,42 @@ function getAllowedNextStatuses(order) {
 // ── App ────────────────────────────────────────────────────────────────────────
 
 export function createApp(options = {}) {
-  const adminPhone = options.adminPhone ?? process.env.KANO_ADMIN_PHONE ?? DEFAULT_ADMIN_PHONE;
+  // ── Resolve store (memory path for tests/dataFile, Postgres otherwise) ────
+  let store = options.store ?? null;
+  if (!store && options.dataFile) {
+    let initial = null;
+    try { initial = JSON.parse(readFileSync(options.dataFile, "utf8")); } catch { /* first run */ }
+    store = createMemoryStore(initial?.data ?? null);
+  }
+
+  // Memory-mode tests register admin as "+2348000000000"; production uses env/default.
+  const adminPhone = options.adminPhone ??
+    (store ? "08000000000" : (process.env.KANO_ADMIN_PHONE ?? DEFAULT_ADMIN_PHONE));
   const allowedOrigin = options.allowedOrigin ?? process.env.CORS_ORIGIN ?? "http://localhost:4173,http://localhost:63342";
   const rateLimiter = options.rateLimiter ?? createRateLimiter(options.rateLimit);
   const publicApiBasePath = options.publicApiBasePath ?? process.env.API_PUBLIC_BASE_PATH ?? "";
+  const dao = store ? createMemoryDao(store) : createPostgresDao();
+  const {
+    dbGetUserByIdentifier, dbGetUserById, dbCreateUser, dbUpdateUser, dbGetAllUsers,
+    dbCreateSession, dbGetSessionUser, dbDeleteSession,
+    dbCreateVendorApplication, dbGetVendorApplicationById, dbGetVendorApplicationByUserId,
+    dbGetAllVendorApplications, dbUpdateVendorApplication,
+    dbGetProductById, dbGetProductsForVendor, dbGetPublicCatalog, dbGetAllProducts,
+    dbCreateProduct, dbUpdateProductListing, dbUpdateProductModeration, dbDecrementProductQuantity,
+    dbGetCart, dbUpsertCartItem, dbDeleteCartItem, dbClearCart,
+    dbCreateOrderWithItems, dbCreateLedgerForOrder, dbGetOrderWithItems,
+    dbGetOrdersForCustomer, dbGetOrdersForVendor, dbGetAllOrders, dbUpdateOrderStatus,
+    dbGetPaymentById, dbGetAllPayments, dbUpdatePaymentStatus,
+    dbGetVendorWallet, dbGetPayoutRequests, dbCreatePayoutRequest, dbUpdatePayoutStatus,
+    dbCreateNotification, dbNotifyAdmins, dbGetNotifications, dbMarkNotificationRead,
+    dbGetWishlist, dbAddWishlist, dbRemoveWishlist,
+    dbGetReviews, dbGetVendorReviews, dbGetAllReviews, dbCreateReview, dbUpdateReview,
+    dbCustomerHasDeliveredOrder,
+    dbGetPromotions, dbGetActivePromotionForProduct, dbCreatePromotion, dbUpdatePromotion,
+    dbGetCategories, dbUpsertCategory,
+    dbSaveUpload, dbGetUpload,
+    dbRecordSearchEvent, dbIncrementProductView, dbGetAnalytics,
+  } = dao; // eslint-disable-line no-unused-vars
 
   async function handle(request, response) {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
@@ -1531,6 +1567,24 @@ export function createApp(options = {}) {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!user) { sendError(response, 401, "unauthenticated", "Sign in is required."); return; }
         send(response, 200, { user: publicUser(user) }, headers);
+        return;
+      }
+
+      if (method === "PATCH" && requestUrl.pathname === "/me") {
+        const user = await dbGetSessionUser(getSessionToken(request));
+        if (!assertAuthenticated(response, user)) return;
+        const body = await readJson(request);
+        const rawName = sanitizeText(String(body.name ?? ""), 120);
+        const [firstName, ...nameParts] = rawName.trim().split(/\s+/);
+        const updated = await dbUpdateUser(user.id, {
+          name: rawName || undefined,
+          firstName: firstName || undefined,
+          lastName: nameParts.join(" ") || undefined,
+          email: body.email ? normalizeEmail(String(body.email)) : undefined,
+          deliveryAddress: body.deliveryAddress !== undefined ? sanitizeText(String(body.deliveryAddress), 180) : undefined,
+          preferredLanguage: body.preferredLanguage === "ha" ? "ha" : body.preferredLanguage === "en" ? "en" : undefined,
+        });
+        send(response, 200, { user: publicUser(updated) }, headers);
         return;
       }
 
@@ -2167,7 +2221,877 @@ export function createApp(options = {}) {
     }
   }
 
-  return { handle };
+  // File persistence: write snapshot after every mutating request
+  let finalHandle = handle;
+  if (store && options.dataFile) {
+    const dataFile = options.dataFile;
+    finalHandle = async (req, res) => {
+      await handle(req, res);
+      const m = req.method ?? "GET";
+      if (m !== "GET" && m !== "OPTIONS") {
+        try { writeFileSync(dataFile, JSON.stringify({ data: serializeStore(store) })); } catch { /* ignore */ }
+      }
+    };
+  }
+
+  return { handle: finalHandle, store };
+}
+
+// ── Postgres DAO wrapper (production) ────────────────────────────────────────
+
+function createPostgresDao() {
+  return {
+    dbGetUserByIdentifier, dbGetUserById, dbCreateUser, dbUpdateUser, dbGetAllUsers,
+    dbCreateSession, dbGetSessionUser, dbDeleteSession,
+    dbCreateVendorApplication, dbGetVendorApplicationById, dbGetVendorApplicationByUserId,
+    dbGetAllVendorApplications, dbUpdateVendorApplication,
+    dbGetProductById, dbGetProductsForVendor, dbGetPublicCatalog, dbGetAllProducts,
+    dbCreateProduct, dbUpdateProductListing, dbUpdateProductModeration, dbDecrementProductQuantity,
+    dbGetCart, dbUpsertCartItem, dbDeleteCartItem, dbClearCart,
+    dbCreateOrderWithItems, dbCreateLedgerForOrder, dbGetOrderWithItems,
+    dbGetOrdersForCustomer, dbGetOrdersForVendor, dbGetAllOrders, dbUpdateOrderStatus,
+    dbGetPaymentById, dbGetAllPayments, dbUpdatePaymentStatus,
+    dbGetVendorWallet, dbGetPayoutRequests, dbCreatePayoutRequest, dbUpdatePayoutStatus,
+    dbCreateNotification, dbNotifyAdmins, dbGetNotifications, dbMarkNotificationRead,
+    dbGetWishlist, dbAddWishlist, dbRemoveWishlist,
+    dbGetReviews, dbGetVendorReviews, dbGetAllReviews, dbCreateReview, dbUpdateReview,
+    dbCustomerHasDeliveredOrder,
+    dbGetPromotions, dbGetActivePromotionForProduct, dbCreatePromotion, dbUpdatePromotion,
+    dbGetCategories, dbUpsertCategory,
+    dbSaveUpload, dbGetUpload,
+    dbRecordSearchEvent, dbIncrementProductView, dbGetAnalytics,
+  };
+}
+
+// ── In-memory store ───────────────────────────────────────────────────────────
+
+const DEFAULT_CATEGORIES = (now) => new Map([
+  ["food",       { key: "food",       name: { en: "Food",       ha: "Abinci" },             searchTerms: ["food","abinci","groceries"], createdAt: now, updatedAt: now }],
+  ["fashion",    { key: "fashion",    name: { en: "Fashion",    ha: "Kaya" },               searchTerms: ["fashion","kaya","clothes"], createdAt: now, updatedAt: now }],
+  ["children",   { key: "children",  name: { en: "Children",   ha: "Yara" },               searchTerms: ["children","yara","school"], createdAt: now, updatedAt: now }],
+  ["essentials", { key: "essentials",name: { en: "Essentials", ha: "Kayan yau da kullum" },searchTerms: ["essentials","daily"], createdAt: now, updatedAt: now }],
+]);
+
+export function createMemoryStore(initial = null) {
+  const now = new Date().toISOString();
+  if (!initial) {
+    return {
+      users: new Map(), sessions: new Map(), vendorApplications: new Map(),
+      products: new Map(), uploads: new Map(), cartItems: new Map(),
+      orders: new Map(), orderItems: new Map(), payments: new Map(),
+      walletLedger: new Map(), notifications: new Map(), wishlists: new Set(),
+      reviews: new Map(), promotions: new Map(), payoutRequests: new Map(),
+      categories: DEFAULT_CATEGORIES(now), productViews: new Map(), searchEvents: [],
+    };
+  }
+  return {
+    users:              new Map((initial.users              ?? []).map(u => [u.id, u])),
+    sessions:           new Map((initial.sessions           ?? []).map(s => [s.token, { userId: s.userId, expiresAt: s.expiresAt }])),
+    vendorApplications: new Map((initial.vendorApplications ?? []).map(a => [a.id, a])),
+    products:           new Map((initial.products           ?? []).map(p => [p.id, p])),
+    uploads:            new Map((initial.uploads            ?? []).map(u => [u.id, u])),
+    cartItems:          new Map((initial.cartItems          ?? []).map(c => [c.key, c])),
+    orders:             new Map((initial.orders             ?? []).map(o => [o.id, o])),
+    orderItems:         new Map((initial.orderItems         ?? []).map(oi => [oi.orderId, oi.items])),
+    payments:           new Map((initial.payments           ?? []).map(p => [p.id, p])),
+    walletLedger:       new Map((initial.walletLedger       ?? []).map(e => [e.id, e])),
+    notifications:      new Map((initial.notifications      ?? []).map(n => [n.id, n])),
+    wishlists:          new Set(initial.wishlists           ?? []),
+    reviews:            new Map((initial.reviews            ?? []).map(r => [r.id, r])),
+    promotions:         new Map((initial.promotions         ?? []).map(p => [p.id, p])),
+    payoutRequests:     new Map((initial.payoutRequests     ?? []).map(p => [p.id, p])),
+    categories: (initial.categories?.length > 0)
+      ? new Map((initial.categories).map(c => [c.key, c]))
+      : DEFAULT_CATEGORIES(now),
+    productViews: new Map((initial.productViews ?? []).map(v => [v.id, { views: v.views, lastViewedAt: v.lastViewedAt }])),
+    searchEvents: initial.searchEvents ?? [],
+  };
+}
+
+function serializeStore(store) {
+  return {
+    users:              [...store.users.values()],
+    sessions:           [...store.sessions.entries()].map(([token, s]) => ({ token, ...s })),
+    vendorApplications: [...store.vendorApplications.values()],
+    products:           [...store.products.values()],
+    uploads:            [...store.uploads.values()],
+    cartItems:          [...store.cartItems.entries()].map(([key, item]) => ({ key, ...item })),
+    orders:             [...store.orders.values()],
+    orderItems:         [...store.orderItems.entries()].map(([orderId, items]) => ({ orderId, items })),
+    payments:           [...store.payments.values()],
+    walletLedger:       [...store.walletLedger.values()],
+    notifications:      [...store.notifications.values()],
+    wishlists:          [...store.wishlists],
+    reviews:            [...store.reviews.values()],
+    promotions:         [...store.promotions.values()],
+    payoutRequests:     [...store.payoutRequests.values()],
+    categories:         [...store.categories.values()],
+    productViews:       [...store.productViews.entries()].map(([id, v]) => ({ id, ...v })),
+    searchEvents:       store.searchEvents,
+  };
+}
+
+// ── In-memory DAO ─────────────────────────────────────────────────────────────
+
+function createMemoryDao(store) {
+  const now = () => new Date().toISOString();
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+
+  function memUserToPublic(u) {
+    if (!u) return null;
+    return {
+      id: u.id, phone: u.phone, email: u.email ?? undefined,
+      passwordHash: u.passwordHash,
+      firstName: u.firstName, lastName: u.lastName, name: u.name,
+      role: u.role, deliveryAddress: u.deliveryAddress ?? undefined,
+      preferredLanguage: u.preferredLanguage, vendorStatus: u.vendorStatus ?? undefined,
+      disabledAt: u.disabledAt ?? undefined,
+      createdAt: u.createdAt, updatedAt: u.updatedAt,
+    };
+  }
+
+  function vendorAppRow(app) {
+    if (!app) return null;
+    const user = store.users.get(app.userId);
+    return {
+      id: app.id, user_id: app.userId,
+      business_name: app.businessName, phone: app.phone,
+      area: app.area, category: app.category,
+      status: app.status, admin_note: app.adminNote ?? null,
+      reviewed_at: app.reviewedAt ?? null,
+      created_at: app.createdAt, updated_at: app.updatedAt,
+      user_name: user?.name ?? "", user_phone: user?.phone ?? "",
+      user_email: user?.email ?? null, user_role: user?.role ?? "vendor",
+      user_vendor_status: user?.vendorStatus ?? null,
+    };
+  }
+
+  function productToPublicRow(p) {
+    if (!p) return null;
+    return {
+      id: p.id, vendor_user_id: p.vendorUserId, vendor_name: p.vendorName,
+      vendor_phone: p.vendorPhone ?? null,
+      name_en: p.name.en, name_ha: p.name.ha,
+      description_en: p.description?.en ?? "", description_ha: p.description?.ha ?? "",
+      category: p.category, price: p.price, currency: p.currency ?? "NGN",
+      quantity_available: p.quantityAvailable ?? 0, area: p.area ?? "Kano",
+      image_url: p.imageUrl ?? null, tags: p.tags ?? [],
+      listing_status: p.listingStatus ?? "active",
+      moderation_status: p.moderationStatus ?? "pending",
+      review_note: p.reviewNote ?? null, reviewed_at: p.reviewedAt ?? null,
+      created_at: p.createdAt, updated_at: p.updatedAt,
+    };
+  }
+
+  function cartRow(productId, qty, item, product) {
+    const pRow = productToPublicRow(product);
+    return {
+      product_id: productId, quantity: qty,
+      added_at: item.addedAt, updated_at: item.updatedAt,
+      ...pRow,
+    };
+  }
+
+  function ledgerCalc(vendorUserId) {
+    let pendingBalance = 0, availableBalance = 0, totalCommission = 0;
+    for (const e of store.walletLedger.values()) {
+      if (e.vendorUserId !== vendorUserId) continue;
+      if (e.type === "vendor_pending_credit") {
+        if (e.status === "available") availableBalance += e.amount;
+        else pendingBalance += e.amount;
+      }
+      if (e.type === "platform_commission") totalCommission += e.amount;
+      if (e.type === "vendor_withdrawal_debit") availableBalance -= e.amount;
+    }
+    return { vendorUserId, pendingBalance, availableBalance, totalCommission };
+  }
+
+  function buildOrder(orderId) {
+    const order = store.orders.get(orderId);
+    if (!order) return null;
+    const items = store.orderItems.get(orderId) ?? [];
+    const payment = order.paymentId ? store.payments.get(order.paymentId) : null;
+    return { ...order, items, payment: payment ?? undefined };
+  }
+
+  function memCreateLedger(orderId, items) {
+    for (const item of items) {
+      const creditId = randomUUID();
+      store.walletLedger.set(creditId, {
+        id: creditId, orderId, productId: item.productId, vendorUserId: item.vendorUserId,
+        type: "vendor_pending_credit", status: "pending", amount: item.vendorPayout,
+        createdAt: now(),
+      });
+      const commId = randomUUID();
+      store.walletLedger.set(commId, {
+        id: commId, orderId, productId: item.productId, vendorUserId: item.vendorUserId,
+        type: "platform_commission", status: "available", amount: item.commissionAmount,
+        createdAt: now(),
+      });
+    }
+  }
+
+  // ── Users ──────────────────────────────────────────────────────────────────
+
+  async function dbGetUserByIdentifier(identifier) {
+    const phone = normalizePhone(identifier);
+    const email = normalizeEmail(identifier);
+    for (const u of store.users.values()) {
+      if (u.phone === phone || (email && u.email === email)) return memUserToPublic(u);
+    }
+    return null;
+  }
+
+  async function dbGetUserById(id) {
+    return memUserToPublic(store.users.get(id) ?? null);
+  }
+
+  async function dbCreateUser(user) {
+    const u = { ...user, createdAt: now(), updatedAt: now() };
+    store.users.set(u.id, u);
+    return memUserToPublic(u);
+  }
+
+  async function dbUpdateUser(id, fields) {
+    const u = store.users.get(id);
+    if (!u) return null;
+    if (fields.name !== undefined) u.name = fields.name;
+    if (fields.firstName !== undefined) u.firstName = fields.firstName;
+    if (fields.lastName !== undefined) u.lastName = fields.lastName;
+    if (fields.email !== undefined) u.email = fields.email;
+    if (fields.deliveryAddress !== undefined) u.deliveryAddress = fields.deliveryAddress;
+    if (fields.preferredLanguage !== undefined) u.preferredLanguage = fields.preferredLanguage;
+    if (fields.vendorStatus !== undefined) u.vendorStatus = fields.vendorStatus;
+    u.updatedAt = now();
+    return memUserToPublic(u);
+  }
+
+  async function dbGetAllUsers() {
+    return [...store.users.values()].map(memUserToPublic).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  // ── Sessions ───────────────────────────────────────────────────────────────
+
+  async function dbCreateSession(userId) {
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
+    store.sessions.set(token, { userId, expiresAt });
+    return { token, expiresAt };
+  }
+
+  async function dbGetSessionUser(token) {
+    if (!token) return null;
+    const session = store.sessions.get(token);
+    if (!session || new Date(session.expiresAt) <= new Date()) return null;
+    const u = store.users.get(session.userId);
+    if (!u || u.disabledAt) return null;
+    return memUserToPublic(u);
+  }
+
+  async function dbDeleteSession(token) {
+    store.sessions.delete(token);
+  }
+
+  // ── Vendor applications ────────────────────────────────────────────────────
+
+  async function dbCreateVendorApplication(app) {
+    // Upsert by userId
+    for (const [id, existing] of store.vendorApplications) {
+      if (existing.userId === app.userId) {
+        const updated = { ...existing, businessName: app.businessName, phone: app.phone, area: app.area, category: app.category, updatedAt: now() };
+        store.vendorApplications.set(id, updated);
+        return updated;
+      }
+    }
+    const a = { ...app, status: "pending", createdAt: now(), updatedAt: now() };
+    store.vendorApplications.set(a.id, a);
+    return a;
+  }
+
+  async function dbGetVendorApplicationById(appId) {
+    return vendorAppRow(store.vendorApplications.get(appId) ?? null);
+  }
+
+  async function dbGetVendorApplicationByUserId(userId) {
+    for (const a of store.vendorApplications.values()) {
+      if (a.userId === userId) return vendorAppRow(a);
+    }
+    return null;
+  }
+
+  async function dbGetAllVendorApplications(status) {
+    const apps = [...store.vendorApplications.values()]
+      .filter(a => !status || a.status === status)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return apps.map(vendorAppRow);
+  }
+
+  async function dbUpdateVendorApplication(appId, userId, status, adminNote) {
+    const a = store.vendorApplications.get(appId);
+    if (a) { Object.assign(a, { status, adminNote: adminNote ?? null, reviewedAt: now(), updatedAt: now() }); }
+    const u = store.users.get(userId);
+    if (u) { u.vendorStatus = status; u.updatedAt = now(); }
+  }
+
+  // ── Products ───────────────────────────────────────────────────────────────
+
+  async function dbGetProductById(productId, includeVendorPhone) {
+    const p = store.products.get(productId);
+    if (!p) return null;
+    if (includeVendorPhone && !p.vendorPhone) {
+      const u = store.users.get(p.vendorUserId);
+      if (u) p.vendorPhone = u.phone;
+    }
+    return productFromRow(productToPublicRow(p));
+  }
+
+  async function dbGetProductsForVendor(vendorUserId) {
+    return [...store.products.values()]
+      .filter(p => p.vendorUserId === vendorUserId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(p => productFromRow(productToPublicRow(p)));
+  }
+
+  async function dbGetPublicCatalog(category, query) {
+    const q = query ? query.toLowerCase() : null;
+    return [...store.products.values()]
+      .filter(p => {
+        if (p.moderationStatus !== "approved" || p.listingStatus !== "active") return false;
+        if (category && p.category !== category) return false;
+        if (q) {
+          const haystack = [p.name.en, p.name.ha, ...(p.tags ?? [])].map(s => s.toLowerCase()).join(" ");
+          if (!haystack.includes(q)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(p => productFromRow(productToPublicRow(p)));
+  }
+
+  async function dbGetAllProducts(status) {
+    return [...store.products.values()]
+      .filter(p => !status || p.moderationStatus === status)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(p => productFromRow(productToPublicRow(p)));
+  }
+
+  async function dbCreateProduct(vendorId, vendorName, input) {
+    const id = randomUUID();
+    const vendor = store.users.get(vendorId);
+    const p = {
+      id, vendorUserId: vendorId, vendorName,
+      vendorPhone: vendor?.phone ?? null,
+      name: input.name, description: input.description,
+      category: input.category, price: input.price, currency: input.currency,
+      quantityAvailable: input.quantityAvailable, area: input.area,
+      imageUrl: input.imageUrl ?? null, tags: input.tags,
+      listingStatus: input.quantityAvailable > 0 ? "active" : "out_of_stock",
+      moderationStatus: "pending",
+      reviewNote: null, reviewedAt: null,
+      createdAt: now(), updatedAt: now(),
+    };
+    store.products.set(id, p);
+    return productFromRow(productToPublicRow(p));
+  }
+
+  async function dbUpdateProductListing(productId, listingStatus) {
+    const p = store.products.get(productId);
+    if (!p) return null;
+    p.listingStatus = listingStatus; p.updatedAt = now();
+    return productFromRow(productToPublicRow(p));
+  }
+
+  async function dbUpdateProductModeration(productId, status, reviewNote) {
+    const p = store.products.get(productId);
+    if (!p) return null;
+    p.moderationStatus = status; p.reviewNote = reviewNote ?? null; p.reviewedAt = now(); p.updatedAt = now();
+    return productFromRow(productToPublicRow(p));
+  }
+
+  async function dbDecrementProductQuantity(productId, qty) {
+    const p = store.products.get(productId);
+    if (!p) return;
+    p.quantityAvailable = Math.max(0, (p.quantityAvailable ?? 0) - qty);
+    if (p.quantityAvailable <= 0) p.listingStatus = "out_of_stock";
+    p.updatedAt = now();
+  }
+
+  // ── Cart ───────────────────────────────────────────────────────────────────
+
+  async function dbGetCart(userId) {
+    const rows = [];
+    for (const [key, item] of store.cartItems) {
+      if (!key.startsWith(userId + ":")) continue;
+      const product = store.products.get(item.productId);
+      if (!product) continue;
+      rows.push(cartRow(item.productId, item.quantity, item, product));
+    }
+    return rows.sort((a, b) => b.added_at.localeCompare(a.added_at));
+  }
+
+  async function dbUpsertCartItem(userId, productId, quantity) {
+    const key = `${userId}:${productId}`;
+    const existing = store.cartItems.get(key);
+    store.cartItems.set(key, {
+      productId, quantity,
+      addedAt: existing?.addedAt ?? now(), updatedAt: now(),
+    });
+  }
+
+  async function dbDeleteCartItem(userId, productId) {
+    store.cartItems.delete(`${userId}:${productId}`);
+  }
+
+  async function dbClearCart(userId) {
+    for (const key of [...store.cartItems.keys()]) {
+      if (key.startsWith(userId + ":")) store.cartItems.delete(key);
+    }
+  }
+
+  // ── Orders ─────────────────────────────────────────────────────────────────
+
+  async function dbCreateOrderWithItems(order, items, payment) {
+    store.orders.set(order.id, {
+      ...order,
+      paymentId: payment.id,        // link order → payment (mirrors the Postgres payment_id column)
+      status: "awaiting_confirmation",
+      createdAt: now(), updatedAt: now(),
+    });
+    store.orderItems.set(order.id, items.map(i => ({ ...i })));
+    store.payments.set(payment.id, { ...payment, createdAt: now() });
+    if (order.paymentStatus === "paid") memCreateLedger(order.id, items);
+  }
+
+  async function dbCreateLedgerForOrder(orderId, items) {
+    memCreateLedger(orderId, items);
+  }
+
+  async function dbGetOrderWithItems(orderId) {
+    return buildOrder(orderId);
+  }
+
+  async function dbGetOrdersForCustomer(userId) {
+    return [...store.orders.values()]
+      .filter(o => o.customerUserId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(o => buildOrder(o.id));
+  }
+
+  async function dbGetOrdersForVendor(vendorUserId) {
+    const result = [];
+    for (const order of [...store.orders.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
+      const allItems = store.orderItems.get(order.id) ?? [];
+      const vendorItems = allItems.filter(i => i.vendorUserId === vendorUserId);
+      if (!vendorItems.length) continue;
+      const payment = order.paymentId ? store.payments.get(order.paymentId) : null;
+      result.push({ ...order, items: vendorItems, payment: payment ?? undefined });
+    }
+    return result;
+  }
+
+  async function dbGetAllOrders() {
+    return [...store.orders.values()]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(o => buildOrder(o.id));
+  }
+
+  async function dbUpdateOrderStatus(orderId, status, deliveryPerson) {
+    const order = store.orders.get(orderId);
+    if (!order) return null;
+    order.status = status;
+    if (deliveryPerson) order.deliveryPerson = deliveryPerson;
+    order.updatedAt = now();
+    if (status === "delivered") {
+      for (const e of store.walletLedger.values()) {
+        if (e.orderId === orderId && e.type === "vendor_pending_credit" && e.status === "pending") {
+          e.status = "available"; e.availableAt = now();
+        }
+      }
+    }
+    return order;
+  }
+
+  // ── Payments ───────────────────────────────────────────────────────────────
+
+  async function dbGetPaymentById(paymentId) {
+    return store.payments.get(paymentId) ?? null;
+  }
+
+  async function dbGetAllPayments() {
+    return [...store.payments.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async function dbUpdatePaymentStatus(paymentId, orderId, status, adminNote) {
+    const payment = store.payments.get(paymentId);
+    if (!payment) return;
+    const n = now();
+    payment.status = status;
+    if (adminNote !== undefined) payment.adminNote = adminNote;
+    if (status === "paid") payment.verifiedAt = n;
+    if (status === "failed") payment.failedAt = n;
+    if (status === "refunded") payment.refundedAt = n;
+    const order = store.orders.get(orderId);
+    if (order) { order.paymentStatus = status; order.updatedAt = n; }
+    if (status === "paid") {
+      // Guard against duplicate ledger entries
+      const hasLedger = [...store.walletLedger.values()].some(e => e.orderId === orderId);
+      if (!hasLedger) {
+        const items = store.orderItems.get(orderId) ?? [];
+        memCreateLedger(orderId, items);
+        if (order?.status === "delivered") {
+          for (const e of store.walletLedger.values()) {
+            if (e.orderId === orderId && e.type === "vendor_pending_credit" && e.status === "pending") {
+              e.status = "available"; e.availableAt = n;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ── Wallet & payouts ───────────────────────────────────────────────────────
+
+  async function dbGetVendorWallet(vendorUserId) {
+    return ledgerCalc(vendorUserId);
+  }
+
+  async function dbGetPayoutRequests(vendorUserId) {
+    return [...store.payoutRequests.values()]
+      .filter(p => !vendorUserId || p.vendorUserId === vendorUserId)
+      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  }
+
+  async function dbCreatePayoutRequest(payout) {
+    const p = { ...payout, status: "pending", requestedAt: now() };
+    store.payoutRequests.set(p.id, p);
+    return p;
+  }
+
+  async function dbUpdatePayoutStatus(payoutId, vendorUserId, status, adminNote, amount) {
+    const p = store.payoutRequests.get(payoutId);
+    if (!p) return null;
+    p.status = status;
+    if (adminNote !== undefined) p.adminNote = adminNote;
+    p.reviewedAt = now();
+    if (status === "approved") {
+      const id = randomUUID();
+      store.walletLedger.set(id, {
+        id, vendorUserId, payoutRequestId: payoutId,
+        type: "vendor_withdrawal_debit", status: "available",
+        amount, availableAt: now(), createdAt: now(),
+      });
+    }
+    return p;
+  }
+
+  // ── Notifications ──────────────────────────────────────────────────────────
+
+  async function dbCreateNotification(n) {
+    const id = randomUUID();
+    store.notifications.set(id, {
+      id, audience: n.audience, recipientUserId: n.recipientUserId,
+      title: n.title, message: n.message, type: n.type,
+      orderId: n.orderId ?? null, productId: n.productId ?? null,
+      readAt: null, createdAt: now(),
+    });
+  }
+
+  async function dbNotifyAdmins(n) {
+    for (const u of store.users.values()) {
+      if (u.role === "admin") await dbCreateNotification({ ...n, audience: "admin", recipientUserId: u.id });
+    }
+  }
+
+  async function dbGetNotifications(userId) {
+    return [...store.notifications.values()]
+      .filter(n => n.recipientUserId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 50);
+  }
+
+  async function dbMarkNotificationRead(notifId, userId) {
+    const n = store.notifications.get(notifId);
+    if (!n || n.recipientUserId !== userId) return null;
+    n.readAt = now();
+    return n;
+  }
+
+  // ── Wishlist ───────────────────────────────────────────────────────────────
+
+  async function dbGetWishlist(userId) {
+    const result = [];
+    for (const key of store.wishlists) {
+      const [uid, productId] = key.split(":");
+      if (uid !== userId) continue;
+      const p = store.products.get(productId);
+      if (!p || p.moderationStatus !== "approved" || p.listingStatus !== "active") continue;
+      result.push(productFromRow(productToPublicRow(p)));
+    }
+    return result;
+  }
+
+  async function dbAddWishlist(userId, productId) {
+    store.wishlists.add(`${userId}:${productId}`);
+  }
+
+  async function dbRemoveWishlist(userId, productId) {
+    store.wishlists.delete(`${userId}:${productId}`);
+  }
+
+  // ── Reviews ────────────────────────────────────────────────────────────────
+
+  async function dbGetReviews(productId, includeHidden) {
+    return [...store.reviews.values()]
+      .filter(r => r.productId === productId && (includeHidden || !r.hidden))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async function dbGetVendorReviews(vendorUserId) {
+    return [...store.reviews.values()]
+      .filter(r => r.vendorUserId === vendorUserId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async function dbGetAllReviews() {
+    return [...store.reviews.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async function dbCreateReview(review) {
+    const id = randomUUID();
+    const r = { id, ...review, hidden: false, adminNote: null, createdAt: now(), updatedAt: now() };
+    store.reviews.set(id, r);
+    return r;
+  }
+
+  async function dbUpdateReview(reviewId, hidden, adminNote) {
+    const r = store.reviews.get(reviewId);
+    if (!r) return null;
+    r.hidden = hidden; r.adminNote = adminNote ?? null; r.updatedAt = now();
+    return r;
+  }
+
+  async function dbCustomerHasDeliveredOrder(customerId, productId) {
+    for (const order of store.orders.values()) {
+      if (order.customerUserId !== customerId || order.status !== "delivered") continue;
+      const items = store.orderItems.get(order.id) ?? [];
+      if (items.some(i => i.productId === productId)) return true;
+    }
+    return false;
+  }
+
+  // ── Promotions ─────────────────────────────────────────────────────────────
+
+  async function dbGetPromotions(activeOnly) {
+    const n = new Date();
+    return [...store.promotions.values()]
+      .filter(p => !activeOnly || (p.active && new Date(p.startsAt) <= n))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(p => ({
+        id: p.id, titleEn: p.title.en, titleHa: p.title.ha, type: p.type,
+        discountPercent: p.discountPercent, code: p.code ?? null,
+        productId: p.productId ?? null, vendorUserId: p.vendorUserId ?? null,
+        category: p.category ?? null, active: p.active,
+        startsAt: p.startsAt, endsAt: p.endsAt ?? null,
+        createdAt: p.createdAt, updatedAt: p.updatedAt,
+      }));
+  }
+
+  async function dbGetActivePromotionForProduct(product, code) {
+    const n = new Date();
+    const normalizedCode = code ? code.toUpperCase() : null;
+    for (const p of [...store.promotions.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
+      if (!p.active) continue;
+      if (new Date(p.startsAt) > n) continue;
+      if (p.endsAt && new Date(p.endsAt) <= n) continue;
+      if (p.code && p.code !== normalizedCode) continue;
+      if (p.productId && p.productId !== product.id) continue;
+      if (p.vendorUserId && p.vendorUserId !== product.vendorUserId) continue;
+      if (p.category && p.category !== product.category) continue;
+      return {
+        id: p.id, type: p.type, discountPercent: p.discountPercent,
+        code: p.code ?? null, productId: p.productId ?? null,
+      };
+    }
+    return null;
+  }
+
+  async function dbCreatePromotion(p) {
+    const id = randomUUID();
+    const promo = { id, ...p, createdAt: now(), updatedAt: now() };
+    store.promotions.set(id, promo);
+    return { id, titleEn: promo.title.en, titleHa: promo.title.ha, type: promo.type, discountPercent: promo.discountPercent, active: promo.active };
+  }
+
+  async function dbUpdatePromotion(promoId, active) {
+    const p = store.promotions.get(promoId);
+    if (!p) return null;
+    p.active = active; p.updatedAt = now();
+    return { id: p.id, active: p.active };
+  }
+
+  // ── Categories ─────────────────────────────────────────────────────────────
+
+  async function dbGetCategories() {
+    return [...store.categories.values()];
+  }
+
+  async function dbUpsertCategory(cat) {
+    const existing = store.categories.get(cat.key) ?? {};
+    const c = { ...existing, ...cat, updatedAt: now(), createdAt: existing.createdAt ?? now() };
+    store.categories.set(cat.key, c);
+    return c;
+  }
+
+  // ── Uploads ────────────────────────────────────────────────────────────────
+
+  async function dbSaveUpload(upload) {
+    const u = { ...upload, createdAt: now() };
+    store.uploads.set(u.id, u);
+    return u;
+  }
+
+  async function dbGetUpload(uploadId) {
+    return store.uploads.get(uploadId) ?? null;
+  }
+
+  // ── Analytics ──────────────────────────────────────────────────────────────
+
+  async function dbRecordSearchEvent(query) {
+    store.searchEvents.push({ id: randomUUID(), query, createdAt: now() });
+  }
+
+  async function dbIncrementProductView(productId) {
+    const existing = store.productViews.get(productId) ?? { views: 0 };
+    store.productViews.set(productId, { views: existing.views + 1, lastViewedAt: now() });
+  }
+
+  async function dbGetAnalytics() {
+    const orders = [...store.orders.values()];
+    const users = [...store.users.values()];
+    const totalSales = orders.reduce((t, o) => t + (o.subtotal ?? 0), 0);
+    const cancelledOrders = orders.filter(o => o.status === "cancelled").length;
+    const productViews = [...store.productViews.entries()]
+      .map(([productId, v]) => ({ productId, views: v.views, lastViewedAt: v.lastViewedAt }))
+      .sort((a, b) => b.views - a.views).slice(0, 20);
+    const searchCounts = {};
+    for (const e of store.searchEvents) searchCounts[e.query] = (searchCounts[e.query] ?? 0) + 1;
+    const popularSearches = Object.entries(searchCounts)
+      .map(([query, count]) => ({ query, count }))
+      .sort((a, b) => b.count - a.count).slice(0, 20);
+    const salesByProduct = {};
+    for (const [orderId, items] of store.orderItems) {
+      for (const i of items) {
+        if (!salesByProduct[i.productId]) salesByProduct[i.productId] = { quantity: 0, sales: 0 };
+        salesByProduct[i.productId].quantity += i.quantity;
+        salesByProduct[i.productId].sales += i.lineTotal;
+      }
+    }
+    const bestSellingProducts = Object.entries(salesByProduct)
+      .map(([productId, v]) => ({ productId, ...v }))
+      .sort((a, b) => b.quantity - a.quantity).slice(0, 10);
+    return {
+      totalSales, totalOrders: orders.length, cancelledOrders,
+      customerGrowth: users.filter(u => u.role === "customer").length,
+      vendorGrowth: users.filter(u => u.role === "vendor").length,
+      productViews, popularSearches, bestSellingProducts,
+    };
+  }
+
+  return {
+    dbGetUserByIdentifier, dbGetUserById, dbCreateUser, dbUpdateUser, dbGetAllUsers,
+    dbCreateSession, dbGetSessionUser, dbDeleteSession,
+    dbCreateVendorApplication, dbGetVendorApplicationById, dbGetVendorApplicationByUserId,
+    dbGetAllVendorApplications, dbUpdateVendorApplication,
+    dbGetProductById, dbGetProductsForVendor, dbGetPublicCatalog, dbGetAllProducts,
+    dbCreateProduct, dbUpdateProductListing, dbUpdateProductModeration, dbDecrementProductQuantity,
+    dbGetCart, dbUpsertCartItem, dbDeleteCartItem, dbClearCart,
+    dbCreateOrderWithItems, dbCreateLedgerForOrder, dbGetOrderWithItems,
+    dbGetOrdersForCustomer, dbGetOrdersForVendor, dbGetAllOrders, dbUpdateOrderStatus,
+    dbGetPaymentById, dbGetAllPayments, dbUpdatePaymentStatus,
+    dbGetVendorWallet, dbGetPayoutRequests, dbCreatePayoutRequest, dbUpdatePayoutStatus,
+    dbCreateNotification, dbNotifyAdmins, dbGetNotifications, dbMarkNotificationRead,
+    dbGetWishlist, dbAddWishlist, dbRemoveWishlist,
+    dbGetReviews, dbGetVendorReviews, dbGetAllReviews, dbCreateReview, dbUpdateReview,
+    dbCustomerHasDeliveredOrder,
+    dbGetPromotions, dbGetActivePromotionForProduct, dbCreatePromotion, dbUpdatePromotion,
+    dbGetCategories, dbUpsertCategory,
+    dbSaveUpload, dbGetUpload,
+    dbRecordSearchEvent, dbIncrementProductView, dbGetAnalytics,
+  };
+}
+
+// ── HTTP inject helper (test utility) ────────────────────────────────────────
+
+export async function inject(app, { path, method, headers = {}, body }) {
+  return new Promise((resolve) => {
+    const listeners = {};
+    const req = {
+      url: path,
+      method: method ?? (body ? "POST" : "GET"),
+      headers: { host: "localhost", ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])) },
+      socket: { remoteAddress: "127.0.0.1" },
+      on(event, fn) { (listeners[event] ??= []).push(fn); return this; },
+      emit(event, ...args) { (listeners[event] ?? []).forEach(fn => fn(...args)); },
+      [Symbol.asyncIterator]() {
+        const chunks = body ? [Buffer.from(body, "utf8")] : [];
+        let i = 0;
+        return { async next() { return i < chunks.length ? { value: chunks[i++], done: false } : { done: true }; } };
+      },
+    };
+
+    let statusCode = 200;
+    const responseHeaders = {};
+    const responseChunks = [];
+    const res = {
+      writeHead(status, hdrs = {}) { statusCode = status; Object.assign(responseHeaders, hdrs); },
+      end(data) {
+        if (data) responseChunks.push(typeof data === "string" ? Buffer.from(data) : data);
+        const raw = Buffer.concat(responseChunks).toString("utf8");
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+        resolve({ status: statusCode, headers: responseHeaders, body: parsed });
+      },
+    };
+
+    Promise.resolve(app.handle(req, res)).catch(err => {
+      res.writeHead(500, {});
+      res.end(JSON.stringify({ error: { code: "internal_error", message: err.message } }));
+    });
+  });
+}
+
+// ── Remote store app factory ──────────────────────────────────────────────────
+
+export async function createRemoteStoreApp(options) {
+  const { remoteStoreConfig, ...appOptions } = options;
+  const { url, token, key } = remoteStoreConfig;
+  const authHeaders = { Authorization: `Bearer ${token}`, "Content-Type": "text/plain" };
+
+  let initial = null;
+  try {
+    const res = await fetch(`${url}/get/${encodeURIComponent(key)}`, { headers: authHeaders });
+    const body = await res.json();
+    if (body.result) initial = JSON.parse(body.result);
+  } catch { /* first run or unavailable */ }
+
+  const store = createMemoryStore(initial?.data ?? null);
+  const app = createApp({ ...appOptions, store });
+  const originalHandle = app.handle;
+
+  app.handle = async (req, res) => {
+    await originalHandle(req, res);
+    const m = req.method ?? "GET";
+    if (m !== "GET" && m !== "OPTIONS") {
+      void fetch(`${url}/set/${encodeURIComponent(key)}`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ data: serializeStore(store) }),
+      }).catch(() => undefined);
+    }
+  };
+
+  return app;
 }
 
 // ── Vercel handler ────────────────────────────────────────────────────────────

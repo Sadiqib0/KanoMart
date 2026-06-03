@@ -254,6 +254,8 @@ export const api = {
 
   // Auth
   me: () => apiRequest<{ user: ApiUser }>("/me"),
+  updateMe: (body: { name?: string; email?: string; deliveryAddress?: string; preferredLanguage?: string }) =>
+    apiRequest<{ user: ApiUser }>("/me", { method: "PATCH", body }),
   login: (identifier: string, password: string) =>
     apiRequest<ApiAuthResponse>("/auth/login", { body: { identifier, password } }),
   register: (body: unknown) => apiRequest<ApiAuthResponse>("/auth/register", { body }),
