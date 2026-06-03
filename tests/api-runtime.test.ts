@@ -6,6 +6,8 @@ import { createApp, createMemoryStore, createRemoteStoreApp, inject } from "../a
 
 let app: ReturnType<typeof createApp>;
 let originalBodyLimit: string | undefined;
+let originalBlobToken: string | undefined;
+let originalPublicApiBasePath: string | undefined;
 
 async function requestJson(path: string, init: RequestInit = {}) {
   return await inject(app, {
@@ -55,12 +57,20 @@ async function approveVendor(vendorToken: string) {
 
 beforeEach(() => {
   originalBodyLimit = process.env.API_BODY_LIMIT_BYTES;
+  originalBlobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  originalPublicApiBasePath = process.env.API_PUBLIC_BASE_PATH;
+  delete process.env.BLOB_READ_WRITE_TOKEN;
+  delete process.env.API_PUBLIC_BASE_PATH;
   app = createApp({ store: createMemoryStore(), allowedOrigin: "*" });
 });
 
 afterEach(() => {
   if (originalBodyLimit === undefined) delete process.env.API_BODY_LIMIT_BYTES;
   else process.env.API_BODY_LIMIT_BYTES = originalBodyLimit;
+  if (originalBlobToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+  else process.env.BLOB_READ_WRITE_TOKEN = originalBlobToken;
+  if (originalPublicApiBasePath === undefined) delete process.env.API_PUBLIC_BASE_PATH;
+  else process.env.API_PUBLIC_BASE_PATH = originalPublicApiBasePath;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
