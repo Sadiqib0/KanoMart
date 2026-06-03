@@ -461,10 +461,15 @@ export function renderVendorApprovals(vendors: VendorRequest[]): void {
 }
 
 export function renderProductModeration(): void {
-  const productStatusWeight = { pending: 0, hidden: 1, rejected: 2, approved: 3 };
-  const visibleProducts = [...getAllProducts()]
-    .sort((a, b) => productStatusWeight[getProductStatus(a.id)] - productStatusWeight[getProductStatus(b.id)])
-    .slice(0, 8);
+  const productStatusWeight: Record<string, number> = { pending: 0, hidden: 1, rejected: 2, approved: 3 };
+  const allProducts = getAllProducts();
+  const pendingProducts = allProducts.filter((p) => getProductStatus(p.id) === "pending");
+  const otherProducts = allProducts
+    .filter((p) => getProductStatus(p.id) !== "pending")
+    .sort((a, b) => productStatusWeight[getProductStatus(a.id)] - productStatusWeight[getProductStatus(b.id)]);
+  // Always show all pending products, then fill remaining slots with others
+  const maxOthers = Math.max(0, 12 - pendingProducts.length);
+  const visibleProducts = [...pendingProducts, ...otherProducts.slice(0, maxOthers)];
   if (visibleProducts.length === 0) {
     elements.productModeration.innerHTML = `<p class="muted">${getCopy("No products to moderate yet.", "Babu kaya da za a duba tukuna.")}</p>`;
     return;

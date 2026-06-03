@@ -83,7 +83,11 @@ function getProductModerationRecords() {
   return getStoredList(storageKeys.productModeration);
 }
 function getProductStatus(productId) {
-  return getProductModerationRecords().find((record) => record.productId === productId)?.status ?? "approved";
+  const record = getProductModerationRecords().find((r) => r.productId === productId);
+  if (record) return record.status;
+  const product = [...getLiveProducts(), ...getVendorProducts()].find((p) => p.id === productId);
+  if (product?.moderationStatus) return product.moderationStatus;
+  return "approved";
 }
 function isProductApproved(productId) {
   return getProductStatus(productId) === "approved";
@@ -1783,7 +1787,11 @@ function renderVendorApprovals(vendors) {
 }
 function renderProductModeration() {
   const productStatusWeight = { pending: 0, hidden: 1, rejected: 2, approved: 3 };
-  const visibleProducts = [...getAllProducts()].sort((a, b) => productStatusWeight[getProductStatus(a.id)] - productStatusWeight[getProductStatus(b.id)]).slice(0, 8);
+  const allProducts = getAllProducts();
+  const pendingProducts = allProducts.filter((p) => getProductStatus(p.id) === "pending");
+  const otherProducts = allProducts.filter((p) => getProductStatus(p.id) !== "pending").sort((a, b) => productStatusWeight[getProductStatus(a.id)] - productStatusWeight[getProductStatus(b.id)]);
+  const maxOthers = Math.max(0, 12 - pendingProducts.length);
+  const visibleProducts = [...pendingProducts, ...otherProducts.slice(0, maxOthers)];
   if (visibleProducts.length === 0) {
     elements.productModeration.innerHTML = `<p class="muted">${getCopy("No products to moderate yet.", "Babu kaya da za a duba tukuna.")}</p>`;
     return;
@@ -2941,12 +2949,17 @@ async function refreshLiveVendorProducts() {
   return products2;
 }
 async function refreshLiveAdminQueues() {
-  const [vendors, products2] = await Promise.all([api.adminVendorApplications(), api.adminProducts()]);
-  setLiveVendorRequests(vendors.applications.map(mapApiVendorApplication));
-  setLiveProducts(products2.products.map(mapApiProduct));
-  for (const product of products2.products) {
-    if (product.moderationStatus) {
-      moderateProduct(product.id, product.moderationStatus, "Synced from live admin API");
+  const [vendors, products2] = await Promise.all([
+    api.adminVendorApplications().catch(() => ({ applications: [] })),
+    api.adminProducts().catch(() => ({ products: [] }))
+  ]);
+  if (vendors.applications.length) setLiveVendorRequests(vendors.applications.map(mapApiVendorApplication));
+  if (products2.products.length) {
+    setLiveProducts(products2.products.map(mapApiProduct));
+    for (const product of products2.products) {
+      if (product.moderationStatus) {
+        moderateProduct(product.id, product.moderationStatus, "Synced from live admin API");
+      }
     }
   }
 }
@@ -3399,7 +3412,7 @@ function getAdminDashboardData() {
   const analytics = live?.analytics ?? null;
   const paymentSummary = getPaymentSummary();
   const activeVendors = live ? live.users.filter((user) => user.role === "vendor" && user.vendorStatus === "approved").length : vendorCounts.approved;
-  const pendingVendorApprovals = live ? 0 : vendorCounts.pending;
+  const pendingVendorApprovals = live ? live.users.filter((user) => user.role === "vendor" && user.vendorStatus === "pending").length : vendorCounts.pending;
   const totalRevenue = analytics?.totalSales ?? orders.reduce((sum, order) => sum + (order.subtotal ?? 0), 0);
   return {
     users,
@@ -4228,7 +4241,9 @@ async function refreshLiveAdminDashboard() {
       renderCatalogPreview(false);
     }
     renderAdminDashboard2();
-  } catch {
+  } catch (error) {
+    console.warn("[KanoMart] Live admin sync failed \u2014 showing local data:", error);
+    renderAdminDashboard2();
   }
 }
 function renderActiveDashboardRoute(route = getCurrentRoute()) {
@@ -4542,8 +4557,12 @@ function refreshLegacyAdminElementRefs() {
 }
 async function handleVendorProductSubmit(event) {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = event.target instanceof HTMLFormElement ? event.target : event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
   const message = document.querySelector("#vendorProductMessage");
+  if (!form) {
+    if (message) message.textContent = getCopy("Could not read the product form. Refresh and try again.", "Ba a iya karanta fom din kaya ba. Sabunta shafin ka sake gwadawa.");
+    return;
+  }
   const user = state.currentUser;
   if (!user || user.role !== "vendor") {
     if (message) message.textContent = getCopy("Sign in as a vendor first.", "Shiga a matsayin dan kasuwa tukuna.");

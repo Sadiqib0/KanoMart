@@ -93,12 +93,17 @@ export async function refreshLiveVendorProducts(): Promise<Product[]> {
 }
 
 export async function refreshLiveAdminQueues(): Promise<void> {
-  const [vendors, products] = await Promise.all([api.adminVendorApplications(), api.adminProducts()]);
-  setLiveVendorRequests(vendors.applications.map(mapApiVendorApplication));
-  setLiveProducts(products.products.map(mapApiProduct));
-  for (const product of products.products) {
-    if (product.moderationStatus) {
-      moderateProduct(product.id, product.moderationStatus, "Synced from live admin API");
+  const [vendors, products] = await Promise.all([
+    api.adminVendorApplications().catch(() => ({ applications: [] as ApiVendorApplication[] })),
+    api.adminProducts().catch(() => ({ products: [] as ApiProduct[] })),
+  ]);
+  if (vendors.applications.length) setLiveVendorRequests(vendors.applications.map(mapApiVendorApplication));
+  if (products.products.length) {
+    setLiveProducts(products.products.map(mapApiProduct));
+    for (const product of products.products) {
+      if (product.moderationStatus) {
+        moderateProduct(product.id, product.moderationStatus, "Synced from live admin API");
+      }
     }
   }
 }

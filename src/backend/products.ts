@@ -72,7 +72,17 @@ export function getProductModerationRecords(): ProductModerationRecord[] {
 }
 
 export function getProductStatus(productId: string): ProductModerationStatus {
-  return getProductModerationRecords().find((record) => record.productId === productId)?.status ?? "approved";
+  // Check the separate moderation record first (written by admin actions / live sync)
+  const record = getProductModerationRecords().find((r) => r.productId === productId);
+  if (record) return record.status;
+
+  // Fall back to the moderationStatus stored directly on the product object
+  // (set by the API via mapApiProduct or by saveVendorProduct)
+  const product = [...getLiveProducts(), ...getVendorProducts()].find((p) => p.id === productId);
+  if (product?.moderationStatus) return product.moderationStatus;
+
+  // Seed products default to approved
+  return "approved";
 }
 
 export function isProductApproved(productId: string): boolean {

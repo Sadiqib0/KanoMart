@@ -300,8 +300,9 @@ async function refreshLiveAdminDashboard(): Promise<void> {
       renderCatalogPreview(false);
     }
     renderAdminDashboard();
-  } catch {
-    // The local admin dashboard remains usable if live admin sync is unavailable.
+  } catch (error) {
+    console.warn("[KanoMart] Live admin sync failed — showing local data:", error);
+    renderAdminDashboard();
   }
 }
 
@@ -680,8 +681,17 @@ function refreshLegacyAdminElementRefs(): void {
 
 async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
   event.preventDefault();
-  const form = event.currentTarget as HTMLFormElement;
+  const form =
+    event.target instanceof HTMLFormElement
+      ? event.target
+      : event.currentTarget instanceof HTMLFormElement
+        ? event.currentTarget
+        : null;
   const message = document.querySelector<HTMLElement>("#vendorProductMessage");
+  if (!form) {
+    if (message) message.textContent = getCopy("Could not read the product form. Refresh and try again.", "Ba a iya karanta fom din kaya ba. Sabunta shafin ka sake gwadawa.");
+    return;
+  }
   const user = state.currentUser;
   if (!user || user.role !== "vendor") {
     if (message) message.textContent = getCopy("Sign in as a vendor first.", "Shiga a matsayin dan kasuwa tukuna.");

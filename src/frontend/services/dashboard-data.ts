@@ -120,7 +120,7 @@ export function getAdminDashboardData() {
     ? live.users.filter((user) => user.role === "vendor" && user.vendorStatus === "approved").length
     : vendorCounts.approved;
   const pendingVendorApprovals = live
-    ? 0
+    ? live.users.filter((user) => user.role === "vendor" && user.vendorStatus === "pending").length
     : vendorCounts.pending;
   const totalRevenue = analytics?.totalSales ?? orders.reduce((sum, order) => sum + (order.subtotal ?? 0), 0);
 
