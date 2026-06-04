@@ -166,11 +166,26 @@ export function openProductModal(productId: string): void {
     const name = String(data.get("reviewerName") || "").trim();
     const rating = Number(data.get("rating") || 0);
     const comment = String(data.get("comment") || "").trim();
+    const msgEl = modal.querySelector<HTMLElement>("#reviewMessage")!;
 
-    if (!name || !rating || !comment) return;
+    if (!name) {
+      msgEl.textContent = getCopy("Enter your name before submitting a review.", "Shigar da sunanka kafin ka aika ra'ayi.");
+      reviewForm.querySelector<HTMLInputElement>("input[name='reviewerName']")?.focus();
+      return;
+    }
+    if (!rating) {
+      msgEl.textContent = getCopy("Choose a rating for your review.", "Zaɓi daraja don ra'ayinka.");
+      reviewForm.querySelector<HTMLInputElement>("input[name='rating']")?.focus();
+      return;
+    }
+    if (!comment || comment.length < 10) {
+      msgEl.textContent = getCopy("Write a longer review comment (at least 10 characters).", "Rubuta tsawon sharhi na ra'ayi (akalla haruffa 10)."
+      );
+      reviewForm.querySelector<HTMLTextAreaElement>("textarea[name='comment']")?.focus();
+      return;
+    }
 
     addReview(productId, name, rating, comment);
-    const msgEl = modal.querySelector<HTMLElement>("#reviewMessage")!;
     msgEl.textContent = getCopy("Review submitted. Thank you!", "An aika ra'ayin. Na gode!");
     reviewForm.reset();
 

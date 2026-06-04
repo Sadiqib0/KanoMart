@@ -1,7 +1,7 @@
 import type { UserSession } from "../backend/types";
 import { storageKeys } from "../backend/data";
 import { state, elements } from "./state";
-import { getCopy, escapeHtml } from "./utils";
+import { getCopy, escapeHtml, isValidEmail, isValidPhone } from "./utils";
 import { showToast } from "./toast";
 import {
   createSessionForPhone,
@@ -304,8 +304,24 @@ function wireAuthModal(modal: HTMLElement): void {
 
   phoneForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    phoneError.textContent = "";
     const identifier = (modal.querySelector<HTMLInputElement>("#authPhone")?.value || "").trim();
-    if (!identifier) return;
+    if (!identifier) {
+      phoneError.textContent = getCopy("Enter your phone number or email address.", "Shigar da lambar waya ko adireshin email.");
+      modal.querySelector<HTMLInputElement>("#authPhone")?.focus();
+      return;
+    }
+    if (identifier.includes("@") && !isValidEmail(identifier)) {
+      phoneError.textContent = getCopy("Enter a valid email address.", "Shigar da adireshin email mai inganci.");
+      modal.querySelector<HTMLInputElement>("#authPhone")?.focus();
+      return;
+    }
+    if (!identifier.includes("@") && !isValidPhone(identifier)) {
+      phoneError.textContent = getCopy("Enter a valid phone number.", "Shigar da lambar waya mai inganci.");
+      modal.querySelector<HTMLInputElement>("#authPhone")?.focus();
+      return;
+    }
+
     const emailProfile = identifier.includes("@") ? findUserProfileByEmail(identifier) : null;
     pendingPhone = emailProfile?.phone || normalizePhone(identifier);
     needsSignup = requiresSignup(pendingPhone);
@@ -359,15 +375,39 @@ function wireAuthModal(modal: HTMLElement): void {
       const businessName = (modal.querySelector<HTMLInputElement>("#authBusinessName")?.value || "").trim();
       const area = (modal.querySelector<HTMLInputElement>("#authArea")?.value || "").trim();
       const category = modal.querySelector<HTMLSelectElement>("#authCategory")?.value || "essentials";
-      if (!firstName || !lastName || !email || !password || !deliveryAddress || (selectedType === "vendor" && (!businessName || !area))) {
-        otpError.textContent = getCopy(
-          "Complete the required sign-up details.",
-          "Kammala muhimman bayanan rajista."
-        );
+      if (!firstName || firstName.length < 2) {
+        otpError.textContent = getCopy("First name must be at least 2 characters.", "Sunan farko ya zama akalla haruffa 2.");
+        modal.querySelector<HTMLInputElement>("#authFirstName")?.focus();
         return;
       }
-      if (password.length < 8) {
+      if (!lastName || lastName.length < 2) {
+        otpError.textContent = getCopy("Last name must be at least 2 characters.", "Sunan karshe ya zama akalla haruffa 2.");
+        modal.querySelector<HTMLInputElement>("#authLastName")?.focus();
+        return;
+      }
+      if (!email || !isValidEmail(email)) {
+        otpError.textContent = getCopy("Enter a valid email address.", "Shigar da adireshin email mai inganci.");
+        modal.querySelector<HTMLInputElement>("#authEmail")?.focus();
+        return;
+      }
+      if (!password || password.length < 8) {
         otpError.textContent = getCopy("Password must be at least 8 characters.", "Kalmar sirri ta kasance akalla haruffa 8.");
+        modal.querySelector<HTMLInputElement>("#authPassword")?.focus();
+        return;
+      }
+      if (!deliveryAddress) {
+        otpError.textContent = getCopy("Delivery address is required.", "Ana buƙatar adireshin isarwa.");
+        modal.querySelector<HTMLInputElement>("#authDeliveryAddress")?.focus();
+        return;
+      }
+      if (selectedType === "vendor" && !businessName) {
+        otpError.textContent = getCopy("Business name is required.", "Ana buƙatar sunan kasuwanci.");
+        modal.querySelector<HTMLInputElement>("#authBusinessName")?.focus();
+        return;
+      }
+      if (selectedType === "vendor" && !area) {
+        otpError.textContent = getCopy("Business area is required.", "Ana buƙatar yankin kasuwanci.");
+        modal.querySelector<HTMLInputElement>("#authArea")?.focus();
         return;
       }
       saveUserProfile({
@@ -406,6 +446,12 @@ function wireAuthModal(modal: HTMLElement): void {
     } else {
       const profile = findUserProfileByPhone(pendingPhone);
       const password = (modal.querySelector<HTMLInputElement>("#authLoginPassword")?.value || "").trim();
+      const loginPasswordWrap = modal.querySelector<HTMLElement>("#authLoginPasswordWrap");
+      if (loginPasswordWrap && !loginPasswordWrap.hidden && !password) {
+        otpError.textContent = getCopy("Password is required to sign in.", "Ana buƙatar kalmar sirri don shiga.");
+        modal.querySelector<HTMLInputElement>("#authLoginPassword")?.focus();
+        return;
+      }
       if (isAdminPhone(pendingPhone) && password.length < 8) {
         otpError.textContent = getCopy("Enter an admin password of at least 8 characters.", "Shigar da kalmar admin akalla haruffa 8.");
         return;
