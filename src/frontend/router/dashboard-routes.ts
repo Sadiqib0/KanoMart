@@ -57,5 +57,8 @@ export function getDefaultDashboardRoute(role: string): string {
 export function getRoutePage(path: string): string {
   if (path === "my-orders") return "orders";
   if (path === "results" || path === "categories") return "catalog";
+  if (path.startsWith("p/")) return "product";       // product detail page
+  if (path.startsWith("v/")) return "vendorpage";    // vendor storefront
+  if (path === "sell") return "sell";
   return getDashboardRoute(path)?.page ?? (path.split("/")[0] || "home");
 }

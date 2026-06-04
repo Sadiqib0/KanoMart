@@ -391,7 +391,7 @@ var api = {
 function getWishlist() {
   return getStoredList(storageKeys.wishlist);
 }
-function isWishlisted(productId) {
+function isWishlisted2(productId) {
   return getWishlist().includes(productId);
 }
 function toggleWishlist(productId, productName) {
@@ -523,33 +523,6 @@ function getAverageRating(productId) {
   if (reviews.length === 0) return 0;
   return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
 }
-function addReview(productId, reviewerName, rating, comment) {
-  const stored = getStoredList(storageKeys.reviews);
-  const product = products.find((item) => item.id === productId);
-  const review = {
-    id: createId(),
-    productId,
-    vendor: product?.vendor,
-    reviewerName,
-    rating,
-    comment,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  stored.unshift(review);
-  setStoredList(storageKeys.reviews, stored);
-  if (product) {
-    createNotification({
-      audience: "vendor",
-      recipient: product.vendor,
-      title: "New product review",
-      message: `${product.name.en} received a ${review.rating}-star review.`,
-      type: "review"
-    });
-  }
-  if (getApiToken()) {
-    api.createReview({ productId, rating, comment }).catch(() => void 0);
-  }
-}
 function hideReview(reviewId, adminNote = "Removed by admin") {
   const stored = getStoredList(storageKeys.reviews);
   const seeded = seedReviews.find((review2) => review2.id === reviewId);
@@ -559,50 +532,6 @@ function hideReview(reviewId, adminNote = "Removed by admin") {
   review.adminNote = adminNote;
   setStoredList(storageKeys.reviews, [review, ...stored.filter((item) => item.id !== reviewId)]);
   return review;
-}
-function renderReviewList(productId) {
-  const reviews = getProductReviews(productId).slice(0, 5);
-  if (reviews.length === 0) return "";
-  return reviews.map(
-    (r) => `
-      <div class="review-item">
-        <div class="review-header">
-          <span class="review-stars">${renderStars(r.rating)}</span>
-          <strong>${escapeHtml(r.reviewerName)}</strong>
-          <span class="review-date">${escapeHtml(formatDate(r.createdAt))}</span>
-        </div>
-        <p>${escapeHtml(r.comment)}</p>
-      </div>
-    `
-  ).join("");
-}
-function renderReviewForm(productId) {
-  return `
-    <form class="review-form" id="reviewForm" data-product-id="${escapeHtml(productId)}">
-      <h4>${getCopy("Write a review", "Rubuta sakamako")}</h4>
-      <label>
-        <span>${getCopy("Your name", "Sunanka")}</span>
-        <input type="text" name="reviewerName" required minlength="2" />
-      </label>
-      <fieldset class="star-fieldset">
-        <legend>${getCopy("Rating", "Daraj\u0430")}</legend>
-        ${[5, 4, 3, 2, 1].map(
-    (n) => `
-          <label class="star-label">
-            <input type="radio" name="rating" value="${n}" required />
-            <span aria-hidden="true">\u2605</span>
-          </label>
-        `
-  ).join("")}
-      </fieldset>
-      <label>
-        <span>${getCopy("Comment", "Ra'ayi")}</span>
-        <textarea name="comment" required minlength="10" rows="3"></textarea>
-      </label>
-      <button type="submit">${getCopy("Submit review", "Aika sakamako")}</button>
-      <p class="form-message" id="reviewMessage" role="status"></p>
-    </form>
-  `;
 }
 
 // src/backend/marketplace-settings.ts
@@ -1453,7 +1382,7 @@ function renderProductCard(product) {
   const category = product.category[state.language];
   const subcategory = product.subcategory[state.language];
   const availability = product.availability[state.language];
-  const wished = isWishlisted(product.id);
+  const wished = isWishlisted2(product.id);
   const avg = getAverageRating(product.id);
   const reviewCount = getProductReviews(product.id).length;
   const promotion = getPromotionForProduct(product);
@@ -2630,205 +2559,6 @@ function closeUserPanel() {
   panel.addEventListener("transitionend", () => panel.remove(), { once: true });
 }
 
-// src/frontend/product-modal.ts
-var activeProductId = null;
-function buildVendorProfile(vendorName) {
-  const profile = vendorProfiles[vendorName];
-  if (!profile) return "";
-  const stars = renderStars(profile.rating);
-  return `
-    <div class="vendor-profile-card">
-      <div class="vendor-profile-header">
-        <strong>${escapeHtml(profile.name)}</strong>
-        <span class="vendor-since">${getCopy(`Since ${profile.since}`, `Tun ${profile.since}`)}</span>
-      </div>
-      <div class="vendor-stats">
-        <span class="vendor-rating-stars">${stars} <strong>${profile.rating.toFixed(1)}</strong></span>
-        <span>${escapeHtml(String(profile.totalOrders))} ${getCopy("orders", "oda")}</span>
-        <span>${escapeHtml(String(profile.fulfillmentRate))}% ${getCopy("fulfilled", "an cika")}</span>
-      </div>
-      <p class="vendor-response">${getCopy("Response: ", "Amsa: ")}${escapeHtml(getLocalizedValue(profile.responseTime))}</p>
-    </div>
-  `;
-}
-function buildModalHtml(product) {
-  const name = product.name[state.language];
-  const subcategory = product.subcategory[state.language];
-  const availability = product.availability[state.language];
-  const avg = getAverageRating(product.id);
-  const reviewCount = getProductReviews(product.id).length;
-  const wished = isWishlisted(product.id);
-  return `
-    <div class="modal-backdrop" id="productModal" role="dialog" aria-modal="true" aria-labelledby="productModalName">
-      <div class="modal-box modal-box-wide">
-        <div class="modal-header">
-          <h2 id="productModalName">${escapeHtml(name)}</h2>
-          <button type="button" class="modal-close" aria-label="${getCopy("Close", "Rufe")}">\xD7</button>
-        </div>
-
-        <div class="product-modal-body">
-          <div class="product-modal-thumb" style="--accent: ${product.accent}">
-            ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : `<span>${escapeHtml(subcategory)}</span>`}
-          </div>
-
-          <div class="product-modal-meta">
-            <p class="product-meta">
-              <span>${escapeHtml(product.category[state.language])}</span>
-              <span>${escapeHtml(product.vendor)}</span>
-              <span>${escapeHtml(product.area)}</span>
-            </p>
-            <p class="availability">${escapeHtml(availability)}</p>
-            ${product.description?.[state.language] ? `<p>${escapeHtml(product.description[state.language])}</p>` : ""}
-            <p>${getCopy("Stock", "Adadi")}: ${escapeHtml(String(product.quantityAvailable ?? "Available"))}</p>
-            ${reviewCount > 0 ? `
-              <div class="modal-review-summary">
-                ${renderStars(avg)} <span class="review-count-label">${avg.toFixed(1)} (${reviewCount} ${getCopy("reviews", "ra'ayoyi")})</span>
-              </div>
-            ` : ""}
-          </div>
-
-          <div class="product-modal-price">
-            <span class="price">${escapeHtml(product.price)}</span>
-          </div>
-
-          <div class="product-modal-actions">
-            <button type="button" class="btn-primary" id="modalAddToCart">
-              ${getCopy("Add to cart", "Saka a kwando")}
-            </button>
-            <button type="button" class="btn-wishlist${wished ? " is-wishlisted" : ""}" id="modalWishlist"
-              aria-pressed="${wished}" aria-label="${wished ? getCopy("Remove from wishlist", "Cire daga jerin da aka ajiye") : getCopy("Save to wishlist", "Ajiye zuwa jerin kaya")}">
-              <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
-                <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>
-              </svg>
-              ${wished ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}
-            </button>
-          </div>
-
-          ${buildVendorProfile(product.vendor)}
-
-          <section class="reviews-section">
-            <h3>${getCopy("Customer reviews", "Ra'ayoyin kwastomomi")}</h3>
-            <div id="modalReviewList">
-              ${reviewCount > 0 ? renderReviewList(product.id) : `<p class="muted">${getCopy("No reviews yet. Be the first!", "Babu ra'ayoyi tukuna. Ka fara!")}</p>`}
-            </div>
-            <div id="modalReviewForm">
-              ${renderReviewForm(product.id)}
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
-  `;
-}
-function openProductModal(productId) {
-  const product = getProductById(productId);
-  if (!product) return;
-  closeProductModal();
-  activeProductId = productId;
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = buildModalHtml(product);
-  const modal = wrapper.firstElementChild;
-  document.body.appendChild(modal);
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => modal.classList.add("modal-visible"));
-  });
-  modal.querySelector(".modal-close")?.addEventListener("click", closeProductModal);
-  modal.addEventListener("click", (e) => {
-    if (e.target === modal) closeProductModal();
-  });
-  modal.querySelector(".product-modal-thumb img")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const src = e.currentTarget.src;
-    const lb = document.createElement("div");
-    lb.className = "img-lightbox";
-    lb.innerHTML = `<button class="img-lightbox-close" aria-label="Close">\xD7</button><img src="${escapeHtml(src)}" alt="${escapeHtml(product.name[state.language])}" />`;
-    document.body.appendChild(lb);
-    const close = () => lb.remove();
-    lb.addEventListener("click", close);
-    lb.querySelector(".img-lightbox-close")?.addEventListener("click", close);
-    const onKey = (ev) => {
-      if (ev.key === "Escape") {
-        close();
-        document.removeEventListener("keydown", onKey);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-  });
-  modal.querySelector("#modalAddToCart")?.addEventListener("click", () => {
-    if (!state.currentUser) {
-      closeProductModal();
-      openAuthModal();
-      return;
-    }
-    addToCart(productId);
-    const btn = modal.querySelector("#modalAddToCart");
-    btn.textContent = getCopy("Added!", "An saka!");
-    window.setTimeout(() => {
-      btn.textContent = getCopy("Add to cart", "Saka a kwando");
-    }, 1400);
-  });
-  modal.querySelector("#modalWishlist")?.addEventListener("click", () => {
-    if (!state.currentUser) {
-      closeProductModal();
-      openAuthModal();
-      return;
-    }
-    toggleWishlist(productId, product.name[state.language]);
-    syncWishlistCount();
-    const btn = modal.querySelector("#modalWishlist");
-    const now = isWishlisted(productId);
-    btn.classList.toggle("is-wishlisted", now);
-    btn.setAttribute("aria-pressed", String(now));
-    btn.querySelector("svg")?.nextSibling?.replaceWith(
-      document.createTextNode(` ${now ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}`)
-    );
-  });
-  const reviewForm = modal.querySelector("#reviewForm");
-  reviewForm?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const data = new FormData(reviewForm);
-    const name = String(data.get("reviewerName") || "").trim();
-    const rating = Number(data.get("rating") || 0);
-    const comment = String(data.get("comment") || "").trim();
-    if (!name || !rating || !comment) return;
-    addReview(productId, name, rating, comment);
-    const msgEl = modal.querySelector("#reviewMessage");
-    msgEl.textContent = getCopy("Review submitted. Thank you!", "An aika ra'ayin. Na gode!");
-    reviewForm.reset();
-    const listEl = modal.querySelector("#modalReviewList");
-    listEl.innerHTML = renderReviewList(productId);
-    showToast({ message: getCopy("Review added!", "An saka ra'ayi!") });
-  });
-  document.addEventListener("keydown", handleModalKeydown);
-  modal.querySelector("#modalAddToCart")?.focus();
-  api.productReviews(productId).then((res) => {
-    const listEl = modal.querySelector("#modalReviewList");
-    if (!listEl || !res.reviews.length) return;
-    listEl.innerHTML = res.reviews.slice(0, 5).map(
-      (r) => `
-          <div class="review-item">
-            <div class="review-header">
-              <span class="review-stars">${renderStars(r.rating)}</span>
-              <strong>${escapeHtml(r.reviewerName ?? "")}</strong>
-              <span class="review-date">${escapeHtml(formatDate(r.createdAt))}</span>
-            </div>
-            <p>${escapeHtml(r.comment)}</p>
-          </div>`
-    ).join("");
-  }).catch(() => void 0);
-}
-function closeProductModal() {
-  const modal = document.getElementById("productModal");
-  if (!modal) return;
-  modal.classList.remove("modal-visible");
-  modal.addEventListener("transitionend", () => modal.remove(), { once: true });
-  document.removeEventListener("keydown", handleModalKeydown);
-  activeProductId = null;
-}
-function handleModalKeydown(e) {
-  if (e.key === "Escape") closeProductModal();
-}
-
 // src/frontend/admin-gate.ts
 function isAdminUnlocked() {
   return state.currentUser?.role === "admin";
@@ -3315,6 +3045,9 @@ function getDefaultDashboardRoute(role) {
 function getRoutePage(path) {
   if (path === "my-orders") return "orders";
   if (path === "results" || path === "categories") return "catalog";
+  if (path.startsWith("p/")) return "product";
+  if (path.startsWith("v/")) return "vendorpage";
+  if (path === "sell") return "sell";
   return getDashboardRoute(path)?.page ?? (path.split("/")[0] || "home");
 }
 
@@ -4014,8 +3747,29 @@ function renderAdminOverview(currentPath = "admin/overview") {
   `;
 }
 
+// src/i18n/index.ts
+var _lang = "en";
+function setI18nLang(lang) {
+  _lang = lang;
+}
+function applyLanguageToDOM(lang) {
+  _lang = lang;
+  document.querySelectorAll("[data-en][data-ha]").forEach((node) => {
+    node.textContent = node.dataset[lang] ?? "";
+  });
+  document.querySelectorAll("[data-alt-en][data-alt-ha]").forEach((node) => {
+    node.alt = lang === "en" ? node.dataset.altEn ?? "" : node.dataset.altHa ?? "";
+  });
+  document.querySelectorAll("[data-aria-en][data-aria-ha]").forEach((node) => {
+    node.setAttribute("aria-label", lang === "en" ? node.dataset.ariaEn ?? "" : node.dataset.ariaHa ?? "");
+  });
+  document.querySelectorAll("[data-placeholder-en][data-placeholder-ha]").forEach((node) => {
+    node.placeholder = lang === "en" ? node.dataset.placeholderEn ?? "" : node.dataset.placeholderHa ?? "";
+  });
+}
+
 // src/frontend/app.ts
-var routes = /* @__PURE__ */ new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
+var routes = /* @__PURE__ */ new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup", "sell"]);
 var AUTH_ROUTES = /* @__PURE__ */ new Set(["login", "signup"]);
 var SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
 var VENDOR_IMAGE_MAX_SOURCE_BYTES = 8e6;
@@ -4028,6 +3782,8 @@ function getCurrentRoute() {
   const raw = window.location.hash.replace("#", "") || "home";
   if (raw === "results" || raw === "categories") return "catalog";
   if (raw === "my-orders") return "orders";
+  if (raw.startsWith("p/")) return raw;
+  if (raw.startsWith("v/")) return raw;
   if (getDashboardRoute(raw)) return raw;
   return routes.has(raw) ? raw : "home";
 }
@@ -4044,11 +3800,12 @@ function canAccessRoute(route) {
   if (route === "admin") return role === "admin";
   if (route === "customer") return role === "customer";
   if (route === "orders") return role === "customer";
+  if (route.startsWith("p/") || route.startsWith("v/") || route === "sell") return true;
   if (AUTH_ROUTES.has(route)) return role === "guest";
   return true;
 }
 function setRoute(route = getCurrentRoute()) {
-  let nextRoute = routes.has(route) || getDashboardRoute(route) ? route : "home";
+  let nextRoute = routes.has(route) || getDashboardRoute(route) || route.startsWith("p/") || route.startsWith("v/") ? route : "home";
   const role = getVisitorRole();
   if (nextRoute === "customer" && role === "customer") nextRoute = "customer/overview";
   if (nextRoute === "vendor" && role === "vendor") nextRoute = "vendor/overview";
@@ -4075,6 +3832,13 @@ function setRoute(route = getCurrentRoute()) {
   });
   document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
   document.body.classList.toggle("on-home", pageRoute === "home");
+  const currentRole = getVisitorRole();
+  document.body.classList.toggle("is-guest", currentRole === "guest");
+  document.body.classList.toggle("is-customer", currentRole === "customer");
+  document.body.classList.toggle("is-vendor", currentRole === "vendor");
+  document.body.classList.toggle("is-admin", currentRole === "admin");
+  if (pageRoute === "product") renderProductPage(nextRoute.replace("p/", ""));
+  if (pageRoute === "vendorpage") renderVendorStorefront(nextRoute.replace("v/", ""));
   renderActiveDashboardRoute(nextRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
@@ -4244,6 +4008,144 @@ async function refreshLiveAdminDashboard() {
     renderAdminDashboard2();
   }
 }
+function renderProductPage(productId) {
+  const section = document.getElementById("productPage");
+  if (!section) return;
+  const product = getProductById(productId);
+  if (!product) {
+    section.innerHTML = `
+      <div class="pdp-not-found">
+        <h1>${getCopy("Product not found", "Ba a sami kayan ba")}</h1>
+        <a href="#catalog" data-route="catalog">${getCopy("Back to catalog", "Koma kasuwa")}</a>
+      </div>`;
+    return;
+  }
+  const lang = state.language;
+  const name = escapeHtml(product.name[lang]);
+  const vendor = escapeHtml(product.vendor);
+  const price = escapeHtml(product.price);
+  const area = escapeHtml(product.area);
+  const desc = product.description?.[lang] ? `<p class="pdp-desc">${escapeHtml(product.description[lang])}</p>` : "";
+  const wished = typeof isWishlisted === "function" ? isWishlisted(product.id) : false;
+  const profile = vendorProfiles[product.vendor];
+  const vendorCard = profile ? `
+    <div class="pdp-vendor-card">
+      <div class="pdp-vendor-avatar">${escapeHtml(profile.name.slice(0, 2).toUpperCase())}</div>
+      <div class="pdp-vendor-info">
+        <strong>${escapeHtml(profile.name)}</strong>
+        <small>\u2605 ${profile.rating.toFixed(1)} \xB7 ${profile.totalOrders} ${getCopy("orders", "oda")} \xB7 ${getCopy("Verified since", "Tabbatacce tun")} ${profile.since}</small>
+      </div>
+      <a href="#v/${encodeURIComponent(product.vendor)}" data-route-vendor="${encodeURIComponent(product.vendor)}" class="pdp-vendor-link">${getCopy("Visit store \u2192", "Ziyarci shago \u2192")}</a>
+    </div>` : "";
+  const imgHtml = product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${name}" class="pdp-main-img" />` : `<div class="pdp-main-img pdp-img-placeholder" style="--accent:${product.accent ?? "#176b4d"}">${escapeHtml(product.subcategory[lang])}</div>`;
+  section.innerHTML = `
+    <div class="pdp-breadcrumb">
+      <a href="#home" data-route="home">${getCopy("Home", "Gida")}</a>
+      <span aria-hidden="true">\u203A</span>
+      <a href="#catalog" data-route="catalog">${getCopy("Browse", "Bincika")}</a>
+      <span aria-hidden="true">\u203A</span>
+      <strong>${name}</strong>
+    </div>
+    <div class="pdp-body">
+      <div class="pdp-gallery">${imgHtml}</div>
+      <div class="pdp-info">
+        <small class="pdp-vendor-meta">${vendor} \xB7 ${area}</small>
+        <h1 class="pdp-name">${name}</h1>
+        <div class="pdp-price">${price}</div>
+        ${desc}
+        <div class="pdp-stock">${getCopy("Stock", "Adadi")}: ${escapeHtml(String(product.quantityAvailable ?? getCopy("Available", "Akwai")))}</div>
+        <div class="pdp-actions">
+          <button type="button" class="pdp-add-to-cart" data-pdp-add="${escapeHtml(product.id)}">
+            ${getCopy("Add to cart", "Saka a kwando")}
+          </button>
+          <button type="button" class="pdp-wishlist${wished ? " is-wishlisted" : ""}" data-pdp-wish="${escapeHtml(product.id)}"
+            aria-pressed="${wished}" aria-label="${getCopy("Save to wishlist", "Ajiye")}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+            ${wished ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}
+          </button>
+        </div>
+        <ul class="pdp-trust-list">
+          <li>${getCopy("Same-day delivery in Kano", "Isarwa a ranar yau a Kano")}</li>
+          <li>${getCopy("Pay on delivery available", "Ana biya a gida")}</li>
+          <li>${getCopy("Easy 7-day returns on eligible items", "Dawowar kaya mai sauki a cikin kwanaki 7")}</li>
+        </ul>
+        ${vendorCard}
+      </div>
+    </div>`;
+  section.querySelector("[data-pdp-add]")?.addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    if (!state.currentUser) {
+      openAuthModal();
+      return;
+    }
+    addToCart(btn.dataset.pdpAdd);
+    elements.cartCountEl.textContent = String(state.cartCount);
+    btn.textContent = getCopy("Added!", "An saka!");
+    window.setTimeout(() => {
+      btn.textContent = getCopy("Add to cart", "Saka a kwando");
+    }, 1400);
+  });
+  section.querySelector("[data-pdp-wish]")?.addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    if (!state.currentUser) {
+      openAuthModal();
+      return;
+    }
+    toggleWishlist(btn.dataset.pdpWish, product.name[lang]);
+    syncWishlistCount();
+    const now = typeof isWishlisted === "function" ? isWishlisted(product.id) : false;
+    btn.classList.toggle("is-wishlisted", now);
+    btn.setAttribute("aria-pressed", String(now));
+  });
+  section.querySelector("[data-route-vendor]")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    const slug = e.currentTarget.dataset.routeVendor || "";
+    window.location.hash = `v/${slug}`;
+    setRoute(`v/${slug}`);
+  });
+}
+function renderVendorStorefront(vendorSlug) {
+  const section = document.getElementById("vendorPage");
+  if (!section) return;
+  const decodedSlug = decodeURIComponent(vendorSlug);
+  const profile = vendorProfiles[decodedSlug];
+  const products2 = getCatalogProducts().filter((p) => p.vendor === decodedSlug);
+  const lang = state.language;
+  if (!profile && products2.length === 0) {
+    section.innerHTML = `
+      <div class="pdp-not-found">
+        <h1>${getCopy("Store not found", "Ba a sami shago ba")}</h1>
+        <a href="#catalog" data-route="catalog">${getCopy("Back to catalog", "Koma kasuwa")}</a>
+      </div>`;
+    return;
+  }
+  const vendorName = escapeHtml(profile?.name ?? decodedSlug);
+  const rating = profile ? `\u2605 ${profile.rating.toFixed(1)}` : "";
+  const orders = profile ? `${profile.totalOrders} ${getCopy("orders", "oda")}` : "";
+  const since = profile ? `${getCopy("Verified since", "Tabbatacce tun")} ${profile.since}` : "";
+  const productsHtml = products2.length ? products2.map(renderProductCard).join("") : `<p class="muted">${getCopy("No products listed yet.", "Babu kaya da aka saka tukuna.")}</p>`;
+  section.innerHTML = `
+    <div class="pdp-breadcrumb">
+      <a href="#home" data-route="home">${getCopy("Home", "Gida")}</a>
+      <span aria-hidden="true">\u203A</span>
+      <span>${getCopy("Vendors", "Dillalai")}</span>
+      <span aria-hidden="true">\u203A</span>
+      <strong>${vendorName}</strong>
+    </div>
+    <div class="vendor-storefront-header">
+      <div class="vsf-avatar">${escapeHtml(vendorName.slice(0, 2).toUpperCase())}</div>
+      <div class="vsf-info">
+        <h1>${vendorName}</h1>
+        <div class="vsf-meta">${[rating, orders, since].filter(Boolean).join(" \xB7 ")}</div>
+        ${profile?.area ? `<small class="muted">${escapeHtml(profile.area ?? "")}</small>` : ""}
+      </div>
+    </div>
+    <div class="vsf-products">
+      <h2>${getCopy("Products", "Kaya")} <span class="vsf-count">(${products2.length})</span></h2>
+      <div class="product-grid" id="vendorStorefrontGrid">${productsHtml}</div>
+    </div>`;
+  syncAllWishlistButtons();
+}
 function renderActiveDashboardRoute(route = getCurrentRoute()) {
   const user = state.currentUser;
   if (user?.role === "customer" && getRoutePage(route) === "customer") {
@@ -4325,18 +4227,10 @@ function setLanguage(language) {
     "Kano Mart | Local Marketplace for Kano",
     "Kano Mart | Kasuwar Kano ta yanar gizo"
   );
-  document.querySelectorAll("[data-en][data-ha]").forEach((node) => {
-    if (node.matches(".sidebar-nav a, .sidebar-vendor-cta")) return;
+  setI18nLang(language);
+  applyLanguageToDOM(language);
+  document.querySelectorAll(".sidebar-nav a[data-en][data-ha], .sidebar-vendor-cta[data-en][data-ha]").forEach((node) => {
     node.textContent = node.dataset[language] || "";
-  });
-  document.querySelectorAll("[data-alt-en][data-alt-ha]").forEach((node) => {
-    node.alt = node.dataset[`alt${language === "en" ? "En" : "Ha"}`] || "";
-  });
-  document.querySelectorAll("[data-aria-en][data-aria-ha]").forEach((node) => {
-    node.setAttribute("aria-label", node.dataset[`aria${language === "en" ? "En" : "Ha"}`] || "");
-  });
-  document.querySelectorAll("[data-placeholder-en][data-placeholder-ha]").forEach((node) => {
-    node.placeholder = node.dataset[`placeholder${language === "en" ? "En" : "Ha"}`] || "";
   });
   setActiveLanguageButtons(language);
   syncSidebarLabels();
@@ -5051,9 +4945,11 @@ elements.resultsGrid.addEventListener("click", (event) => {
   }
   const card = target?.closest(".product-card");
   if (card?.dataset.productId) {
-    recordProductView(card.dataset.productId);
+    const productId = card.dataset.productId;
+    recordProductView(productId);
     renderAdminDashboard2();
-    openProductModal(card.dataset.productId);
+    window.location.hash = `p/${productId}`;
+    setRoute(`p/${productId}`);
   }
 });
 elements.cartItemsEl.addEventListener("click", (event) => {

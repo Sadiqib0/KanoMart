@@ -23,10 +23,12 @@ import { reviewVendorRequest, saveVendorRequest as persistVendorRequest } from "
 import { showToast } from "./toast";
 import {
   getCatalogProducts,
+  getProductById,
   getProductsForVendor,
   moderateProduct,
   setVendorProductListingStatus,
 } from "../backend/products";
+import { vendorProfiles } from "../backend/data";
 import { getCachedSearchResults, paginateProducts, PRODUCT_PAGE_SIZE, renderProductSkeletons } from "./frontend-data";
 import { advanceOrderStatus, getOrders, renderOrdersPanel } from "./orders";
 import { approveWithdrawal, rejectWithdrawal, requestWithdrawal } from "../backend/withdrawals";
@@ -58,8 +60,9 @@ import { getDashboardRoute, getDefaultDashboardRoute, getRoutePage } from "./rou
 import { renderCustomerOverview } from "./pages/customer/overview";
 import { renderVendorOverview } from "./pages/vendor/overview";
 import { renderAdminOverview } from "./pages/admin/overview";
+import { applyLanguageToDOM, setI18nLang } from "../i18n";
 
-const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
+const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup", "sell"]);
 const AUTH_ROUTES = new Set(["login", "signup"]);
 const SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
 const VENDOR_IMAGE_MAX_SOURCE_BYTES = 8_000_000;
@@ -73,6 +76,8 @@ function getCurrentRoute(): string {
   const raw = window.location.hash.replace("#", "") || "home";
   if (raw === "results" || raw === "categories") return "catalog";
   if (raw === "my-orders") return "orders";
+  if (raw.startsWith("p/")) return raw;   // product detail: p/:id
+  if (raw.startsWith("v/")) return raw;   // vendor storefront: v/:slug
   if (getDashboardRoute(raw)) return raw;
   return routes.has(raw) ? raw : "home";
 }
@@ -92,13 +97,15 @@ function canAccessRoute(route: string): boolean {
   if (route === "admin") return role === "admin";
   if (route === "customer") return role === "customer";
   if (route === "orders") return role === "customer";
+  // Product detail, vendor storefront, and sell page are public
+  if (route.startsWith("p/") || route.startsWith("v/") || route === "sell") return true;
   // Authenticated users should not land on login/signup — redirect to their dashboard
   if (AUTH_ROUTES.has(route)) return role === "guest";
   return true;
 }
 
 function setRoute(route = getCurrentRoute()): void {
-  let nextRoute = routes.has(route) || getDashboardRoute(route) ? route : "home";
+  let nextRoute = routes.has(route) || getDashboardRoute(route) || route.startsWith("p/") || route.startsWith("v/") ? route : "home";
   const role = getVisitorRole();
   if (nextRoute === "customer" && role === "customer") nextRoute = "customer/overview";
   if (nextRoute === "vendor" && role === "vendor") nextRoute = "vendor/overview";
@@ -127,6 +134,15 @@ function setRoute(route = getCurrentRoute()): void {
   document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
   // Toggle transparent hero header vs solid sticky header
   document.body.classList.toggle("on-home", pageRoute === "home");
+  // Body role classes (used by CSS for marketing nav, mobile bottom nav, etc.)
+  const currentRole = getVisitorRole();
+  document.body.classList.toggle("is-guest", currentRole === "guest");
+  document.body.classList.toggle("is-customer", currentRole === "customer");
+  document.body.classList.toggle("is-vendor", currentRole === "vendor");
+  document.body.classList.toggle("is-admin", currentRole === "admin");
+  // Render new route-specific pages
+  if (pageRoute === "product") renderProductPage(nextRoute.replace("p/", ""));
+  if (pageRoute === "vendorpage") renderVendorStorefront(nextRoute.replace("v/", ""));
   renderActiveDashboardRoute(nextRoute);
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
@@ -312,6 +328,154 @@ async function refreshLiveAdminDashboard(): Promise<void> {
   }
 }
 
+// ─── Product detail page ───────────────────────────────────────────────────
+
+function renderProductPage(productId: string): void {
+  const section = document.getElementById("productPage");
+  if (!section) return;
+  const product = getProductById(productId);
+  if (!product) {
+    section.innerHTML = `
+      <div class="pdp-not-found">
+        <h1>${getCopy("Product not found", "Ba a sami kayan ba")}</h1>
+        <a href="#catalog" data-route="catalog">${getCopy("Back to catalog", "Koma kasuwa")}</a>
+      </div>`;
+    return;
+  }
+  const lang = state.language;
+  const name = escapeHtml(product.name[lang]);
+  const vendor = escapeHtml(product.vendor);
+  const price = escapeHtml(product.price);
+  const area = escapeHtml(product.area);
+  const desc = product.description?.[lang] ? `<p class="pdp-desc">${escapeHtml(product.description[lang])}</p>` : "";
+  const wished = typeof isWishlisted === "function" ? isWishlisted(product.id) : false;
+  const profile = vendorProfiles[product.vendor];
+  const vendorCard = profile ? `
+    <div class="pdp-vendor-card">
+      <div class="pdp-vendor-avatar">${escapeHtml(profile.name.slice(0, 2).toUpperCase())}</div>
+      <div class="pdp-vendor-info">
+        <strong>${escapeHtml(profile.name)}</strong>
+        <small>★ ${profile.rating.toFixed(1)} · ${profile.totalOrders} ${getCopy("orders", "oda")} · ${getCopy("Verified since", "Tabbatacce tun")} ${profile.since}</small>
+      </div>
+      <a href="#v/${encodeURIComponent(product.vendor)}" data-route-vendor="${encodeURIComponent(product.vendor)}" class="pdp-vendor-link">${getCopy("Visit store →", "Ziyarci shago →")}</a>
+    </div>` : "";
+  const imgHtml = product.imageDataUrl
+    ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${name}" class="pdp-main-img" />`
+    : `<div class="pdp-main-img pdp-img-placeholder" style="--accent:${product.accent ?? "#176b4d"}">${escapeHtml(product.subcategory[lang])}</div>`;
+
+  section.innerHTML = `
+    <div class="pdp-breadcrumb">
+      <a href="#home" data-route="home">${getCopy("Home", "Gida")}</a>
+      <span aria-hidden="true">›</span>
+      <a href="#catalog" data-route="catalog">${getCopy("Browse", "Bincika")}</a>
+      <span aria-hidden="true">›</span>
+      <strong>${name}</strong>
+    </div>
+    <div class="pdp-body">
+      <div class="pdp-gallery">${imgHtml}</div>
+      <div class="pdp-info">
+        <small class="pdp-vendor-meta">${vendor} · ${area}</small>
+        <h1 class="pdp-name">${name}</h1>
+        <div class="pdp-price">${price}</div>
+        ${desc}
+        <div class="pdp-stock">${getCopy("Stock", "Adadi")}: ${escapeHtml(String(product.quantityAvailable ?? getCopy("Available", "Akwai")))}</div>
+        <div class="pdp-actions">
+          <button type="button" class="pdp-add-to-cart" data-pdp-add="${escapeHtml(product.id)}">
+            ${getCopy("Add to cart", "Saka a kwando")}
+          </button>
+          <button type="button" class="pdp-wishlist${wished ? " is-wishlisted" : ""}" data-pdp-wish="${escapeHtml(product.id)}"
+            aria-pressed="${wished}" aria-label="${getCopy("Save to wishlist", "Ajiye")}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+            ${wished ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}
+          </button>
+        </div>
+        <ul class="pdp-trust-list">
+          <li>${getCopy("Same-day delivery in Kano", "Isarwa a ranar yau a Kano")}</li>
+          <li>${getCopy("Pay on delivery available", "Ana biya a gida")}</li>
+          <li>${getCopy("Easy 7-day returns on eligible items", "Dawowar kaya mai sauki a cikin kwanaki 7")}</li>
+        </ul>
+        ${vendorCard}
+      </div>
+    </div>`;
+
+  // Wire up buttons
+  section.querySelector<HTMLButtonElement>("[data-pdp-add]")?.addEventListener("click", (e) => {
+    const btn = (e.currentTarget as HTMLButtonElement);
+    if (!state.currentUser) { openAuthModal(); return; }
+    addToCart(btn.dataset.pdpAdd!);
+    elements.cartCountEl.textContent = String(state.cartCount);
+    btn.textContent = getCopy("Added!", "An saka!");
+    window.setTimeout(() => { btn.textContent = getCopy("Add to cart", "Saka a kwando"); }, 1400);
+  });
+  section.querySelector<HTMLButtonElement>("[data-pdp-wish]")?.addEventListener("click", (e) => {
+    const btn = (e.currentTarget as HTMLButtonElement);
+    if (!state.currentUser) { openAuthModal(); return; }
+    toggleWishlist(btn.dataset.pdpWish!, product.name[lang]);
+    syncWishlistCount();
+    const now = typeof isWishlisted === "function" ? isWishlisted(product.id) : false;
+    btn.classList.toggle("is-wishlisted", now);
+    btn.setAttribute("aria-pressed", String(now));
+  });
+  section.querySelector<HTMLAnchorElement>("[data-route-vendor]")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    const slug = (e.currentTarget as HTMLAnchorElement).dataset.routeVendor || "";
+    window.location.hash = `v/${slug}`;
+    setRoute(`v/${slug}`);
+  });
+}
+
+// ─── Vendor storefront page ────────────────────────────────────────────────
+
+function renderVendorStorefront(vendorSlug: string): void {
+  const section = document.getElementById("vendorPage");
+  if (!section) return;
+  const decodedSlug = decodeURIComponent(vendorSlug);
+  const profile = vendorProfiles[decodedSlug];
+  const products = getCatalogProducts().filter((p) => p.vendor === decodedSlug);
+  const lang = state.language;
+
+  if (!profile && products.length === 0) {
+    section.innerHTML = `
+      <div class="pdp-not-found">
+        <h1>${getCopy("Store not found", "Ba a sami shago ba")}</h1>
+        <a href="#catalog" data-route="catalog">${getCopy("Back to catalog", "Koma kasuwa")}</a>
+      </div>`;
+    return;
+  }
+
+  const vendorName = escapeHtml(profile?.name ?? decodedSlug);
+  const rating = profile ? `★ ${profile.rating.toFixed(1)}` : "";
+  const orders = profile ? `${profile.totalOrders} ${getCopy("orders", "oda")}` : "";
+  const since = profile ? `${getCopy("Verified since", "Tabbatacce tun")} ${profile.since}` : "";
+
+  const productsHtml = products.length
+    ? products.map(renderProductCard).join("")
+    : `<p class="muted">${getCopy("No products listed yet.", "Babu kaya da aka saka tukuna.")}</p>`;
+
+  section.innerHTML = `
+    <div class="pdp-breadcrumb">
+      <a href="#home" data-route="home">${getCopy("Home", "Gida")}</a>
+      <span aria-hidden="true">›</span>
+      <span>${getCopy("Vendors", "Dillalai")}</span>
+      <span aria-hidden="true">›</span>
+      <strong>${vendorName}</strong>
+    </div>
+    <div class="vendor-storefront-header">
+      <div class="vsf-avatar">${escapeHtml(vendorName.slice(0, 2).toUpperCase())}</div>
+      <div class="vsf-info">
+        <h1>${vendorName}</h1>
+        <div class="vsf-meta">${[rating, orders, since].filter(Boolean).join(" · ")}</div>
+        ${profile?.area ? `<small class="muted">${escapeHtml(profile.area ?? "")}</small>` : ""}
+      </div>
+    </div>
+    <div class="vsf-products">
+      <h2>${getCopy("Products", "Kaya")} <span class="vsf-count">(${products.length})</span></h2>
+      <div class="product-grid" id="vendorStorefrontGrid">${productsHtml}</div>
+    </div>`;
+
+  syncAllWishlistButtons();
+}
+
 function renderActiveDashboardRoute(route = getCurrentRoute()): void {
   const user = state.currentUser;
   if (user?.role === "customer" && getRoutePage(route) === "customer") {
@@ -405,21 +569,13 @@ function setLanguage(language: Language): void {
     "Kano Mart | Kasuwar Kano ta yanar gizo"
   );
 
-  document.querySelectorAll<HTMLElement>("[data-en][data-ha]").forEach((node) => {
-    if (node.matches(".sidebar-nav a, .sidebar-vendor-cta")) return;
+  // Use the i18n dictionary to apply language to all data-en/data-ha elements
+  setI18nLang(language);
+  applyLanguageToDOM(language);
+
+  // Sidebar nav items use their own label system — skip them in the bulk walk
+  document.querySelectorAll<HTMLElement>(".sidebar-nav a[data-en][data-ha], .sidebar-vendor-cta[data-en][data-ha]").forEach((node) => {
     node.textContent = node.dataset[language] || "";
-  });
-
-  document.querySelectorAll<HTMLImageElement>("[data-alt-en][data-alt-ha]").forEach((node) => {
-    node.alt = node.dataset[`alt${language === "en" ? "En" : "Ha"}`] || "";
-  });
-
-  document.querySelectorAll<HTMLElement>("[data-aria-en][data-aria-ha]").forEach((node) => {
-    node.setAttribute("aria-label", node.dataset[`aria${language === "en" ? "En" : "Ha"}`] || "");
-  });
-
-  document.querySelectorAll<HTMLInputElement>("[data-placeholder-en][data-placeholder-ha]").forEach((node) => {
-    node.placeholder = node.dataset[`placeholder${language === "en" ? "En" : "Ha"}`] || "";
   });
 
   setActiveLanguageButtons(language);
@@ -1258,9 +1414,12 @@ elements.resultsGrid.addEventListener("click", (event) => {
 
   const card = target?.closest<HTMLElement>(".product-card");
   if (card?.dataset.productId) {
-    recordProductView(card.dataset.productId);
+    const productId = card.dataset.productId;
+    recordProductView(productId);
     renderAdminDashboard();
-    openProductModal(card.dataset.productId);
+    // Navigate to full product page; keep modal for quick-look via explicit trigger
+    window.location.hash = `p/${productId}`;
+    setRoute(`p/${productId}`);
   }
 });
 

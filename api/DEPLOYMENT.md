@@ -7,8 +7,9 @@ Flutterwave until the gateway slice is intentionally added.
 
 ```txt
 Node.js 20+
-Persistent disk or hosted database
+Postgres database
 HTTPS in front of the API
+Optional Vercel Blob token for product images
 ```
 
 ## Environment
@@ -21,22 +22,25 @@ Important values:
 PORT=8787
 NODE_ENV=production
 CORS_ORIGIN=https://your-frontend-domain.example
-API_DATA_FILE=./data/kano-mart-api.json
-API_STORE_REST_URL=https://your-upstash-rest-url
-API_STORE_REST_TOKEN=your-upstash-token
-API_STORE_KEY=kano-mart:api-store:v1
+DATABASE_URL=postgres://...
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_token
 API_PUBLIC_BASE_PATH=/api
 KANO_ADMIN_PHONE=08000000000
+API_BODY_LIMIT_BYTES=1000000
+API_UPLOAD_MAX_DATA_URL_LENGTH=750000
+SENTRY_DSN=
 ```
 
-`API_DATA_FILE` enables durable JSON persistence for the no-database phase. It is
-good enough for demos and controlled pilots, but PostgreSQL should replace it
-before public launch.
+`DATABASE_URL` is required in production. `API_DATA_FILE` is only a local
+long-running Node fallback and must not be used on Vercel.
 
-On serverless hosts such as Vercel, use `API_STORE_REST_URL` and
-`API_STORE_REST_TOKEN` instead of `API_DATA_FILE`. The API stores a full JSON
-snapshot in that remote key-value store after each request. Upstash Redis works
-for this test phase and can be connected from the Vercel dashboard.
+`BLOB_READ_WRITE_TOKEN` is strongly recommended for product images. If it is
+not configured, uploads fall back to API-served database storage, which is
+acceptable only for very small pilots.
+
+The frontend compresses vendor product images below `700000` data-url
+characters before upload. Keep `API_UPLOAD_MAX_DATA_URL_LENGTH` higher than
+that value and `API_BODY_LIMIT_BYTES` high enough for the JSON request body.
 
 ## Run
 
@@ -52,9 +56,7 @@ node api/server.mjs
 
 ## Current Persistence
 
-The API persists all in-memory stores to `API_DATA_FILE` on long-running Node
-hosts, or to the remote REST snapshot store when `API_STORE_REST_URL` and
-`API_STORE_REST_TOKEN` are configured:
+The API uses Postgres for production data:
 
 - users and sessions
 - vendors and approvals
@@ -75,8 +77,8 @@ hosts, or to the remote REST snapshot store when `API_STORE_REST_URL` and
 
 ## Still Recommended Before Public Launch
 
-- Replace JSON persistence with PostgreSQL.
-- Replace data-URL upload storage with Cloudflare R2 or S3-compatible storage.
-- Put the API behind HTTPS.
-- Add structured logs and backups.
-- Wire the frontend to these API routes.
+- Verify automated Postgres backups and restore procedure.
+- Keep product images in Vercel Blob or another CDN-backed object store.
+- Enable `SENTRY_DSN` or equivalent server monitoring.
+- Add frontend error monitoring before broad public launch.
+- Keep payments manual/prototype until gateway webhooks, reconciliation, and refunds are implemented.

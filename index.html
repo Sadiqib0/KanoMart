@@ -12,13 +12,11 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="preload" as="image" href="assets/kano-market-hero.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="scroll-progress" aria-hidden="true"></div>
-
     <div class="app-shell">
       <div class="sidebar-overlay" id="sidebarOverlay" hidden></div>
 
@@ -77,12 +75,6 @@
           </a>
 
           <span class="sidebar-label" data-en="Business" data-ha="Kasuwanci">Business</span>
-          <a href="#payments" data-route="payments" data-roles="guest customer vendor admin" data-en="Payments" data-ha="Biya">
-            <span class="nav-glyph" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></svg>
-            </span>
-            <span class="sidebar-text"><span class="sidebar-title">Payments</span><small>Methods and settlement trust</small></span>
-          </a>
           <a href="#vendor" data-route="vendor" data-roles="guest customer vendor" data-en="Vendor center" data-ha="Cibiyar dillali">
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false"><path d="M4 10h16l-1-5H5l-1 5Z"/><path d="M6 10v10h12V10"/><path d="M9 20v-5h6v5"/><path d="M4 10c0 1.4 1.1 2.5 2.5 2.5S9 11.4 9 10c0 1.4 1.1 2.5 2.5 2.5S14 11.4 14 10c0 1.4 1.1 2.5 2.5 2.5S19 11.4 19 10"/></svg>
@@ -144,6 +136,31 @@
       </aside>
 
       <div class="app-main-shell">
+
+        <!-- ═══ MARKETING NAV (shown for guests on home via CSS) ═══ -->
+        <nav class="marketing-nav" aria-label="Kano Mart main navigation">
+          <div class="mk-nav-inner">
+            <a class="mk-nav-brand" href="#home" data-route="home" aria-label="Kano Mart home">
+              <span class="brand-mark" aria-hidden="true">KM</span>
+              <strong>Kano Mart</strong>
+            </a>
+            <ul class="mk-nav-links" role="list">
+              <li><a href="#catalog" data-route="catalog" data-en="Browse" data-ha="Bincika">Browse</a></li>
+              <li><a href="#categories" data-route="catalog" data-en="Categories" data-ha="Rukunai">Categories</a></li>
+              <li><a href="#sell" data-route="sell" data-en="For sellers" data-ha="Ga masu siyarwa">For sellers</a></li>
+              <li><a href="#how-it-works" data-en="How it works" data-ha="Yadda yake aiki">How it works</a></li>
+            </ul>
+            <div class="mk-nav-right">
+              <div class="global-language-toggle" role="group" aria-label="Choose language">
+                <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">EN</button>
+                <button class="language-option" type="button" data-language="ha" aria-pressed="false">HA</button>
+              </div>
+              <a href="#login" data-route="login" class="mk-nav-signin" data-en="Sign in" data-ha="Shiga">Sign in</a>
+              <a href="#signup" data-route="signup" class="mk-nav-create" data-en="Create account" data-ha="Ƙirƙiri asusu">Create account</a>
+            </div>
+          </div>
+        </nav>
+
         <!-- ═══ HEADER ═══ -->
         <header class="site-header">
           <button class="sidebar-open icon-button" type="button" id="sidebarOpen" aria-label="Open menu">
@@ -186,7 +203,6 @@
       <section class="hero app-page" id="home" data-page="home" aria-labelledby="hero-title">
         <img
           class="hero-image"
-          data-parallax
           src="assets/kano-market-hero.png"
           alt="A Kano marketplace counter with groceries, fabrics, school supplies, and local essentials"
           data-alt-en="A Kano marketplace counter with groceries, fabrics, school supplies, and local essentials"
@@ -204,10 +220,9 @@
             <span class="brand-highlight">Kano Mart</span>
             <span
               class="typewriter-line"
-              data-typewriter
-              data-phrases-en="Shop local faster|Discover trusted vendors|Pay with confidence"
-              data-phrases-ha="Saya cikin sauri|Gano dillalai amintattu|Biya da kwarin gwiwa"
-            >Shop local faster</span>
+              data-en="Shop local, faster."
+              data-ha="Saya cikin sauri."
+            >Shop local, faster.</span>
           </h1>
           <p
             class="hero-copy"
@@ -216,6 +231,23 @@
           >
             Search and buy food, groceries, fashion, school items, and everyday essentials from trusted Kano vendors.
           </p>
+
+          <form class="hero-search-form" id="heroSearchForm" role="search" novalidate>
+            <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><circle cx="10.8" cy="10.8" r="7.2"/><path d="m16.1 16.1 4.4 4.4"/></svg>
+            <input id="heroSearchInput" type="search" autocomplete="off"
+              placeholder="Search rice, yaduka, school bags…"
+              data-placeholder-en="Search rice, yaduka, school bags…"
+              data-placeholder-ha="Nemi shinkafa, yaduka, jakar makaranta…"
+              aria-label="Search products" />
+            <button type="submit" data-en="Search" data-ha="Nema">Search</button>
+          </form>
+          <div class="hero-quick-search" role="group" aria-label="Popular searches">
+            <span data-en="Popular:" data-ha="Shahararru:">Popular:</span>
+            <button type="button" data-hero-query="rice" data-hero-query-ha="shinkafa" data-en="Rice" data-ha="Shinkafa">Rice</button>
+            <button type="button" data-hero-query="fabrics" data-hero-query-ha="yaduka" data-en="Fabrics" data-ha="Yaduka">Fabrics</button>
+            <button type="button" data-hero-query="school bags" data-hero-query-ha="jakar makaranta" data-en="School bags" data-ha="School bags">School bags</button>
+            <button type="button" data-hero-query="perfumes" data-hero-query-ha="turare" data-en="Turare" data-ha="Turare">Turare</button>
+          </div>
 
           <div class="hero-market-strip" aria-label="Marketplace snapshot">
             <span data-en="Verified Kano sellers" data-ha="Tabbatattun dillalan Kano">Verified Kano sellers</span>
@@ -244,42 +276,42 @@
         </div>
         <div class="home-cat-grid">
           <button type="button" class="home-cat-card" data-query-en="food" data-query-ha="abinci">
-            <span class="cat-emoji" aria-hidden="true">🍚</span>
+            <span class="cat-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a9 9 0 0 0 9-9H3a9 9 0 0 0 9 9z"/><path d="M12 13V9"/><path d="M8 13v-2"/><path d="M16 13v-2"/></svg></span>
             <strong data-en="Food" data-ha="Abinci">Food</strong>
             <small data-en="Rice, tuwo, snacks" data-ha="Shinkafa, tuwo, kayan ciye-ciye">Rice, tuwo, snacks</small>
           </button>
           <button type="button" class="home-cat-card" data-query-en="fashion" data-query-ha="kaya">
-            <span class="cat-emoji" aria-hidden="true">👗</span>
+            <span class="cat-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg></span>
             <strong data-en="Fashion" data-ha="Kaya">Fashion</strong>
             <small data-en="Fabrics, clothes, accessories" data-ha="Yaduka, kaya, ado">Fabrics, clothes, accessories</small>
           </button>
           <button type="button" class="home-cat-card" data-query-en="school bags" data-query-ha="kayan makaranta">
-            <span class="cat-emoji" aria-hidden="true">🎒</span>
+            <span class="cat-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg></span>
             <strong data-en="Children" data-ha="Yara">Children</strong>
             <small data-en="School bags, books, uniforms" data-ha="Jakunkunan makaranta, littattafai">School bags, books, uniforms</small>
           </button>
           <button type="button" class="home-cat-card" data-query-en="perfumes" data-query-ha="turare">
-            <span class="cat-emoji" aria-hidden="true">🌸</span>
+            <span class="cat-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg></span>
             <strong data-en="Perfumes" data-ha="Turare">Perfumes</strong>
             <small data-en="Local and imported scents" data-ha="Turare na gida da na waje">Local and imported scents</small>
           </button>
           <button type="button" class="home-cat-card" data-query-en="shoes" data-query-ha="takalma">
-            <span class="cat-emoji" aria-hidden="true">👟</span>
+            <span class="cat-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
             <strong data-en="Shoes" data-ha="Takalma">Shoes</strong>
             <small data-en="Men, women, children" data-ha="Maza, mata, yara">Men, women, children</small>
           </button>
           <button type="button" class="home-cat-card" data-query-en="groceries" data-query-ha="kayan masarufi">
-            <span class="cat-emoji" aria-hidden="true">🛒</span>
+            <span class="cat-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>
             <strong data-en="Groceries" data-ha="Kayan masarufi">Groceries</strong>
             <small data-en="Daily essentials and pantry" data-ha="Kayan yau da kullum">Daily essentials and pantry</small>
           </button>
           <button type="button" class="home-cat-card" data-query-en="cosmetics" data-query-ha="kayan kwalliya">
-            <span class="cat-emoji" aria-hidden="true">💄</span>
+            <span class="cat-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3z"/><path d="M5 3v4M19 17v4M3 5h4M17 19h4"/></svg></span>
             <strong data-en="Cosmetics" data-ha="Kayan kwalliya">Cosmetics</strong>
             <small data-en="Skincare, makeup, beauty" data-ha="Kula da fata, kwalliya">Skincare, makeup, beauty</small>
           </button>
           <button type="button" class="home-cat-card" data-query-en="books" data-query-ha="littattafai">
-            <span class="cat-emoji" aria-hidden="true">📚</span>
+            <span class="cat-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
             <strong data-en="Books" data-ha="Littattafai">Books</strong>
             <small data-en="Textbooks, novels, educational" data-ha="Littattafan makaranta, labarai">Textbooks, novels, educational</small>
           </button>
@@ -294,22 +326,22 @@
         </div>
         <div class="why-grid">
           <article class="why-card" data-reveal>
-            <span class="why-icon" aria-hidden="true">🤝</span>
+            <span class="why-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
             <h3 data-en="Verified vendors" data-ha="Tabbatattun dillalai">Verified vendors</h3>
             <p data-en="Every vendor is reviewed and approved by our team before listing products on the platform." data-ha="Dukkan dillalai ana dubawa kuma ana amincewa kafin su saka kaya.">Every vendor is reviewed and approved by our team before listing products on the platform.</p>
           </article>
           <article class="why-card" data-reveal>
-            <span class="why-icon" aria-hidden="true">🔒</span>
+            <span class="why-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
             <h3 data-en="Secure payments" data-ha="Biyan kudi mai tsaro">Secure payments</h3>
             <p data-en="Card, transfer, USSD, wallet, and pay-on-delivery — choose the method you already trust." data-ha="Kati, transfer, USSD, wallet, da biya a gida — zaɓi hanyar da kake so.">Card, transfer, USSD, wallet, and pay-on-delivery — your preferred method.</p>
           </article>
           <article class="why-card" data-reveal>
-            <span class="why-icon" aria-hidden="true">🚚</span>
+            <span class="why-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="1.5"/><circle cx="18.5" cy="18.5" r="1.5"/></svg></span>
             <h3 data-en="Local delivery" data-ha="Isarwa a cikin gida">Local delivery</h3>
             <p data-en="Fast delivery across Kano. Track your order from placement to your doorstep in real time." data-ha="Isarwa mai sauri a fadin Kano. Bi odanka daga farko har isa gidanka kai tsaye.">Fast delivery across Kano. Track your order from placement to doorstep.</p>
           </article>
           <article class="why-card" data-reveal>
-            <span class="why-icon" aria-hidden="true">🗣️</span>
+            <span class="why-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
             <h3 data-en="Bilingual platform" data-ha="Platform mai harsuna biyu">Bilingual platform</h3>
             <p data-en="Shop comfortably in English or Hausa. Full support for both languages across every screen." data-ha="Saya cikin lumana da Turanci ko Hausa — cikakken goyon bayan harsuna biyu a kowace allon.">Shop in English or Hausa — full support for both languages.</p>
           </article>
@@ -339,6 +371,79 @@
           </ul>
         </div>
       </section>
+
+      <!-- ═══ HOW IT WORKS ═══ -->
+      <section class="home-how app-page" id="how-it-works" data-page="home" aria-labelledby="how-title">
+        <div class="section-heading centered-section-heading">
+          <p class="eyebrow" data-en="How it works" data-ha="Yadda yake aiki">How it works</p>
+          <h2 id="how-title" data-en="Buy with confidence, in any language." data-ha="Saya cikin kwarin gwiwa, da kowane harshe.">Buy with confidence, in any language.</h2>
+        </div>
+        <div class="how-steps">
+          <div class="how-step">
+            <span class="how-step-n">01</span>
+            <span class="how-step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            </span>
+            <h3 data-en="Search or browse" data-ha="Nema ko bincika">Search or browse</h3>
+            <p data-en="Type what you want in English or Hausa. Filter by area, price, and vendor rating." data-ha="Rubuta abin da kake so da Turanci ko Hausa. Tacewa bisa yanki, farashi, da ƙimar dillali.">Type what you want in English or Hausa. Filter by area, price, and vendor rating.</p>
+          </div>
+          <div class="how-step">
+            <span class="how-step-n">02</span>
+            <span class="how-step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            </span>
+            <h3 data-en="Pay your way" data-ha="Biya yadda kake so">Pay your way</h3>
+            <p data-en="Card, bank transfer, USSD, wallet, or pay on delivery — all five accepted at checkout." data-ha="Kati, canja wurin banki, USSD, wallet, ko biya a gida — duk biyar ana karbarsu.">Card, bank transfer, USSD, wallet, or pay on delivery — all five accepted at checkout.</p>
+          </div>
+          <div class="how-step">
+            <span class="how-step-n">03</span>
+            <span class="how-step-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="1.5"/><circle cx="18.5" cy="18.5" r="1.5"/></svg>
+            </span>
+            <h3 data-en="Track to your door" data-ha="Bi diddigin har gidanka">Track to your door</h3>
+            <p data-en="Real-time delivery updates across Kano with SMS confirmations at every step." data-ha="Sabuntawar isarwa kai tsaye a fadin Kano tare da saƙon SMS a kowane matakai.">Real-time delivery updates across Kano with SMS confirmations at every step.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ SITE FOOTER ═══ -->
+      <footer class="home-footer app-page" data-page="home" aria-label="Kano Mart site footer">
+        <div class="hf-inner">
+          <div class="hf-brand">
+            <span class="brand-mark" aria-hidden="true">KM</span>
+            <div>
+              <strong>Kano Mart</strong>
+              <small data-en="Kano's bilingual local marketplace." data-ha="Kasuwar gida ta Kano mai harsuna biyu.">Kano's bilingual local marketplace.</small>
+            </div>
+          </div>
+          <nav class="hf-col" aria-label="Shop">
+            <strong data-en="Shop" data-ha="Saya">Shop</strong>
+            <a href="#catalog" data-route="catalog" data-en="Browse" data-ha="Bincika">Browse</a>
+            <a href="#categories" data-route="catalog" data-en="Categories" data-ha="Rukunai">Categories</a>
+            <a href="#vendor" data-route="vendor" data-en="Vendors" data-ha="Dillalai">Vendors</a>
+          </nav>
+          <nav class="hf-col" aria-label="Sell">
+            <strong data-en="Sell" data-ha="Sayar">Sell</strong>
+            <a href="#signup" data-route="signup" data-en="Apply to sell" data-ha="Nemi izinin sayarwa">Apply to sell</a>
+            <a href="#vendor" data-route="vendor" data-en="Seller guide" data-ha="Jagorar dillali">Seller guide</a>
+          </nav>
+          <nav class="hf-col" aria-label="Help">
+            <strong data-en="Help" data-ha="Taimako">Help</strong>
+            <a href="#how-it-works" data-en="How it works" data-ha="Yadda yake aiki">How it works</a>
+            <a href="#catalog" data-route="catalog" data-en="Delivery zones" data-ha="Yankuna na isarwa">Delivery zones</a>
+          </nav>
+          <div class="hf-col">
+            <strong data-en="Pay with" data-ha="Biya ta">Pay with</strong>
+            <div class="hf-pay-row">
+              <span data-en="Card" data-ha="Kati">Card</span>
+              <span data-en="Transfer" data-ha="Canjawa">Transfer</span>
+              <span>USSD</span>
+              <span>Wallet</span>
+              <span data-en="On delivery" data-ha="A gida">On delivery</span>
+            </div>
+          </div>
+        </div>
+      </footer>
 
       <!-- ═══ CUSTOMER DASHBOARD ═══ -->
       <section class="customer-section app-page" id="customer" data-page="customer" aria-labelledby="customer-title">
@@ -416,6 +521,19 @@
           </div>
         </div>
 
+        <!-- Profile completion CTA -->
+        <div class="customer-profile-cta">
+          <div class="cpc-content">
+            <strong data-en="Complete your profile to speed up checkout." data-ha="Kammala bayananku don saukaka biyan kudi.">Complete your profile to speed up checkout.</strong>
+            <small data-en="Save a delivery address and a default payment method." data-ha="Ajiye adireshin isarwa da hanyar biyan kudi.">Save a delivery address and a default payment method.</small>
+            <div class="cpc-bar" role="progressbar" aria-valuenow="40" aria-valuemin="0" aria-valuemax="100" aria-label="Profile completion">
+              <span class="cpc-fill" style="width:40%"></span>
+            </div>
+            <small class="muted" data-en="40% complete" data-ha="Kashi 40% ya kammala">40% complete</small>
+          </div>
+          <a href="#catalog" data-route="catalog" class="cpc-action" data-en="Start shopping" data-ha="Fara sayayya">Start shopping</a>
+        </div>
+
       </section>
 
       <!-- Results -->
@@ -450,32 +568,63 @@
           </div>
         </div>
 
-        <div class="section-heading">
-          <p class="eyebrow" data-en="Marketplace search" data-ha="Neman kaya">Marketplace search</p>
-          <h2 id="resultsTitle" data-scroll-fill>Welcome to Kano Mart</h2>
-          <p id="resultsIntro">
-            Search for an item to see local results. Every completed search helps Kano Mart understand demand.
-          </p>
-        </div>
+        <div class="catalog-layout">
 
-        <div aria-live="polite" aria-atomic="false">
-          <div class="result-status" id="resultStatus" hidden></div>
-          <div class="product-grid" id="resultsGrid"></div>
-          <button type="button" class="load-more-products" id="loadMoreProducts" hidden data-en="Load more products" data-ha="Kara nuna kaya">
-            Load more products
-          </button>
-          <div class="empty-state" id="emptyState" hidden>
-            <strong data-en="Search saved for Kano Mart" data-ha="An ajiye binciken domin Kano Mart">
-              Search saved for Kano Mart
-            </strong>
-            <p
-              data-en="We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it."
-              data-ha="Ba mu samu wannan kaya yanzu ba. An ajiye bincikenka domin Kano Mart ta tanadi wannan kaya daga baya."
-            >
-              We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it.
-            </p>
+          <!-- Filter sidebar -->
+          <aside class="catalog-filter-sidebar" aria-label="Filter products">
+            <div class="cf-block">
+              <h4 data-en="Category" data-ha="Rukuni">Category</h4>
+              <label class="cf-row"><input type="checkbox" data-query-en="food" data-query-ha="abinci" /><span data-en="Food" data-ha="Abinci">Food</span></label>
+              <label class="cf-row"><input type="checkbox" data-query-en="fashion" data-query-ha="kaya" /><span data-en="Fashion" data-ha="Kaya">Fashion</span></label>
+              <label class="cf-row"><input type="checkbox" data-query-en="school bags" data-query-ha="kayan makaranta" /><span data-en="Children" data-ha="Yara">Children</span></label>
+              <label class="cf-row"><input type="checkbox" data-query-en="perfumes" data-query-ha="turare" /><span data-en="Perfumes" data-ha="Turare">Perfumes</span></label>
+              <label class="cf-row"><input type="checkbox" data-query-en="groceries" data-query-ha="kayan masarufi" /><span data-en="Groceries" data-ha="Kayan masarufi">Groceries</span></label>
+            </div>
+            <div class="cf-block">
+              <h4 data-en="Market area" data-ha="Yankin kasuwa">Market area</h4>
+              <label class="cf-row"><input type="checkbox" data-query-en="Kantin Kwari" data-query-ha="Kantin Kwari" /><span>Kantin Kwari</span></label>
+              <label class="cf-row"><input type="checkbox" data-query-en="Sabon Gari" data-query-ha="Sabon Gari" /><span>Sabon Gari</span></label>
+              <label class="cf-row"><input type="checkbox" data-query-en="Tarauni" data-query-ha="Tarauni" /><span>Tarauni</span></label>
+              <label class="cf-row"><input type="checkbox" data-query-en="Nasarawa" data-query-ha="Nasarawa" /><span>Nasarawa</span></label>
+            </div>
+            <div class="cf-block">
+              <h4 data-en="Delivery" data-ha="Isarwa">Delivery</h4>
+              <label class="cf-row"><input type="checkbox" /><span data-en="Same-day in Kano" data-ha="Rana ɗaya a Kano">Same-day in Kano</span></label>
+              <label class="cf-row"><input type="checkbox" /><span data-en="Pay on delivery" data-ha="Biya a gida">Pay on delivery</span></label>
+            </div>
+          </aside>
+
+          <!-- Main results column -->
+          <div class="catalog-main">
+            <div class="section-heading">
+              <p class="eyebrow" data-en="Marketplace search" data-ha="Neman kaya">Marketplace search</p>
+              <h2 id="resultsTitle" data-scroll-fill>Welcome to Kano Mart</h2>
+              <p id="resultsIntro">
+                Search for an item to see local results. Every completed search helps Kano Mart understand demand.
+              </p>
+            </div>
+
+            <div aria-live="polite" aria-atomic="false">
+              <div class="result-status" id="resultStatus" hidden></div>
+              <div class="product-grid" id="resultsGrid"></div>
+              <button type="button" class="load-more-products" id="loadMoreProducts" hidden data-en="Load more products" data-ha="Kara nuna kaya">
+                Load more products
+              </button>
+              <div class="empty-state" id="emptyState" hidden>
+                <strong data-en="Search saved for Kano Mart" data-ha="An ajiye binciken domin Kano Mart">
+                  Search saved for Kano Mart
+                </strong>
+                <p
+                  data-en="We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it."
+                  data-ha="Ba mu samu wannan kaya yanzu ba. An ajiye bincikenka domin Kano Mart ta tanadi wannan kaya daga baya."
+                >
+                  We could not find this item yet. Your search has been saved so Kano Mart can make provisions for it.
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+
+        </div><!-- /catalog-layout -->
       </section>
 
       <!-- Categories -->
@@ -635,6 +784,30 @@
             <span class="vendor-status-badge" id="vendorStatusBadge">Active</span>
           </div>
 
+          <!-- Vendor KPI strip -->
+          <div class="vendor-kpi-strip" aria-label="Vendor quick stats">
+            <div class="vendor-kpi-card">
+              <small data-en="Orders today" data-ha="Ododin yau">Orders today</small>
+              <strong id="vendorStatTodayOrders">—</strong>
+              <span data-en="Needs fulfilment" data-ha="Suna bukata">Needs fulfilment</span>
+            </div>
+            <div class="vendor-kpi-card">
+              <small data-en="Revenue · today" data-ha="Kudin yau">Revenue · today</small>
+              <strong id="vendorStatRevenue" style="font-family:var(--f-mono)">—</strong>
+              <span data-en="Gross sales" data-ha="Jimillar siyarwa">Gross sales</span>
+            </div>
+            <div class="vendor-kpi-card vendor-kpi-card--highlight">
+              <small data-en="Withdrawable" data-ha="Za a iya cirewa">Withdrawable</small>
+              <strong id="vendorStatPayout" style="font-family:var(--f-mono)">—</strong>
+              <a href="#vendor" data-route="vendor" data-vendor-tab="orders" data-en="Withdraw →" data-ha="Cire kudi →">Withdraw →</a>
+            </div>
+            <div class="vendor-kpi-card vendor-kpi-card--warn">
+              <small data-en="Low stock" data-ha="Kaya kadan">Low stock</small>
+              <strong id="vendorStatLowStock">—</strong>
+              <span data-en="SKUs running low" data-ha="Kayan da ke karewa">SKUs running low</span>
+            </div>
+          </div>
+
           <!-- Tab navigation -->
           <nav class="vendor-tab-nav" aria-label="Vendor sections">
             <button type="button" class="vendor-tab-btn is-active" data-vendor-tab="products" aria-selected="true">
@@ -769,27 +942,39 @@
             </div>
           </div>
 
-          <!-- KPI row -->
+          <!-- KPI row — action-first per audit -->
           <div class="admin-kpi-row">
-            <article class="admin-kpi-card" data-tone="demand">
-              <span class="admin-kpi-icon" aria-hidden="true">👥</span>
-              <span class="admin-kpi-label" data-en="Total customers" data-ha="Jimillar kwastomomi">Total customers</span>
-              <strong class="admin-kpi-value" id="totalSearches">0</strong>
-            </article>
-            <article class="admin-kpi-card" data-tone="risk">
-              <span class="admin-kpi-icon" aria-hidden="true">🏪</span>
-              <span class="admin-kpi-label" data-en="Total vendors" data-ha="Jimillar dillalai">Total vendors</span>
-              <strong class="admin-kpi-value" id="failedSearches">0</strong>
-            </article>
             <article class="admin-kpi-card" data-tone="queue">
-              <span class="admin-kpi-icon" aria-hidden="true">⏳</span>
+              <span class="admin-kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              </span>
               <span class="admin-kpi-label" data-en="Pending approvals" data-ha="Dillalan da ake dubawa">Pending approvals</span>
               <strong class="admin-kpi-value" id="savedVendors">0</strong>
+              <small class="admin-kpi-sub">Vendors awaiting review</small>
+            </article>
+            <article class="admin-kpi-card" data-tone="risk">
+              <span class="admin-kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+              </span>
+              <span class="admin-kpi-label" data-en="Demand gaps" data-ha="Gibin bukata">Demand gaps</span>
+              <strong class="admin-kpi-value" id="failedSearches">0</strong>
+              <small class="admin-kpi-sub">Unfulfilled searches</small>
             </article>
             <article class="admin-kpi-card" data-tone="catalog">
-              <span class="admin-kpi-icon" aria-hidden="true">📦</span>
-              <span class="admin-kpi-label" data-en="Products / orders" data-ha="Kaya / ododi">Products / orders</span>
-              <strong class="admin-kpi-value" id="topDemand">0</strong>
+              <span class="admin-kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              </span>
+              <span class="admin-kpi-label" data-en="Top search gap" data-ha="Babbar gibin nema">Top search gap</span>
+              <strong class="admin-kpi-value" id="topDemand">—</strong>
+              <small class="admin-kpi-sub">Most-searched missing item</small>
+            </article>
+            <article class="admin-kpi-card" data-tone="demand">
+              <span class="admin-kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              </span>
+              <span class="admin-kpi-label" data-en="Search volume" data-ha="Yawan bincike">Search volume</span>
+              <strong class="admin-kpi-value" id="totalSearches">0</strong>
+              <small class="admin-kpi-sub">Total searches logged</small>
             </article>
           </div>
 
@@ -849,6 +1034,16 @@
                 </thead>
                 <tbody id="searchHistoryTable"></tbody>
               </table>
+            </div>
+
+            <!-- Platform health strip — vanity numbers at the bottom where they belong -->
+            <div class="admin-health-strip" aria-label="Platform health metrics">
+              <div><small data-en="Total customers" data-ha="Jimillar kwastomomi">Total customers</small><strong id="healthTotalCustomers">—</strong></div>
+              <div><small data-en="Active vendors" data-ha="Dillalai masu aiki">Active vendors</small><strong id="healthActiveVendors">—</strong></div>
+              <div><small data-en="Orders / day · avg" data-ha="Ododi / rana">Orders / day · avg</small><strong id="healthOrdersPerDay">—</strong></div>
+              <div><small data-en="Avg ticket" data-ha="Matsakaicin kudi">Avg ticket</small><strong id="healthAvgTicket" style="font-family:var(--f-mono)">—</strong></div>
+              <div><small data-en="Refund rate · 30d" data-ha="Adadin dawowar kudi">Refund rate · 30d</small><strong id="healthRefundRate">—</strong></div>
+              <div><small data-en="Search fill rate" data-ha="Adadin nasarar nema">Search fill rate</small><strong id="healthFillRate">—</strong></div>
             </div>
           </div>
 
@@ -943,6 +1138,92 @@
       </section>
 
 
+      <!-- ═══ PRODUCT DETAIL PAGE ═══ -->
+      <section class="pdp-section app-page" id="productPage" data-page="product" aria-label="Product detail">
+        <!-- Populated by renderProductPage() in app.ts -->
+      </section>
+
+      <!-- ═══ VENDOR STOREFRONT PAGE ═══ -->
+      <section class="vsf-section app-page" id="vendorPage" data-page="vendorpage" aria-label="Vendor storefront">
+        <!-- Populated by renderVendorStorefront() in app.ts -->
+      </section>
+
+      <!-- ═══ SELL PAGE (marketing for would-be vendors) ═══ -->
+      <section class="sell-page app-page" id="sell" data-page="sell" aria-labelledby="sell-title">
+        <div class="sell-hero">
+          <div class="sell-hero-copy">
+            <p class="eyebrow" data-en="For sellers" data-ha="Ga masu siyarwa">For sellers</p>
+            <h1 id="sell-title" data-en="Open a store on Kano Mart." data-ha="Buɗe shago a Kano Mart.">Open a store on Kano Mart.</h1>
+            <p data-en="Reach thousands of shoppers across Kano, accept five payment methods, and settle to your wallet daily. Setup takes ten minutes." data-ha="Kai ga dubunnan masu sayo a Kano, karɓi hanyoyin biya guda biyar, kuma karɓi kudi a wallet kowace rana. Saitawa yana ɗaukar mintuna goma.">
+              Reach thousands of shoppers across Kano, accept five payment methods, and settle to your wallet daily. Setup takes ten minutes.
+            </p>
+            <div class="sell-cta-row">
+              <a href="#signup" data-route="signup" class="sell-cta-primary" data-en="Apply to sell" data-ha="Nemi izinin sayarwa">Apply to sell</a>
+              <a href="#vendor" data-route="vendor" class="sell-cta-ghost" data-en="See how it works" data-ha="Duba yadda yake">See how it works</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="sell-perks">
+          <article class="sell-perk">
+            <span class="sell-perk-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+            </span>
+            <h3 data-en="Free to register" data-ha="Rajista kyauta">Free to register</h3>
+            <p data-en="No upfront fees. No monthly subscription. We only earn when you do." data-ha="Babu kuɗin farko. Babu biyan wata-wata. Muna samun kuɗi ne kawai idan ka samu.">No upfront fees. No monthly subscription. We only earn when you do.</p>
+          </article>
+          <article class="sell-perk">
+            <span class="sell-perk-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            </span>
+            <h3 data-en="Daily wallet payouts" data-ha="Biyan wallet kowace rana">Daily wallet payouts</h3>
+            <p data-en="Revenue from paid orders settles to your Kano Mart wallet within 24 hours." data-ha="Kuɗaɗen ododin da aka biya suna shiga wallet ɗinka cikin awanni 24.">Revenue from paid orders settles to your Kano Mart wallet within 24 hours.</p>
+          </article>
+          <article class="sell-perk">
+            <span class="sell-perk-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>
+            </span>
+            <h3 data-en="Unlimited listings" data-ha="Kaya marasa iyaka">Unlimited listings</h3>
+            <p data-en="List as many products as you have. Update stock, price, and availability anytime." data-ha="Saka kaya kamar yadda kake da su. Sabunta adadi, farashi, da samuwa a kowane lokaci.">List as many products as you have. Update stock, price, and availability anytime.</p>
+          </article>
+          <article class="sell-perk">
+            <span class="sell-perk-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </span>
+            <h3 data-en="Bilingual by default" data-ha="Yaren biyu a dabi'ance">Bilingual by default</h3>
+            <p data-en="Your store and products display in English and Hausa automatically." data-ha="Shagonka da kayanka suna bayyana da Turanci da Hausa ta atomatik.">Your store and products display in English and Hausa automatically.</p>
+          </article>
+        </div>
+
+        <div class="sell-steps">
+          <div class="section-heading centered-section-heading">
+            <p class="eyebrow" data-en="How to get started" data-ha="Yadda za a fara">How to get started</p>
+            <h2 data-en="Three steps to your first sale." data-ha="Matakai uku zuwa siyarwarka ta farko.">Three steps to your first sale.</h2>
+          </div>
+          <div class="how-steps">
+            <div class="how-step">
+              <span class="how-step-n">01</span>
+              <h3 data-en="Create your account" data-ha="Ƙirƙiri asusunka">Create your account</h3>
+              <p data-en="Sign up as a vendor. Tell us your business name, area, and main category. Takes 2 minutes." data-ha="Yi rajista a matsayin dillali. Faɗa mana sunan kasuwancinka, yanki, da babban rukuni. Yana ɗaukar mintoci 2.">Sign up as a vendor. Tell us your business name, area, and main category. Takes 2 minutes.</p>
+            </div>
+            <div class="how-step">
+              <span class="how-step-n">02</span>
+              <h3 data-en="Get approved" data-ha="Samu aminewa">Get approved</h3>
+              <p data-en="Our team reviews your application within 1–2 business days. You'll get an SMS when you're approved." data-ha="Tawagar mu tana duba bukatarka cikin kwanaki 1–2 na aiki. Za ka samu SMS idan an amince da kai.">Our team reviews your application within 1–2 business days. You'll get an SMS when you're approved.</p>
+            </div>
+            <div class="how-step">
+              <span class="how-step-n">03</span>
+              <h3 data-en="List and sell" data-ha="Saka kaya ka sayar">List and sell</h3>
+              <p data-en="Add your products with photos, prices, and delivery zones. Start receiving orders from day one." data-ha="Saka kayanka tare da hotuna, farashi, da yankuna. Fara karɓar oda daga rana ta farko.">Add your products with photos, prices, and delivery zones. Start receiving orders from day one.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sell-cta-bottom">
+          <a href="#signup" data-route="signup" class="sell-cta-primary" data-en="Create your free store" data-ha="Ƙirƙiri shagonka kyauta">Create your free store</a>
+        </div>
+      </section>
+
       <!-- ═══ LOGIN PAGE ═══ -->
       <section class="auth-page app-page" id="loginPage" data-page="login" aria-labelledby="login-page-heading" hidden>
         <!-- Left: brand panel -->
@@ -1023,7 +1304,6 @@
                   <input type="checkbox" name="rememberMe" />
                   <span>Remember me</span>
                 </label>
-                <span class="forgot-pw-note">Forgot password? <em>Coming soon</em></span>
               </div>
               <div class="auth-form-error" role="alert"></div>
               <button type="submit" class="auth-submit-btn" id="loginSubmitBtn">Sign in</button>
@@ -1154,7 +1434,7 @@
 
               <!-- Vendor info note -->
               <div class="vendor-signup-note" data-vendor-only hidden>
-                <strong>📋 About vendor accounts</strong>
+                <strong>About vendor accounts</strong>
                 Products you list will appear in the marketplace after admin review. This typically takes 1–2 business days.
               </div>
 
@@ -1248,6 +1528,76 @@
     <!-- ═══ TOAST CONTAINER ═══ -->
     <div id="toastContainer" class="toast-container" aria-live="assertive" aria-atomic="false"></div>
 
+    <!-- ═══ MOBILE BOTTOM NAV (logged-in users on mobile) ═══ -->
+    <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
+      <a href="#home" data-route="home" class="mob-nav-item" data-roles="customer vendor admin">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 10.8 12 3l9 7.8"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+        <span data-en="Home" data-ha="Gida">Home</span>
+      </a>
+      <a href="#catalog" data-route="catalog" class="mob-nav-item" data-roles="customer vendor admin">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 7h14l-1.4 10.2a2 2 0 0 1-2 1.8H8.4a2 2 0 0 1-2-1.8L5 4H3"/><circle cx="9" cy="21" r="1"/><circle cx="17" cy="21" r="1"/></svg>
+        <span data-en="Browse" data-ha="Bincika">Browse</span>
+      </a>
+      <a href="#orders" data-route="orders" class="mob-nav-item" data-roles="customer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 3h10l2 3v15H5V6l2-3Z"/><path d="M8 10h8"/><path d="M8 14h5"/></svg>
+        <span data-en="Orders" data-ha="Ododi">Orders</span>
+      </a>
+      <a href="#vendor" data-route="vendor" class="mob-nav-item" data-roles="vendor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10h16l-1-5H5l-1 5Z"/><path d="M6 10v10h12V10"/><path d="M9 20v-5h6v5"/></svg>
+        <span data-en="Store" data-ha="Shago">Store</span>
+      </a>
+      <button type="button" class="mob-nav-item" id="mobWishlistBtn" data-roles="customer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        <span data-en="Saved" data-ha="An ajiye">Saved</span>
+      </button>
+      <button type="button" class="mob-nav-item" id="mobAccountBtn" data-roles="customer vendor admin">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        <span data-en="Account" data-ha="Asusu">Account</span>
+      </button>
+    </nav>
+
     <script type="module" src="dist/app.js"></script>
+
+    <!-- Hero search → catalog bridge (no TS changes needed) -->
+    <script>
+      (function() {
+        var heroForm = document.getElementById('heroSearchForm');
+        var heroInput = document.getElementById('heroSearchInput');
+        if (heroForm) {
+          heroForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var q = heroInput ? heroInput.value.trim() : '';
+            if (!q) return;
+            var real = document.getElementById('marketSearch');
+            if (real) real.value = q;
+            window.location.hash = '#catalog';
+            var realForm = document.getElementById('searchForm');
+            if (realForm) setTimeout(function(){ realForm.dispatchEvent(new Event('submit', {bubbles:true, cancelable:true})); }, 80);
+          });
+        }
+        document.querySelectorAll('[data-hero-query]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var q = this.getAttribute('data-hero-query');
+            if (heroInput) heroInput.value = q;
+            if (heroForm) heroForm.dispatchEvent(new Event('submit', {bubbles:true, cancelable:true}));
+          });
+        });
+        // Mobile bottom nav: wishlist + account buttons delegate to existing handlers
+        var mobWishlist = document.getElementById('mobWishlistBtn');
+        if (mobWishlist) {
+          mobWishlist.addEventListener('click', function() {
+            var btn = document.getElementById('customerWishlistBtn');
+            if (btn) btn.click();
+          });
+        }
+        var mobAccount = document.getElementById('mobAccountBtn');
+        if (mobAccount) {
+          mobAccount.addEventListener('click', function() {
+            var btn = document.getElementById('sidebarAccountAction');
+            if (btn) btn.click();
+          });
+        }
+      })();
+    </script>
   </body>
 </html>
