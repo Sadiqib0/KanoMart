@@ -8,19 +8,10 @@
 import type { UserSession } from "../backend/types";
 import { api } from "./api-client";
 import { saveSession } from "./auth";
-import { getCopy } from "./utils";
+import { getCopy, isValidEmail, isValidPhone } from "./utils";
 import { showToast } from "./toast";
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
-
-function isValidEmail(v: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
-}
-
-function isValidPhone(v: string): boolean {
-  const digits = v.replace(/\D/g, "");
-  return digits.length >= 10 && digits.length <= 15;
-}
 
 function validateLogin(id: string, pw: string): Record<string, string> {
   const e: Record<string, string> = {};

@@ -662,11 +662,38 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
 
   const data = new FormData(form);
   const image = data.get("productImage");
+  const productName = String(data.get("productName") || "").trim();
+  const productNameHa = String(data.get("productNameHa") || "").trim();
+  const descriptionEn = String(data.get("descriptionEn") || "").trim();
+  const descriptionHa = String(data.get("descriptionHa") || "").trim();
+  const category = String(data.get("productCategory") || "").trim();
+  const quantityAvailable = Number(data.get("quantityAvailable") || 0);
 
   // Strip commas, spaces and currency symbols before parsing — iOS formats
   // number inputs as "20,000" which makes type="number" return "" from FormData.
   const rawPriceStr = String(data.get("productValue") ?? "").replace(/[^\d.]/g, "");
   const priceValue = rawPriceStr ? Number(rawPriceStr) : 0;
+
+  if (!productName) {
+    if (message) message.textContent = getCopy("Product name is required.", "Ana buƙatar sunan kaya.");
+    form.querySelector<HTMLInputElement>("input[name='productName']")?.focus();
+    return;
+  }
+  if (productName.length < 2) {
+    if (message) message.textContent = getCopy("Product name must be at least 2 characters.", "Sunan kaya ya zama akalla haruffa 2.");
+    form.querySelector<HTMLInputElement>("input[name='productName']")?.focus();
+    return;
+  }
+  if (!category) {
+    if (message) message.textContent = getCopy("Please choose a product category.", "Da fatan za a zaɓi rukuni na kaya.");
+    form.querySelector<HTMLSelectElement>("select[name='productCategory']")?.focus();
+    return;
+  }
+  if (!Number.isFinite(quantityAvailable) || quantityAvailable < 0) {
+    if (message) message.textContent = getCopy("Enter a valid quantity.", "Shigar da adadi mai inganci.");
+    form.querySelector<HTMLInputElement>("input[name='quantityAvailable']")?.focus();
+    return;
+  }
 
   // Validate image and price with specific messages so the vendor knows which field failed
   if (!(image instanceof File) || !image.name || image.size === 0) {
@@ -691,13 +718,13 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
       vendor: vendor?.businessName || user.name,
       vendorPhone: user.phone,
       area: vendor?.area || "Kano",
-      name: String(data.get("productName") || ""),
-      nameHa: String(data.get("productNameHa") || ""),
-      descriptionEn: String(data.get("descriptionEn") || ""),
-      descriptionHa: String(data.get("descriptionHa") || ""),
+      name: productName,
+      nameHa: productNameHa,
+      descriptionEn,
+      descriptionHa,
       priceValue,
-      quantityAvailable: Number(data.get("quantityAvailable") || 0),
-      category: String(data.get("productCategory") || "essentials"),
+      quantityAvailable,
+      category,
       imageDataUrl,
     };
     saveVendorProduct(productInput);

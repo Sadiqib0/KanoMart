@@ -1,5 +1,5 @@
 import { state } from "./state";
-import { getCopy, escapeHtml, formatPrice } from "./utils";
+import { getCopy, escapeHtml, formatPrice, isValidPhone } from "./utils";
 import { getCartItems, getCartProduct, getCartSubtotal, clearCart } from "./cart";
 import { placeOrder } from "./orders";
 import { showToast } from "./toast";
@@ -124,10 +124,41 @@ export function openCheckoutModal(): void {
     const data = new FormData(form);
     const errorEl = modal.querySelector<HTMLElement>("#checkoutError")!;
 
+    const customerName = String(data.get("customerName") || "").trim();
+    const customerPhone = String(data.get("customerPhone") || "").trim();
     const deliveryOption = String(data.get("deliveryOption") || "delivery") === "pickup" ? "pickup" : "delivery";
-    const deliveryAddress = String(data.get("deliveryAddress") || "");
-    const deliveryArea = String(data.get("deliveryArea") || "");
+    const deliveryAddress = String(data.get("deliveryAddress") || "").trim();
+    const deliveryArea = String(data.get("deliveryArea") || "").trim();
     const paymentMethod = String(data.get("paymentMethod") || "");
+
+    if (!customerName) {
+      errorEl.textContent = getCopy("Enter your full name.", "Shigar da cikakken sunanka.");
+      form.querySelector<HTMLInputElement>("input[name='customerName']")?.focus();
+      return;
+    }
+    if (!customerPhone || !isValidPhone(customerPhone)) {
+      errorEl.textContent = getCopy("Enter a valid phone number.", "Shigar da lambar waya mai inganci.");
+      form.querySelector<HTMLInputElement>("input[name='customerPhone']")?.focus();
+      return;
+    }
+    if (deliveryOption === "delivery" && !deliveryAddress) {
+      errorEl.textContent = getCopy(
+        "Delivery address is required for delivery orders.",
+        "Adireshin kai kaya yana da mahimmanci don oda kai kaya."
+      );
+      form.querySelector<HTMLInputElement>("input[name='deliveryAddress']")?.focus();
+      return;
+    }
+    if (!deliveryArea) {
+      errorEl.textContent = getCopy("Delivery area is required.", "Ana buƙatar yankin isarwa.");
+      form.querySelector<HTMLInputElement>("input[name='deliveryArea']")?.focus();
+      return;
+    }
+    if (!paymentMethod) {
+      errorEl.textContent = getCopy("Choose a payment method.", "Zaɓi hanyar biyan kuɗi.");
+      form.querySelector<HTMLSelectElement>("select[name='paymentMethod']")?.focus();
+      return;
+    }
 
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = getCopy("Placing order…", "Ana sanya oda…"); }
     errorEl.textContent = "";
@@ -163,8 +194,8 @@ export function openCheckoutModal(): void {
     }
 
     const order = placeOrder(
-      String(data.get("customerName") || ""),
-      String(data.get("customerPhone") || ""),
+      customerName,
+      customerPhone,
       deliveryArea,
       paymentMethod,
       deliveryOption,
