@@ -39,6 +39,8 @@ export function keyForEnglish(value: string): string | undefined {
 export function applyLanguageToDOM(lang: Lang): void {
   _lang = lang;
   document.querySelectorAll<HTMLElement>("[data-en][data-ha]").forEach((node) => {
+    // Skip sidebar nav links — they have inner spans (icon + title) that must stay intact
+    if (node.matches(".sidebar-nav a, .sidebar-vendor-cta")) return;
     node.textContent = node.dataset[lang] ?? "";
   });
   document.querySelectorAll<HTMLImageElement>("[data-alt-en][data-alt-ha]").forEach((node) => {

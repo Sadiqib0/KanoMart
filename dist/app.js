@@ -990,13 +990,13 @@ function renderCartPanel() {
   elements.cartItemsEl.innerHTML = items.map((item) => {
     const product = getCartProduct(item.productId);
     if (!product) return "";
-    const name = product.name[state.language];
+    const name2 = product.name[state.language];
     const lineTotal = formatPrice(parsePrice(product.price) * item.quantity);
     return `
         <div class="cart-item" data-product-id="${escapeHtml(item.productId)}">
           <div class="cart-item-thumb" style="--accent: ${product.accent}" aria-hidden="true"></div>
           <div class="cart-item-info">
-            <strong>${escapeHtml(name)}</strong>
+            <strong>${escapeHtml(name2)}</strong>
             <span class="cart-item-price">${escapeHtml(lineTotal)}</span>
           </div>
           <div class="cart-item-controls">
@@ -1220,8 +1220,8 @@ function renderOrdersPanel() {
   if (liveOrders !== null && liveOrders.length > 0) {
     return liveOrders.slice(0, 10).map((order) => {
       const itemSummary = (order.items ?? []).map((i) => {
-        const name = typeof i.name === "object" ? i.name.en ?? "" : String(i.name ?? i.productId ?? "");
-        return `${escapeHtml(name)} \xD7${i.quantity}`;
+        const name2 = typeof i.name === "object" ? i.name.en ?? "" : String(i.name ?? i.productId ?? "");
+        return `${escapeHtml(name2)} \xD7${i.quantity}`;
       }).join(", ");
       const paymentStatus = order.paymentStatus ?? "pending";
       const deliveryOption = order.deliveryOption ?? "delivery";
@@ -1378,7 +1378,7 @@ function getMarketplaceAnalytics() {
 
 // src/frontend/render.ts
 function renderProductCard(product) {
-  const name = product.name[state.language];
+  const name2 = product.name[state.language];
   const category = product.category[state.language];
   const subcategory = product.subcategory[state.language];
   const availability = product.availability[state.language];
@@ -1391,7 +1391,7 @@ function renderProductCard(product) {
   return `
     <article class="product-card" data-product-id="${escapeHtml(product.id)}">
       <div class="product-thumb" style="--accent: ${product.accent}">
-        ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : ""}
+        ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name2)}" loading="lazy" />` : ""}
         <span>${escapeHtml(subcategory)}</span>
         <button type="button"
           class="wish-btn${wished ? " is-wishlisted" : ""}"
@@ -1403,7 +1403,7 @@ function renderProductCard(product) {
           </svg>
         </button>
       </div>
-      <h3>${escapeHtml(name)}</h3>
+      <h3>${escapeHtml(name2)}</h3>
       ${promotion ? `<span class="promo-badge">${escapeHtml(promotion.title[state.language])}${promotion.discountPercent ? ` - ${promotion.discountPercent}%` : ""}</span>` : ""}
       <p class="product-meta">
         <span>${escapeHtml(category)}</span>
@@ -1864,11 +1864,11 @@ function buildCheckoutModal() {
   const itemsHtml = items.map((item) => {
     const product = getCartProduct(item.productId);
     if (!product) return "";
-    const name = escapeHtml(product.name[state.language]);
+    const name2 = escapeHtml(product.name[state.language]);
     const lineTotal = escapeHtml(formatPrice(
       parseInt(product.price.replace(/[^0-9]/g, ""), 10) * item.quantity
     ));
-    return `<div class="checkout-item"><span>${name} \xD7${item.quantity}</span><span>${lineTotal}</span></div>`;
+    return `<div class="checkout-item"><span>${name2} \xD7${item.quantity}</span><span>${lineTotal}</span></div>`;
   }).join("");
   el.innerHTML = `
     <div class="modal-box">
@@ -2526,15 +2526,15 @@ function openUserPanel() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const name = String(data.get("name") || "").trim();
+    const name2 = String(data.get("name") || "").trim();
     const email = String(data.get("email") || "");
     const deliveryAddress = String(data.get("deliveryAddress") || "");
     const preferredLanguage = data.get("preferredLanguage") === "ha" ? "ha" : "en";
-    const [firstName, ...rest] = name.split(/\s+/);
+    const [firstName, ...rest] = name2.split(/\s+/);
     const lastName = rest.join(" ");
     if (state.currentUser?.token) {
       try {
-        const result = await api.updateMe({ name, email, deliveryAddress, preferredLanguage });
+        const result = await api.updateMe({ name: name2, email, deliveryAddress, preferredLanguage });
         const updated2 = { ...state.currentUser, ...result.user, token: state.currentUser.token };
         saveSession(updated2);
       } catch {
@@ -3279,48 +3279,48 @@ function renderCustomerOverview(user, currentPath = "customer/overview") {
   return `
     <div class="dash-shell dash-shell-customer">
       ${renderDashboardHeader({
-    eyebrow: "Customer workspace",
-    title: `Welcome back, ${firstName}`,
-    description: "Track active orders, continue shopping, review saved products, and handle support from one clean dashboard.",
+    eyebrow: getCopy("Customer workspace", "Wurin aiki na kwastoma"),
+    title: `${getCopy("Welcome back", "Barka da dawowar")}, ${firstName}`,
+    description: getCopy("Track active orders, continue shopping, review saved products, and handle support from one clean dashboard.", "Bi diddigin ododi masu aiki, ci gaba da siyayya, duba kayanda aka ajiye, da sarrafa tallafi daga allon sarrafa guda \u0257aya mai tsabta."),
     actions: [
-      { label: "Shop catalog", route: "catalog" },
-      { label: "Open cart", id: "customerCartBtn", tone: "secondary" }
+      { label: getCopy("Shop catalog", "Saya daga jerin kaya"), route: "catalog" },
+      { label: getCopy("Open cart", "Bu\u0257e kwandon saya"), id: "customerCartBtn", tone: "secondary" }
     ]
   })}
 
       ${renderRoleDashboardNav("customer", currentPath)}
 
       ${renderStatGrid([
-    { label: "Active orders", value: data.activeOrders.length, detail: `${data.orders.length} total orders`, tone: "info" },
-    { label: "Cart subtotal", value: renderMoney(data.cartSubtotal), detail: `${data.cartCount} items ready`, tone: "success" },
-    { label: "Wishlist", value: data.wishlistCount, detail: "Saved products", tone: "warning" },
-    { label: "Unread updates", value: data.notifications.filter((item) => !item.readAt).length, detail: "Notifications", tone: "neutral" }
+    { label: getCopy("Active orders", "Ododi masu aiki"), value: data.activeOrders.length, detail: `${data.orders.length} ${getCopy("total orders", "jimillar ododi")}`, tone: "info" },
+    { label: getCopy("Cart subtotal", "Jimlar kwandon saya"), value: renderMoney(data.cartSubtotal), detail: `${data.cartCount} ${getCopy("items ready", "kaya a shirye")}`, tone: "success" },
+    { label: getCopy("Wishlist", "Jerin abubuwan da ake so"), value: data.wishlistCount, detail: getCopy("Saved products", "Kayan da aka ajiye"), tone: "warning" },
+    { label: getCopy("Unread updates", "Sanarwa da ba a karanta ba"), value: data.notifications.filter((item) => !item.readAt).length, detail: getCopy("Notifications", "Sanarwa"), tone: "neutral" }
   ])}
 
       <div class="dash-overview-grid">
         ${renderPanel({
-    eyebrow: "Fulfillment",
-    title: "Active orders",
-    action: { label: "View all", route: "customer/orders" },
+    eyebrow: getCopy("Fulfillment", "Cika oda"),
+    title: getCopy("Active orders", "Ododi masu aiki"),
+    action: { label: getCopy("View all", "Duba duka"), route: "customer/orders" },
     body: renderMiniRows(
       data.activeOrders.map((order) => ({
         title: order.id,
-        meta: `${order.items.slice(0, 2).join(", ") || "Order items"} - ${formatDate(order.createdAt)}`,
+        meta: `${order.items.slice(0, 2).join(", ") || getCopy("Order items", "Kayan oda")} - ${formatDate(order.createdAt)}`,
         value: renderMoney(order.total),
         status: order.status
       })),
       {
-        title: "No active orders",
-        body: "Start shopping and your live delivery timeline will appear here.",
-        action: { label: "Browse products", route: "catalog" }
+        title: getCopy("No active orders", "Babu ododi masu aiki"),
+        body: getCopy("Start shopping and your live delivery timeline will appear here.", "Fara siyayya kuma jadawalin isar da kaya naka mai rai zai bayyana a nan."),
+        action: { label: getCopy("Browse products", "Duba kaya"), route: "catalog" }
       }
     )
   })}
 
         ${renderPanel({
-    eyebrow: "Discovery",
-    title: "Recommended products",
-    action: { label: "Shop more", route: "catalog" },
+    eyebrow: getCopy("Discovery", "Bincike"),
+    title: getCopy("Recommended products", "Kayan da aka ba da shawara"),
+    action: { label: getCopy("Shop more", "Saya \u0199ari"), route: "catalog" },
     body: data.recommended.length ? `<div class="dash-product-rail">${data.recommended.map(
       (product) => `
                     <article class="dash-product-card">
@@ -3332,42 +3332,42 @@ function renderCustomerOverview(user, currentPath = "customer/overview") {
                       <b>${escapeHtml(product.price)}</b>
                     </article>
                   `
-    ).join("")}</div>` : renderEmptyState("No recommendations yet", "Search or save products to improve recommendations.", { label: "Search catalog", route: "catalog" })
+    ).join("")}</div>` : renderEmptyState(getCopy("No recommendations yet", "Babu shawara tukuna"), getCopy("Search or save products to improve recommendations.", "Nemi ko ajiye kaya don inganta shawarwari."), { label: getCopy("Search catalog", "Nemi kaya"), route: "catalog" })
   })}
 
         ${renderPanel({
-    eyebrow: "Saved shopping",
-    title: "Wishlist and cart",
+    eyebrow: getCopy("Saved shopping", "Siyayya da aka ajiye"),
+    title: getCopy("Wishlist and cart", "Jerin abubuwan da ake so da kwandon saya"),
     body: `
             <div class="dash-action-stack">
               <button class="dash-command-card" type="button" id="customerWishlistBtn">
-                <strong>Wishlist summary</strong>
-                <span>${data.wishlistCount} saved products waiting for review.</span>
+                <strong>${getCopy("Wishlist summary", "Ta\u0199aitaccen jerin abubuwan da ake so")}</strong>
+                <span>${data.wishlistCount} ${getCopy("saved products waiting for review.", "kayan da aka ajiye suna jiran duba.")}</span>
               </button>
               <button class="dash-command-card" type="button" id="customerCartBtnSecondary">
-                <strong>Cart checkout</strong>
-                <span>${data.cartCount} items - ${renderMoney(data.cartSubtotal)}</span>
+                <strong>${getCopy("Cart checkout", "Biyan ku\u0257in kwandon saya")}</strong>
+                <span>${data.cartCount} ${getCopy("items", "kaya")} - ${renderMoney(data.cartSubtotal)}</span>
               </button>
               <a class="dash-command-card" href="#customer/profile" data-route="customer/profile">
-                <strong>Profile and delivery</strong>
-                <span>Keep your address, language, and contact details current.</span>
+                <strong>${getCopy("Profile and delivery", "Bayani na sirri da isarwa")}</strong>
+                <span>${getCopy("Keep your address, language, and contact details current.", "Kiyaye adireshin ka, yare, da bayanin hul\u0257a.")}</span>
               </a>
             </div>
           `
   })}
 
         ${renderPanel({
-    eyebrow: "Recent activity",
-    title: "Purchases and notifications",
+    eyebrow: getCopy("Recent activity", "Ayyukan kwanan nan"),
+    title: getCopy("Purchases and notifications", "Siyayya da sanarwa"),
     body: `
             ${renderMiniRows(
       data.recentPurchases.slice(0, 3).map((order) => ({
         title: order.id,
-        meta: `${formatDate(order.createdAt)} - payment ${order.paymentStatus}`,
+        meta: `${formatDate(order.createdAt)} - ${getCopy("payment", "biya")} ${order.paymentStatus}`,
         value: renderMoney(order.total),
         status: order.status
       })),
-      { title: "No purchases yet", body: "Completed orders will appear here for easy reordering." }
+      { title: getCopy("No purchases yet", "Babu siyayya tukuna"), body: getCopy("Completed orders will appear here for easy reordering.", "Ododi da aka kammala za su bayyana a nan don sake oda cikin sau\u0199i.") }
     )}
             <div class="dash-notification-stack">
               ${data.notifications.length ? data.notifications.map(
@@ -3375,10 +3375,10 @@ function renderCustomerOverview(user, currentPath = "customer/overview") {
                           <article>
                             <strong>${escapeHtml(item.title)}</strong>
                             <span>${escapeHtml(item.message)}</span>
-                            ${item.readAt ? renderStatusBadge("read", "Read") : renderStatusBadge("unread", "Unread")}
+                            ${item.readAt ? renderStatusBadge("read", getCopy("Read", "An karanta")) : renderStatusBadge("unread", getCopy("Unread", "Ba a karanta ba"))}
                           </article>
                         `
-    ).join("") : renderEmptyState("No notifications", "Order, payment, and support updates will appear here.")}
+    ).join("") : renderEmptyState(getCopy("No notifications", "Babu sanarwa"), getCopy("Order, payment, and support updates will appear here.", "Sabuntawa na oda, biya, da tallafi za su bayyana a nan."))}
             </div>
           `
   })}
@@ -3392,16 +3392,16 @@ function renderApprovalBanner(status, note) {
   if (status === "approved") {
     return `
       <div class="dash-alert dash-alert-success">
-        <strong>Store approved</strong>
-        <span>Your products can be submitted for catalog moderation and orders can flow to this workspace.</span>
+        <strong>${getCopy("Store approved", "An amince da shago")}</strong>
+        <span>${getCopy("Your products can be submitted for catalog moderation and orders can flow to this workspace.", "Ana iya aika kayanka don duba jerin kaya kuma ododi za su iya zuwa wannan wurin aiki.")}</span>
       </div>
     `;
   }
   const rejected = status === "rejected";
   return `
     <div class="dash-alert ${rejected ? "dash-alert-danger" : "dash-alert-warning"}">
-      <strong>${rejected ? "Store needs attention" : "Store approval pending"}</strong>
-      <span>${escapeHtml(note || (rejected ? "Review your business details and contact support before resubmitting." : "You can prepare products, but publishing is limited until admin approval."))}</span>
+      <strong>${rejected ? getCopy("Store needs attention", "Shago yana bu\u0199atar kulawa") : getCopy("Store approval pending", "Amincewa da shago na jira")}</strong>
+      <span>${escapeHtml(note || (rejected ? getCopy("Review your business details and contact support before resubmitting.", "Duba bayanan kasuwancinka ka tuntubi tallafi kafin sake aika.") : getCopy("You can prepare products, but publishing is limited until admin approval.", "Kana iya shirya kaya, amma buga yana iyakantacce har admin ya amince.")))}</span>
     </div>
   `;
 }
@@ -3410,12 +3410,12 @@ function renderVendorOverview(user, currentPath = "vendor/overview") {
   return `
     <div class="dash-shell dash-shell-vendor">
       ${renderDashboardHeader({
-    eyebrow: "Vendor workspace",
+    eyebrow: getCopy("Vendor workspace", "Wurin aiki na dillali"),
     title: data.businessName,
-    description: "Manage products, inventory, orders, revenue, payouts, reviews, analytics, and store readiness.",
+    description: getCopy("Manage products, inventory, orders, revenue, payouts, reviews, analytics, and store readiness.", "Kula da kaya, ajiya, ododi, ku\u0257in shiga, biyan ku\u0257i, ra'ayoyi, nazari, da shirye-shiryen shago."),
     actions: [
-      { label: "Add product", href: "#vendorProductForm" },
-      { label: "Request payout", route: "vendor/payouts", tone: "secondary" }
+      { label: getCopy("Add product", "Saka kaya"), href: "#vendorProductForm" },
+      { label: getCopy("Request payout", "Neman biya"), route: "vendor/payouts", tone: "secondary" }
     ]
   })}
 
@@ -3423,7 +3423,7 @@ function renderVendorOverview(user, currentPath = "vendor/overview") {
 
       <div class="vendor-dash-header dash-hidden-compat">
         <div class="vendor-dash-title">
-          <p class="eyebrow">Vendor workspace</p>
+          <p class="eyebrow">${getCopy("Vendor workspace", "Wurin aiki na dillali")}</p>
           <h2 id="vendorDashBusinessName">${escapeHtml(data.businessName)}</h2>
         </div>
         <span class="vendor-status-badge" id="vendorStatusBadge" data-status="${escapeHtml(data.approvalStatus)}">${escapeHtml(data.approvalStatus)}</span>
@@ -3432,104 +3432,104 @@ function renderVendorOverview(user, currentPath = "vendor/overview") {
       ${renderApprovalBanner(data.approvalStatus, data.approvalNote)}
 
       ${renderStatGrid([
-    { label: "Total sales", value: renderMoney(data.paidSales), detail: "Paid order value", tone: "success" },
-    { label: "Pending orders", value: data.pendingOrders.length, detail: `${data.orders.length} total orders`, tone: "warning" },
-    { label: "Low stock", value: data.lowStock.length, detail: "Products at 3 or fewer units", tone: data.lowStock.length ? "danger" : "neutral" },
-    { label: "Available payout", value: renderMoney(data.wallet?.availableBalance), detail: `${renderMoney(data.wallet?.pendingBalance)} pending`, tone: "info" }
+    { label: getCopy("Total sales", "Jimillar siyarwa"), value: renderMoney(data.paidSales), detail: getCopy("Paid order value", "Darajar oda da aka biya"), tone: "success" },
+    { label: getCopy("Pending orders", "Ododi da ke jira"), value: data.pendingOrders.length, detail: `${data.orders.length} ${getCopy("total orders", "jimillar ododi")}`, tone: "warning" },
+    { label: getCopy("Low stock", "\u0198arancin ajiya"), value: data.lowStock.length, detail: getCopy("Products at 3 or fewer units", "Kaya da ke da na\xFAra 3 ko \u0199asa da haka"), tone: data.lowStock.length ? "danger" : "neutral" },
+    { label: getCopy("Available payout", "Biya da ake da shi"), value: renderMoney(data.wallet?.availableBalance), detail: `${renderMoney(data.wallet?.pendingBalance)} ${getCopy("pending", "jira")}`, tone: "info" }
   ])}
 
       <div class="dash-overview-grid">
         ${renderPanel({
-    eyebrow: "Fulfillment",
-    title: "Recent orders",
-    action: { label: "Orders", route: "vendor/orders" },
+    eyebrow: getCopy("Fulfillment", "Cika oda"),
+    title: getCopy("Recent orders", "Ododi na kwanan nan"),
+    action: { label: getCopy("Orders", "Ododi"), route: "vendor/orders" },
     body: renderMiniRows(
       data.orders.slice(0, 6).map((order) => ({
         title: order.id,
-        meta: `${formatDate(order.createdAt)} - payment ${order.paymentStatus}`,
+        meta: `${formatDate(order.createdAt)} - ${getCopy("payment", "biya")} ${order.paymentStatus}`,
         value: renderMoney(order.total),
         status: order.status
       })),
-      { title: "No vendor orders yet", body: "New paid and pending orders will appear here when customers buy your products." }
+      { title: getCopy("No vendor orders yet", "Babu ododi na dillali tukuna"), body: getCopy("New paid and pending orders will appear here when customers buy your products.", "Ododi sabbi da wa\u0257anda aka biya da wa\u0257anda ke jira za su bayyana a nan sa'ad da kwastoma suka sayi kayanka.") }
     )
   })}
 
         ${renderPanel({
-    eyebrow: "Inventory",
-    title: "Low stock products",
-    action: { label: "Inventory", route: "vendor/inventory" },
+    eyebrow: getCopy("Inventory", "Ajiya"),
+    title: getCopy("Low stock products", "Kaya da \u0199arancin ajiya"),
+    action: { label: getCopy("Inventory", "Ajiya"), route: "vendor/inventory" },
     body: renderMiniRows(
       data.lowStock.slice(0, 5).map((product) => ({
         title: getLocalizedValue(product.name),
         meta: productToMiniMeta(product),
         status: (product.quantityAvailable ?? 0) === 0 ? "out_of_stock" : "low_stock"
       })),
-      { title: "Inventory is healthy", body: "Products with low or empty stock will be highlighted here." }
+      { title: getCopy("Inventory is healthy", "Ajiya tana cikin lafiya"), body: getCopy("Products with low or empty stock will be highlighted here.", "Kaya da ke da \u0199arancin ajiya ko babu za a nuna su a nan.") }
     )
   })}
 
         ${renderPanel({
-    eyebrow: "Catalog",
-    title: "Top products",
-    action: { label: "Products", route: "vendor/products" },
+    eyebrow: getCopy("Catalog", "Jerin kaya"),
+    title: getCopy("Top products", "Kayan da suka fi"),
+    action: { label: getCopy("Products", "Kaya"), route: "vendor/products" },
     body: renderMiniRows(
       data.topProducts.map((product) => ({
         title: getLocalizedValue(product.name),
         meta: productToMiniMeta(product),
         status: product.moderationStatus ?? product.listingStatus ?? "active"
       })),
-      { title: "No products yet", body: "Add your first product with price, stock, image, and bilingual description." }
+      { title: getCopy("No products yet", "Babu kaya tukuna"), body: getCopy("Add your first product with price, stock, image, and bilingual description.", "\u0198ara kayan farko tare da farashin, ajiya, hoto, da bayani mai harsuna biyu.") }
     )
   })}
 
         ${renderPanel({
-    eyebrow: "Payouts",
-    title: "Wallet and settlement",
-    action: { label: "Payouts", route: "vendor/payouts" },
+    eyebrow: getCopy("Payouts", "Biyan ku\u0257i"),
+    title: getCopy("Wallet and settlement", "Walat da tantancewa"),
+    action: { label: getCopy("Payouts", "Biyan ku\u0257i"), route: "vendor/payouts" },
     body: `
             <div class="dash-money-stack">
-              <article><span>Available</span><strong>${renderMoney(data.wallet?.availableBalance)}</strong></article>
-              <article><span>Pending</span><strong>${renderMoney(data.wallet?.pendingBalance)}</strong></article>
-              <article><span>Commission paid</span><strong>${renderMoney(data.wallet?.totalCommission)}</strong></article>
+              <article><span>${getCopy("Available", "Da ake da shi")}</span><strong>${renderMoney(data.wallet?.availableBalance)}</strong></article>
+              <article><span>${getCopy("Pending", "Jira")}</span><strong>${renderMoney(data.wallet?.pendingBalance)}</strong></article>
+              <article><span>${getCopy("Commission paid", "Kwamiti da aka biya")}</span><strong>${renderMoney(data.wallet?.totalCommission)}</strong></article>
             </div>
             ${data.payouts.length ? renderMiniRows(
       data.payouts.slice(0, 3).map((payout) => ({
         title: payout.id,
-        meta: `${payout.bankName ?? "Bank"} - ${payout.requestedAt ? formatDate(payout.requestedAt) : "requested"}`,
+        meta: `${payout.bankName ?? getCopy("Bank", "Banki")} - ${payout.requestedAt ? formatDate(payout.requestedAt) : getCopy("requested", "an nema")}`,
         value: renderMoney(payout.amount),
         status: payout.status
       })),
-      { title: "No payout requests", body: "Request payouts once your available balance is ready." }
-    ) : renderEmptyState("No payout requests", "Settlement requests and admin decisions will appear here.")}
+      { title: getCopy("No payout requests", "Babu bu\u0199atun biya"), body: getCopy("Request payouts once your available balance is ready.", "Nemi biyan ku\u0257i da zarar ku\u0257in da ake da shi ya shirya.") }
+    ) : renderEmptyState(getCopy("No payout requests", "Babu bu\u0199atun biya"), getCopy("Settlement requests and admin decisions will appear here.", "Bu\u0199atun tantancewa da yanke shawara na admin za su bayyana a nan."))}
           `
   })}
 
         ${renderPanel({
-    eyebrow: "Feedback",
-    title: "Latest reviews",
-    action: { label: "Reviews", route: "vendor/reviews" },
+    eyebrow: getCopy("Feedback", "Ra'ayi"),
+    title: getCopy("Latest reviews", "Ra'ayoyi na kwanan nan"),
+    action: { label: getCopy("Reviews", "Ra'ayoyi"), route: "vendor/reviews" },
     body: renderMiniRows(
       data.reviews.map((review) => ({
-        title: `${review.rating}/5 - ${review.reviewerName ?? "Customer"}`,
+        title: `${review.rating}/5 - ${review.reviewerName ?? getCopy("Customer", "Kwastoma")}`,
         meta: review.comment,
         status: review.hidden ? "hidden" : "visible"
       })),
-      { title: "No reviews yet", body: "Customer reviews will help you monitor quality and trust." }
+      { title: getCopy("No reviews yet", "Babu ra'ayoyi tukuna"), body: getCopy("Customer reviews will help you monitor quality and trust.", "Ra'ayoyin kwastoma za su taimaka maka ka sa ido kan inganci da amana.") }
     )
   })}
 
         ${renderPanel({
-    eyebrow: "Manage",
-    title: "Product operations",
+    eyebrow: getCopy("Manage", "Sarrafa"),
+    title: getCopy("Product operations", "Ayyukan kaya"),
     className: "dash-panel-wide",
     body: `
             <div class="vendor-product-manager dash-embedded-manager" aria-labelledby="vendor-products-title">
               <div class="vendor-product-heading">
                 <div>
-                  <span>Seller catalog</span>
-                  <h3 id="vendor-products-title">Add and manage products</h3>
+                  <span>${getCopy("Seller catalog", "Jerin kayan mai siyarwa")}</span>
+                  <h3 id="vendor-products-title">${getCopy("Add and manage products", "\u0198ara da sarrafa kaya")}</h3>
                 </div>
-                <p>Products are submitted for admin moderation before appearing in the public catalog.</p>
+                <p>${getCopy("Products are submitted for admin moderation before appearing in the public catalog.", "Ana aika kaya don duba admin kafin su bayyana a cikin jerin kayan jama'a.")}</p>
               </div>
               <div class="vendor-product-gate" id="vendorProductGate" role="status" aria-live="polite"></div>
               <form class="vendor-product-form" id="vendorProductForm" novalidate>
@@ -3550,8 +3550,8 @@ function renderVendorOverview(user, currentPath = "vendor/overview") {
   })}
 
         ${renderPanel({
-    eyebrow: "Compatibility",
-    title: "Order queue and notifications",
+    eyebrow: getCopy("Compatibility", "Daidaitawa"),
+    title: getCopy("Order queue and notifications", "Layin oda da sanarwa"),
     className: "dash-panel-wide",
     body: `<div class="vendor-commerce-list" id="vendorCommerceList" aria-live="polite"></div>`
   })}
@@ -3569,49 +3569,49 @@ function renderAdminOverview(currentPath = "admin/overview") {
   return `
     <div class="dash-shell dash-shell-admin">
       ${renderDashboardHeader({
-    eyebrow: "Marketplace control room",
-    title: "Admin dashboard",
-    description: "Control users, vendors, products, approvals, orders, payments, disputes, categories, reports, audit logs, and system health.",
+    eyebrow: getCopy("Marketplace control room", "Cibiyar kula da kasuwa"),
+    title: getCopy("Admin dashboard", "Allon admin"),
+    description: getCopy("Control users, vendors, products, approvals, orders, payments, disputes, categories, reports, audit logs, and system health.", "Kula da masu amfani, dillalai, kaya, amincewa, ododi, biyan ku\u0257i, rikice-rikice, rukunai, rahotanni, tarihin aiki, da lafiyar tsarin."),
     actions: [
-      { label: "Vendor approvals", route: "admin/vendors" },
-      { label: "System health", route: "admin/system-health", tone: "secondary" }
+      { label: getCopy("Vendor approvals", "Amincewa da dillalai"), route: "admin/vendors" },
+      { label: getCopy("System health", "Lafiyar tsarin"), route: "admin/system-health", tone: "secondary" }
     ]
   })}
 
       ${renderRoleDashboardNav("admin", currentPath)}
 
       ${renderStatGrid([
-    { label: "Total users", value: data.counts.totalUsers, detail: "Registered accounts", tone: "info" },
-    { label: "Active vendors", value: data.counts.activeVendors, detail: `${data.counts.pendingVendorApprovals} pending vendor approvals`, tone: "success" },
-    { label: "Pending approvals", value: data.counts.pendingVendorApprovals + data.counts.pendingProductApprovals, detail: "Vendor and product queues", tone: "warning" },
-    { label: "Total orders", value: data.counts.totalOrders, detail: `${renderMoney(data.revenue.total)} GMV`, tone: "neutral" },
-    { label: "Revenue", value: renderMoney(data.revenue.paid), detail: `${renderMoney(data.revenue.commission)} commission`, tone: "success" },
-    { label: "Payment issues", value: data.counts.failedPayments, detail: `${pendingPayments.length} pending payments`, tone: data.counts.failedPayments ? "danger" : "neutral" },
-    { label: "Disputes", value: data.counts.disputes, detail: "Requires dispute endpoint", tone: "neutral" },
-    { label: "System alerts", value: data.counts.systemAlerts, detail: "Health checks pending", tone: "neutral" }
+    { label: getCopy("Total users", "Jimillar masu amfani"), value: data.counts.totalUsers, detail: getCopy("Registered accounts", "Asusun da aka yi rajista"), tone: "info" },
+    { label: getCopy("Active vendors", "Dillalan da ke aiki"), value: data.counts.activeVendors, detail: `${data.counts.pendingVendorApprovals} ${getCopy("pending vendor approvals", "amincewa da dillalai ke jira")}`, tone: "success" },
+    { label: getCopy("Pending approvals", "Amincewa da ke jira"), value: data.counts.pendingVendorApprovals + data.counts.pendingProductApprovals, detail: getCopy("Vendor and product queues", "Layukan dillalai da kaya"), tone: "warning" },
+    { label: getCopy("Total orders", "Jimillar ododi"), value: data.counts.totalOrders, detail: `${renderMoney(data.revenue.total)} GMV`, tone: "neutral" },
+    { label: getCopy("Revenue", "Ku\u0257in shiga"), value: renderMoney(data.revenue.paid), detail: `${renderMoney(data.revenue.commission)} ${getCopy("commission", "kwamiti")}`, tone: "success" },
+    { label: getCopy("Payment issues", "Matsalolin biya"), value: data.counts.failedPayments, detail: `${pendingPayments.length} ${getCopy("pending payments", "biyan ku\u0257i da ke jira")}`, tone: data.counts.failedPayments ? "danger" : "neutral" },
+    { label: getCopy("Disputes", "Rikice-rikice"), value: data.counts.disputes, detail: getCopy("Requires dispute endpoint", "Ana bu\u0199atar hanyar rikice-rikice"), tone: "neutral" },
+    { label: getCopy("System alerts", "Garga\u0257in tsarin"), value: data.counts.systemAlerts, detail: getCopy("Health checks pending", "Duba lafiyar tsarin na jira"), tone: "neutral" }
   ])}
 
       <div class="dash-overview-grid">
         ${renderPanel({
-    eyebrow: "Approvals",
-    title: "Priority queues",
-    action: { label: "Review vendors", route: "admin/vendors" },
+    eyebrow: getCopy("Approvals", "Amincewa"),
+    title: getCopy("Priority queues", "Layukan da suka fi muhimmanci"),
+    action: { label: getCopy("Review vendors", "Duba dillalai"), route: "admin/vendors" },
     body: `
             <div class="dash-queue-grid">
               <article>
-                <span>Vendor approvals</span>
+                <span>${getCopy("Vendor approvals", "Amincewa da dillalai")}</span>
                 <strong>${data.counts.pendingVendorApprovals}</strong>
-                <small>New sellers waiting for review</small>
+                <small>${getCopy("New sellers waiting for review", "Sabbin masu siyarwa na jiran duba")}</small>
               </article>
               <article>
-                <span>Product moderation</span>
+                <span>${getCopy("Product moderation", "Duba kayan")}</span>
                 <strong>${data.counts.pendingProductApprovals}</strong>
-                <small>Listings waiting for catalog approval</small>
+                <small>${getCopy("Listings waiting for catalog approval", "Kayan da ke jiran amincewa a cikin jerin")}</small>
               </article>
               <article>
-                <span>Payout requests</span>
+                <span>${getCopy("Payout requests", "Bu\u0199atun biya")}</span>
                 <strong>${data.payouts.filter((payout) => payout.status === "pending").length}</strong>
-                <small>Vendor settlement decisions</small>
+                <small>${getCopy("Vendor settlement decisions", "Yanke shawara kan biyan dillalai")}</small>
               </article>
             </div>
             <div class="dash-legacy-queues">
@@ -3622,103 +3622,103 @@ function renderAdminOverview(currentPath = "admin/overview") {
   })}
 
         ${renderPanel({
-    eyebrow: "Finance",
-    title: "Revenue and payment control",
-    action: { label: "Payments", route: "admin/payments" },
+    eyebrow: getCopy("Finance", "Ku\u0257i"),
+    title: getCopy("Revenue and payment control", "Kula da ku\u0257in shiga da biyan ku\u0257i"),
+    action: { label: getCopy("Payments", "Biyan ku\u0257i"), route: "admin/payments" },
     body: `
             <div class="dash-money-stack">
-              <article><span>Paid volume</span><strong>${renderMoney(data.revenue.paid)}</strong></article>
-              <article><span>Pending</span><strong>${renderMoney(data.revenue.pending)}</strong></article>
-              <article><span>Refunded</span><strong>${renderMoney(data.revenue.refunded)}</strong></article>
-              <article><span>Commission</span><strong>${renderMoney(data.revenue.commission)}</strong></article>
+              <article><span>${getCopy("Paid volume", "Adadin da aka biya")}</span><strong>${renderMoney(data.revenue.paid)}</strong></article>
+              <article><span>${getCopy("Pending", "Jira")}</span><strong>${renderMoney(data.revenue.pending)}</strong></article>
+              <article><span>${getCopy("Refunded", "An mayar da ku\u0257i")}</span><strong>${renderMoney(data.revenue.refunded)}</strong></article>
+              <article><span>${getCopy("Commission", "Kwamiti")}</span><strong>${renderMoney(data.revenue.commission)}</strong></article>
             </div>
             ${renderMiniRows(
       [...failedPayments, ...pendingPayments].slice(0, 5).map((payment) => ({
         title: payment.reference ?? payment.id,
-        meta: `${payment.orderId} - ${payment.method ?? "payment"} - ${formatDate(payment.createdAt)}`,
+        meta: `${payment.orderId} - ${payment.method ?? getCopy("payment", "biya")} - ${formatDate(payment.createdAt)}`,
         value: renderMoney(payment.amount),
         status: payment.status
       })),
-      { title: "No payment exceptions", body: "Pending, failed, and refunded payment actions will appear here." }
+      { title: getCopy("No payment exceptions", "Babu matsalolin biya"), body: getCopy("Pending, failed, and refunded payment actions will appear here.", "Ayyukan biya da ke jira, wa\u0257anda suka gaza, da wa\u0257anda aka mayar da su za su bayyana a nan.") }
     )}
           `
   })}
 
         ${renderPanel({
-    eyebrow: "Orders",
-    title: "Recent platform activity",
-    action: { label: "Orders", route: "admin/orders" },
+    eyebrow: getCopy("Orders", "Ododi"),
+    title: getCopy("Recent platform activity", "Ayyukan dandali na kwanan nan"),
+    action: { label: getCopy("Orders", "Ododi"), route: "admin/orders" },
     body: renderMiniRows(
       recentOrders.map((order) => ({
         title: order.id,
-        meta: `${"customerName" in order ? order.customerName : order.customerPhone ?? "Customer"} - ${formatDate(order.createdAt)}`,
+        meta: `${"customerName" in order ? order.customerName : order.customerPhone ?? getCopy("Customer", "Kwastoma")} - ${formatDate(order.createdAt)}`,
         value: renderMoney(order.subtotal),
         status: order.status
       })),
-      { title: "No orders yet", body: "Customer orders will appear here once checkout starts." }
+      { title: getCopy("No orders yet", "Babu ododi tukuna"), body: getCopy("Customer orders will appear here once checkout starts.", "Ododi na kwastoma za su bayyana a nan da zarar biyan ku\u0257i ya fara.") }
     )
   })}
 
         ${renderPanel({
-    eyebrow: "Catalog",
-    title: "Products, categories, and reports",
-    action: { label: "Reports", route: "admin/reports" },
+    eyebrow: getCopy("Catalog", "Jerin kaya"),
+    title: getCopy("Products, categories, and reports", "Kaya, rukunai, da rahotanni"),
+    action: { label: getCopy("Reports", "Rahotanni"), route: "admin/reports" },
     body: `
             <div class="dash-action-stack">
               <a class="dash-command-card" href="#admin/products" data-route="admin/products">
-                <strong>Product control</strong>
-                <span>${data.counts.products} products across approved, pending, hidden, and rejected states.</span>
+                <strong>${getCopy("Product control", "Kula da kaya")}</strong>
+                <span>${data.counts.products} ${getCopy("products across approved, pending, hidden, and rejected states.", "kaya a cikin yanayin da aka amince, na jira, \u0253oye, da wa\u0257anda aka \u0199i.")}</span>
               </a>
               <a class="dash-command-card" href="#admin/categories" data-route="admin/categories">
-                <strong>Categories</strong>
-                <span>Manage bilingual taxonomy, search terms, and category merchandising.</span>
+                <strong>${getCopy("Categories", "Rukunai")}</strong>
+                <span>${getCopy("Manage bilingual taxonomy, search terms, and category merchandising.", "Kula da rarrabuwar harsuna biyu, kalmomi na bincike, da siyar da rukunai.")}</span>
               </a>
               <a class="dash-command-card" href="#admin/reports" data-route="admin/reports">
-                <strong>Growth reports</strong>
-                <span>Track customer growth, vendor growth, popular searches, and best sellers.</span>
+                <strong>${getCopy("Growth reports", "Rahotannin girma")}</strong>
+                <span>${getCopy("Track customer growth, vendor growth, popular searches, and best sellers.", "Bi diddigin girmar kwastoma, girmar dillalai, bincike na yau da kullum, da mafi siyarwa.")}</span>
               </a>
             </div>
           `
   })}
 
         ${renderPanel({
-    eyebrow: "Risk",
-    title: "Reviews, disputes, and audit trail",
-    action: { label: "Audit logs", route: "admin/audit-logs" },
+    eyebrow: getCopy("Risk", "Ha\u0257ari"),
+    title: getCopy("Reviews, disputes, and audit trail", "Ra'ayoyi, rikice-rikice, da tarihin aiki"),
+    action: { label: getCopy("Audit logs", "Tarihin aiki"), route: "admin/audit-logs" },
     body: `
             ${renderMiniRows(
       data.reviews.filter((review) => !review.hidden).slice(0, 5).map((review) => ({
-        title: `${review.rating}/5 - ${review.reviewerName ?? "Customer"}`,
+        title: `${review.rating}/5 - ${review.reviewerName ?? getCopy("Customer", "Kwastoma")}`,
         meta: review.comment,
         status: "visible"
       })),
-      { title: "No visible review risks", body: "Review moderation and dispute queues will appear here." }
+      { title: getCopy("No visible review risks", "Babu ha\u0257arin ra'ayoyi da ake gani"), body: getCopy("Review moderation and dispute queues will appear here.", "Duba ra'ayoyi da layukan rikice-rikice za su bayyana a nan.") }
     )}
             <div class="dash-system-list">
-              <article><strong>Disputes</strong><span>Endpoint required: /admin/disputes</span></article>
-              <article><strong>Audit logs</strong><span>Endpoint required: /admin/audit-logs</span></article>
+              <article><strong>${getCopy("Disputes", "Rikice-rikice")}</strong><span>${getCopy("Endpoint required: /admin/disputes", "Ana bu\u0199atar hanyar: /admin/disputes")}</span></article>
+              <article><strong>${getCopy("Audit logs", "Tarihin aiki")}</strong><span>${getCopy("Endpoint required: /admin/audit-logs", "Ana bu\u0199atar hanyar: /admin/audit-logs")}</span></article>
             </div>
           `
   })}
 
         ${renderPanel({
-    eyebrow: "Infrastructure",
-    title: "System health",
-    action: { label: "Health", route: "admin/system-health" },
+    eyebrow: getCopy("Infrastructure", "Ababen more rayuwa"),
+    title: getCopy("System health", "Lafiyar tsarin"),
+    action: { label: getCopy("Health", "Lafiya"), route: "admin/system-health" },
     body: `
             <div class="dash-health-grid">
-              <article data-state="ok"><strong>API</strong><span>Health endpoint available</span></article>
-              <article data-state="ok"><strong>Database</strong><span>Reported by /api/health</span></article>
-              <article data-state="pending"><strong>Blob storage</strong><span>Add admin health probe</span></article>
-              <article data-state="pending"><strong>Email</strong><span>Add delivery provider status</span></article>
+              <article data-state="ok"><strong>API</strong><span>${getCopy("Health endpoint available", "Hanyar lafiya tana akwai")}</span></article>
+              <article data-state="ok"><strong>${getCopy("Database", "Bayanan")}</strong><span>${getCopy("Reported by /api/health", "An ruwaito ta /api/health")}</span></article>
+              <article data-state="pending"><strong>${getCopy("Blob storage", "Ajiyar fayiloli")}</strong><span>${getCopy("Add admin health probe", "\u0198ara binciken lafiyar admin")}</span></article>
+              <article data-state="pending"><strong>${getCopy("Email", "Imel")}</strong><span>${getCopy("Add delivery provider status", "\u0198ara matsayin mai isar da imel")}</span></article>
             </div>
-            ${renderEmptyState("No critical alerts", "System alerts will show here once health probes and logging are connected.")}
+            ${renderEmptyState(getCopy("No critical alerts", "Babu garga\u0257i mai mahimmanci"), getCopy("System alerts will show here once health probes and logging are connected.", "Garga\u0257in tsarin za su bayyana a nan da zarar an ha\u0257a binciken lafiya da yin log."))}
           `
   })}
 
         ${renderPanel({
-    eyebrow: "Legacy operations",
-    title: "Existing admin controls",
+    eyebrow: getCopy("Legacy operations", "Ayyukan da suka gabata"),
+    title: getCopy("Existing admin controls", "Madafun admin da ake da su"),
     className: "dash-panel-wide",
     body: `
             <div class="dash-legacy-admin-grid">
@@ -3755,6 +3755,7 @@ function setI18nLang(lang) {
 function applyLanguageToDOM(lang) {
   _lang = lang;
   document.querySelectorAll("[data-en][data-ha]").forEach((node) => {
+    if (node.matches(".sidebar-nav a, .sidebar-vendor-cta")) return;
     node.textContent = node.dataset[lang] ?? "";
   });
   document.querySelectorAll("[data-alt-en][data-alt-ha]").forEach((node) => {
@@ -3766,6 +3767,130 @@ function applyLanguageToDOM(lang) {
   document.querySelectorAll("[data-placeholder-en][data-placeholder-ha]").forEach((node) => {
     node.placeholder = lang === "en" ? node.dataset.placeholderEn ?? "" : node.dataset.placeholderHa ?? "";
   });
+}
+
+// node_modules/@vercel/analytics/dist/index.mjs
+var initQueue = () => {
+  if (window.va) return;
+  window.va = function a(...params) {
+    if (!window.vaq) window.vaq = [];
+    window.vaq.push(params);
+  };
+};
+var name = "@vercel/analytics";
+var version = "2.0.1";
+function isBrowser() {
+  return typeof window !== "undefined";
+}
+function detectEnvironment() {
+  try {
+    const env = "development";
+    if (env === "development" || env === "test") {
+      return "development";
+    }
+  } catch {
+  }
+  return "production";
+}
+function setMode(mode = "auto") {
+  if (mode === "auto") {
+    window.vam = detectEnvironment();
+    return;
+  }
+  window.vam = mode;
+}
+function getMode() {
+  const mode = isBrowser() ? window.vam : detectEnvironment();
+  return mode || "production";
+}
+function isDevelopment() {
+  return getMode() === "development";
+}
+function getScriptSrc(props) {
+  if (props.scriptSrc) {
+    return makeAbsolute(props.scriptSrc);
+  }
+  if (isDevelopment()) {
+    return "https://va.vercel-scripts.com/v1/script.debug.js";
+  }
+  if (props.basePath) {
+    return makeAbsolute(`${props.basePath}/insights/script.js`);
+  }
+  return "/_vercel/insights/script.js";
+}
+function loadProps(explicitProps, confString) {
+  var _a;
+  let props = explicitProps;
+  if (confString) {
+    try {
+      props = {
+        ...(_a = JSON.parse(confString)) == null ? void 0 : _a.analytics,
+        ...explicitProps
+      };
+    } catch {
+    }
+  }
+  setMode(props.mode);
+  const dataset = {
+    sdkn: name + (props.framework ? `/${props.framework}` : ""),
+    sdkv: version
+  };
+  if (props.disableAutoTrack) {
+    dataset.disableAutoTrack = "1";
+  }
+  if (props.viewEndpoint) {
+    dataset.viewEndpoint = makeAbsolute(props.viewEndpoint);
+  }
+  if (props.eventEndpoint) {
+    dataset.eventEndpoint = makeAbsolute(props.eventEndpoint);
+  }
+  if (props.sessionEndpoint) {
+    dataset.sessionEndpoint = makeAbsolute(props.sessionEndpoint);
+  }
+  if (isDevelopment() && props.debug === false) {
+    dataset.debug = "false";
+  }
+  if (props.dsn) {
+    dataset.dsn = props.dsn;
+  }
+  if (props.endpoint) {
+    dataset.endpoint = props.endpoint;
+  } else if (props.basePath) {
+    dataset.endpoint = makeAbsolute(`${props.basePath}/insights`);
+  }
+  return {
+    beforeSend: props.beforeSend,
+    src: getScriptSrc(props),
+    dataset
+  };
+}
+function makeAbsolute(url) {
+  return url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/") ? url : `/${url}`;
+}
+function inject(props = {
+  debug: true
+}, confString) {
+  var _a;
+  if (!isBrowser()) return;
+  const { beforeSend, src, dataset } = loadProps(props, confString);
+  initQueue();
+  if (beforeSend) {
+    (_a = window.va) == null ? void 0 : _a.call(window, "beforeSend", beforeSend);
+  }
+  if (document.head.querySelector(`script[src*="${src}"]`)) return;
+  const script = document.createElement("script");
+  script.src = src;
+  for (const [key, value] of Object.entries(dataset)) {
+    script.dataset[key] = value;
+  }
+  script.defer = true;
+  script.onerror = () => {
+    const errorMessage = isDevelopment() ? "Please check if any ad blockers are enabled and try again." : "Be sure to enable Web Analytics for your project and deploy again. See https://vercel.com/docs/analytics/quickstart for more information.";
+    console.log(
+      `[Vercel Web Analytics] Failed to load script from ${src}. ${errorMessage}`
+    );
+  };
+  document.head.appendChild(script);
 }
 
 // src/frontend/app.ts
@@ -4021,7 +4146,7 @@ function renderProductPage(productId) {
     return;
   }
   const lang = state.language;
-  const name = escapeHtml(product.name[lang]);
+  const name2 = escapeHtml(product.name[lang]);
   const vendor = escapeHtml(product.vendor);
   const price = escapeHtml(product.price);
   const area = escapeHtml(product.area);
@@ -4037,20 +4162,20 @@ function renderProductPage(productId) {
       </div>
       <a href="#v/${encodeURIComponent(product.vendor)}" data-route-vendor="${encodeURIComponent(product.vendor)}" class="pdp-vendor-link">${getCopy("Visit store \u2192", "Ziyarci shago \u2192")}</a>
     </div>` : "";
-  const imgHtml = product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${name}" class="pdp-main-img" />` : `<div class="pdp-main-img pdp-img-placeholder" style="--accent:${product.accent ?? "#176b4d"}">${escapeHtml(product.subcategory[lang])}</div>`;
+  const imgHtml = product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${name2}" class="pdp-main-img" />` : `<div class="pdp-main-img pdp-img-placeholder" style="--accent:${product.accent ?? "#176b4d"}">${escapeHtml(product.subcategory[lang])}</div>`;
   section.innerHTML = `
     <div class="pdp-breadcrumb">
       <a href="#home" data-route="home">${getCopy("Home", "Gida")}</a>
       <span aria-hidden="true">\u203A</span>
       <a href="#catalog" data-route="catalog">${getCopy("Browse", "Bincika")}</a>
       <span aria-hidden="true">\u203A</span>
-      <strong>${name}</strong>
+      <strong>${name2}</strong>
     </div>
     <div class="pdp-body">
       <div class="pdp-gallery">${imgHtml}</div>
       <div class="pdp-info">
         <small class="pdp-vendor-meta">${vendor} \xB7 ${area}</small>
-        <h1 class="pdp-name">${name}</h1>
+        <h1 class="pdp-name">${name2}</h1>
         <div class="pdp-price">${price}</div>
         ${desc}
         <div class="pdp-stock">${getCopy("Stock", "Adadi")}: ${escapeHtml(String(product.quantityAvailable ?? getCopy("Available", "Akwai")))}</div>
@@ -4229,9 +4354,6 @@ function setLanguage(language) {
   );
   setI18nLang(language);
   applyLanguageToDOM(language);
-  document.querySelectorAll(".sidebar-nav a[data-en][data-ha], .sidebar-vendor-cta[data-en][data-ha]").forEach((node) => {
-    node.textContent = node.dataset[language] || "";
-  });
   setActiveLanguageButtons(language);
   syncSidebarLabels();
   if (state.lastQuery) {
@@ -4242,6 +4364,8 @@ function setLanguage(language) {
     renderCatalogPreview();
   }
   renderLanguageSensitiveViews();
+  applyLanguageToDOM(language);
+  syncSidebarLabels();
 }
 function handleVendorRequestSubmit(event) {
   event.preventDefault();
@@ -4724,7 +4848,7 @@ async function handleVendorProductSubmit(event) {
   }
   const data = new FormData(form);
   const image = data.get("productImage");
-  const name = sanitizePlainText(String(data.get("productName") || ""), 90);
+  const name2 = sanitizePlainText(String(data.get("productName") || ""), 90);
   const nameHa = sanitizePlainText(String(data.get("productNameHa") || ""), 90);
   const descriptionEn = sanitizePlainText(String(data.get("descriptionEn") || ""), 240);
   const descriptionHa = sanitizePlainText(String(data.get("descriptionHa") || ""), 240);
@@ -4732,7 +4856,7 @@ async function handleVendorProductSubmit(event) {
   const rawPriceStr = String(data.get("productValue") ?? "").replace(/[^\d.]/g, "");
   const priceValue = rawPriceStr ? Number(rawPriceStr) : 0;
   const quantityAvailable = Number(data.get("quantityAvailable") || 0);
-  if (name.length < 2) {
+  if (name2.length < 2) {
     setVendorProductMessage(message, getCopy("Enter a product name.", "Shigar da sunan kaya."), "error");
     return;
   }
@@ -4771,7 +4895,7 @@ async function handleVendorProductSubmit(event) {
       vendor: vendor?.businessName || user.name,
       vendorPhone: user.phone,
       area: vendor?.area || "Kano",
-      name,
+      name: name2,
       nameHa,
       descriptionEn,
       descriptionHa,
@@ -5312,3 +5436,4 @@ scheduleEnhancements(() => {
     initFrontendEnhancements();
   });
 });
+inject();

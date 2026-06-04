@@ -61,6 +61,7 @@ import { renderCustomerOverview } from "./pages/customer/overview";
 import { renderVendorOverview } from "./pages/vendor/overview";
 import { renderAdminOverview } from "./pages/admin/overview";
 import { applyLanguageToDOM, setI18nLang } from "../i18n";
+import { inject as injectAnalytics } from "@vercel/analytics";
 
 const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup", "sell"]);
 const AUTH_ROUTES = new Set(["login", "signup"]);
@@ -570,13 +571,9 @@ function setLanguage(language: Language): void {
   );
 
   // Use the i18n dictionary to apply language to all data-en/data-ha elements
+  // Sidebar nav links are excluded — syncSidebarLabels() handles them separately
   setI18nLang(language);
   applyLanguageToDOM(language);
-
-  // Sidebar nav items use their own label system — skip them in the bulk walk
-  document.querySelectorAll<HTMLElement>(".sidebar-nav a[data-en][data-ha], .sidebar-vendor-cta[data-en][data-ha]").forEach((node) => {
-    node.textContent = node.dataset[language] || "";
-  });
 
   setActiveLanguageButtons(language);
   syncSidebarLabels();
@@ -590,6 +587,9 @@ function setLanguage(language: Language): void {
   }
 
   renderLanguageSensitiveViews();
+  // Re-apply after re-render: dashboards inject new DOM nodes that need translation
+  applyLanguageToDOM(language);
+  syncSidebarLabels();
 }
 
 // — Vendor form —
@@ -1859,3 +1859,6 @@ scheduleEnhancements(() => {
     initFrontendEnhancements();
   });
 });
+
+// Vercel Analytics — tracks page views and Web Vitals
+injectAnalytics();

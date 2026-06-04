@@ -8,7 +8,7 @@ import {
   renderStatGrid,
 } from "../../components/dashboard/primitives";
 import { renderRoleDashboardNav } from "../../components/dashboard/role-nav";
-import { formatDate } from "../../utils";
+import { formatDate, getCopy } from "../../utils";
 
 export function renderAdminOverview(currentPath = "admin/overview"): string {
   const data = getAdminDashboardData();
@@ -19,49 +19,49 @@ export function renderAdminOverview(currentPath = "admin/overview"): string {
   return `
     <div class="dash-shell dash-shell-admin">
       ${renderDashboardHeader({
-        eyebrow: "Marketplace control room",
-        title: "Admin dashboard",
-        description: "Control users, vendors, products, approvals, orders, payments, disputes, categories, reports, audit logs, and system health.",
+        eyebrow: getCopy("Marketplace control room", "Cibiyar kula da kasuwa"),
+        title: getCopy("Admin dashboard", "Allon admin"),
+        description: getCopy("Control users, vendors, products, approvals, orders, payments, disputes, categories, reports, audit logs, and system health.", "Kula da masu amfani, dillalai, kaya, amincewa, ododi, biyan kuɗi, rikice-rikice, rukunai, rahotanni, tarihin aiki, da lafiyar tsarin."),
         actions: [
-          { label: "Vendor approvals", route: "admin/vendors" },
-          { label: "System health", route: "admin/system-health", tone: "secondary" },
+          { label: getCopy("Vendor approvals", "Amincewa da dillalai"), route: "admin/vendors" },
+          { label: getCopy("System health", "Lafiyar tsarin"), route: "admin/system-health", tone: "secondary" },
         ],
       })}
 
       ${renderRoleDashboardNav("admin", currentPath)}
 
       ${renderStatGrid([
-        { label: "Total users", value: data.counts.totalUsers, detail: "Registered accounts", tone: "info" },
-        { label: "Active vendors", value: data.counts.activeVendors, detail: `${data.counts.pendingVendorApprovals} pending vendor approvals`, tone: "success" },
-        { label: "Pending approvals", value: data.counts.pendingVendorApprovals + data.counts.pendingProductApprovals, detail: "Vendor and product queues", tone: "warning" },
-        { label: "Total orders", value: data.counts.totalOrders, detail: `${renderMoney(data.revenue.total)} GMV`, tone: "neutral" },
-        { label: "Revenue", value: renderMoney(data.revenue.paid), detail: `${renderMoney(data.revenue.commission)} commission`, tone: "success" },
-        { label: "Payment issues", value: data.counts.failedPayments, detail: `${pendingPayments.length} pending payments`, tone: data.counts.failedPayments ? "danger" : "neutral" },
-        { label: "Disputes", value: data.counts.disputes, detail: "Requires dispute endpoint", tone: "neutral" },
-        { label: "System alerts", value: data.counts.systemAlerts, detail: "Health checks pending", tone: "neutral" },
+        { label: getCopy("Total users", "Jimillar masu amfani"), value: data.counts.totalUsers, detail: getCopy("Registered accounts", "Asusun da aka yi rajista"), tone: "info" },
+        { label: getCopy("Active vendors", "Dillalan da ke aiki"), value: data.counts.activeVendors, detail: `${data.counts.pendingVendorApprovals} ${getCopy("pending vendor approvals", "amincewa da dillalai ke jira")}`, tone: "success" },
+        { label: getCopy("Pending approvals", "Amincewa da ke jira"), value: data.counts.pendingVendorApprovals + data.counts.pendingProductApprovals, detail: getCopy("Vendor and product queues", "Layukan dillalai da kaya"), tone: "warning" },
+        { label: getCopy("Total orders", "Jimillar ododi"), value: data.counts.totalOrders, detail: `${renderMoney(data.revenue.total)} GMV`, tone: "neutral" },
+        { label: getCopy("Revenue", "Kuɗin shiga"), value: renderMoney(data.revenue.paid), detail: `${renderMoney(data.revenue.commission)} ${getCopy("commission", "kwamiti")}`, tone: "success" },
+        { label: getCopy("Payment issues", "Matsalolin biya"), value: data.counts.failedPayments, detail: `${pendingPayments.length} ${getCopy("pending payments", "biyan kuɗi da ke jira")}`, tone: data.counts.failedPayments ? "danger" : "neutral" },
+        { label: getCopy("Disputes", "Rikice-rikice"), value: data.counts.disputes, detail: getCopy("Requires dispute endpoint", "Ana buƙatar hanyar rikice-rikice"), tone: "neutral" },
+        { label: getCopy("System alerts", "Gargaɗin tsarin"), value: data.counts.systemAlerts, detail: getCopy("Health checks pending", "Duba lafiyar tsarin na jira"), tone: "neutral" },
       ])}
 
       <div class="dash-overview-grid">
         ${renderPanel({
-          eyebrow: "Approvals",
-          title: "Priority queues",
-          action: { label: "Review vendors", route: "admin/vendors" },
+          eyebrow: getCopy("Approvals", "Amincewa"),
+          title: getCopy("Priority queues", "Layukan da suka fi muhimmanci"),
+          action: { label: getCopy("Review vendors", "Duba dillalai"), route: "admin/vendors" },
           body: `
             <div class="dash-queue-grid">
               <article>
-                <span>Vendor approvals</span>
+                <span>${getCopy("Vendor approvals", "Amincewa da dillalai")}</span>
                 <strong>${data.counts.pendingVendorApprovals}</strong>
-                <small>New sellers waiting for review</small>
+                <small>${getCopy("New sellers waiting for review", "Sabbin masu siyarwa na jiran duba")}</small>
               </article>
               <article>
-                <span>Product moderation</span>
+                <span>${getCopy("Product moderation", "Duba kayan")}</span>
                 <strong>${data.counts.pendingProductApprovals}</strong>
-                <small>Listings waiting for catalog approval</small>
+                <small>${getCopy("Listings waiting for catalog approval", "Kayan da ke jiran amincewa a cikin jerin")}</small>
               </article>
               <article>
-                <span>Payout requests</span>
+                <span>${getCopy("Payout requests", "Buƙatun biya")}</span>
                 <strong>${data.payouts.filter((payout) => payout.status === "pending").length}</strong>
-                <small>Vendor settlement decisions</small>
+                <small>${getCopy("Vendor settlement decisions", "Yanke shawara kan biyan dillalai")}</small>
               </article>
             </div>
             <div class="dash-legacy-queues">
@@ -72,106 +72,106 @@ export function renderAdminOverview(currentPath = "admin/overview"): string {
         })}
 
         ${renderPanel({
-          eyebrow: "Finance",
-          title: "Revenue and payment control",
-          action: { label: "Payments", route: "admin/payments" },
+          eyebrow: getCopy("Finance", "Kuɗi"),
+          title: getCopy("Revenue and payment control", "Kula da kuɗin shiga da biyan kuɗi"),
+          action: { label: getCopy("Payments", "Biyan kuɗi"), route: "admin/payments" },
           body: `
             <div class="dash-money-stack">
-              <article><span>Paid volume</span><strong>${renderMoney(data.revenue.paid)}</strong></article>
-              <article><span>Pending</span><strong>${renderMoney(data.revenue.pending)}</strong></article>
-              <article><span>Refunded</span><strong>${renderMoney(data.revenue.refunded)}</strong></article>
-              <article><span>Commission</span><strong>${renderMoney(data.revenue.commission)}</strong></article>
+              <article><span>${getCopy("Paid volume", "Adadin da aka biya")}</span><strong>${renderMoney(data.revenue.paid)}</strong></article>
+              <article><span>${getCopy("Pending", "Jira")}</span><strong>${renderMoney(data.revenue.pending)}</strong></article>
+              <article><span>${getCopy("Refunded", "An mayar da kuɗi")}</span><strong>${renderMoney(data.revenue.refunded)}</strong></article>
+              <article><span>${getCopy("Commission", "Kwamiti")}</span><strong>${renderMoney(data.revenue.commission)}</strong></article>
             </div>
             ${renderMiniRows(
               [...failedPayments, ...pendingPayments].slice(0, 5).map((payment) => ({
                 title: payment.reference ?? payment.id,
-                meta: `${payment.orderId} - ${payment.method ?? "payment"} - ${formatDate(payment.createdAt)}`,
+                meta: `${payment.orderId} - ${payment.method ?? getCopy("payment", "biya")} - ${formatDate(payment.createdAt)}`,
                 value: renderMoney(payment.amount),
                 status: payment.status,
               })),
-              { title: "No payment exceptions", body: "Pending, failed, and refunded payment actions will appear here." }
+              { title: getCopy("No payment exceptions", "Babu matsalolin biya"), body: getCopy("Pending, failed, and refunded payment actions will appear here.", "Ayyukan biya da ke jira, waɗanda suka gaza, da waɗanda aka mayar da su za su bayyana a nan.") }
             )}
           `,
         })}
 
         ${renderPanel({
-          eyebrow: "Orders",
-          title: "Recent platform activity",
-          action: { label: "Orders", route: "admin/orders" },
+          eyebrow: getCopy("Orders", "Ododi"),
+          title: getCopy("Recent platform activity", "Ayyukan dandali na kwanan nan"),
+          action: { label: getCopy("Orders", "Ododi"), route: "admin/orders" },
           body: renderMiniRows(
             recentOrders.map((order) => ({
               title: order.id,
-              meta: `${"customerName" in order ? order.customerName : order.customerPhone ?? "Customer"} - ${formatDate(order.createdAt)}`,
+              meta: `${"customerName" in order ? order.customerName : order.customerPhone ?? getCopy("Customer", "Kwastoma")} - ${formatDate(order.createdAt)}`,
               value: renderMoney(order.subtotal),
               status: order.status,
             })),
-            { title: "No orders yet", body: "Customer orders will appear here once checkout starts." }
+            { title: getCopy("No orders yet", "Babu ododi tukuna"), body: getCopy("Customer orders will appear here once checkout starts.", "Ododi na kwastoma za su bayyana a nan da zarar biyan kuɗi ya fara.") }
           ),
         })}
 
         ${renderPanel({
-          eyebrow: "Catalog",
-          title: "Products, categories, and reports",
-          action: { label: "Reports", route: "admin/reports" },
+          eyebrow: getCopy("Catalog", "Jerin kaya"),
+          title: getCopy("Products, categories, and reports", "Kaya, rukunai, da rahotanni"),
+          action: { label: getCopy("Reports", "Rahotanni"), route: "admin/reports" },
           body: `
             <div class="dash-action-stack">
               <a class="dash-command-card" href="#admin/products" data-route="admin/products">
-                <strong>Product control</strong>
-                <span>${data.counts.products} products across approved, pending, hidden, and rejected states.</span>
+                <strong>${getCopy("Product control", "Kula da kaya")}</strong>
+                <span>${data.counts.products} ${getCopy("products across approved, pending, hidden, and rejected states.", "kaya a cikin yanayin da aka amince, na jira, ɓoye, da waɗanda aka ƙi.")}</span>
               </a>
               <a class="dash-command-card" href="#admin/categories" data-route="admin/categories">
-                <strong>Categories</strong>
-                <span>Manage bilingual taxonomy, search terms, and category merchandising.</span>
+                <strong>${getCopy("Categories", "Rukunai")}</strong>
+                <span>${getCopy("Manage bilingual taxonomy, search terms, and category merchandising.", "Kula da rarrabuwar harsuna biyu, kalmomi na bincike, da siyar da rukunai.")}</span>
               </a>
               <a class="dash-command-card" href="#admin/reports" data-route="admin/reports">
-                <strong>Growth reports</strong>
-                <span>Track customer growth, vendor growth, popular searches, and best sellers.</span>
+                <strong>${getCopy("Growth reports", "Rahotannin girma")}</strong>
+                <span>${getCopy("Track customer growth, vendor growth, popular searches, and best sellers.", "Bi diddigin girmar kwastoma, girmar dillalai, bincike na yau da kullum, da mafi siyarwa.")}</span>
               </a>
             </div>
           `,
         })}
 
         ${renderPanel({
-          eyebrow: "Risk",
-          title: "Reviews, disputes, and audit trail",
-          action: { label: "Audit logs", route: "admin/audit-logs" },
+          eyebrow: getCopy("Risk", "Haɗari"),
+          title: getCopy("Reviews, disputes, and audit trail", "Ra'ayoyi, rikice-rikice, da tarihin aiki"),
+          action: { label: getCopy("Audit logs", "Tarihin aiki"), route: "admin/audit-logs" },
           body: `
             ${renderMiniRows(
               data.reviews
                 .filter((review) => !review.hidden)
                 .slice(0, 5)
                 .map((review) => ({
-                  title: `${review.rating}/5 - ${review.reviewerName ?? "Customer"}`,
+                  title: `${review.rating}/5 - ${review.reviewerName ?? getCopy("Customer", "Kwastoma")}`,
                   meta: review.comment,
                   status: "visible",
                 })),
-              { title: "No visible review risks", body: "Review moderation and dispute queues will appear here." }
+              { title: getCopy("No visible review risks", "Babu haɗarin ra'ayoyi da ake gani"), body: getCopy("Review moderation and dispute queues will appear here.", "Duba ra'ayoyi da layukan rikice-rikice za su bayyana a nan.") }
             )}
             <div class="dash-system-list">
-              <article><strong>Disputes</strong><span>Endpoint required: /admin/disputes</span></article>
-              <article><strong>Audit logs</strong><span>Endpoint required: /admin/audit-logs</span></article>
+              <article><strong>${getCopy("Disputes", "Rikice-rikice")}</strong><span>${getCopy("Endpoint required: /admin/disputes", "Ana buƙatar hanyar: /admin/disputes")}</span></article>
+              <article><strong>${getCopy("Audit logs", "Tarihin aiki")}</strong><span>${getCopy("Endpoint required: /admin/audit-logs", "Ana buƙatar hanyar: /admin/audit-logs")}</span></article>
             </div>
           `,
         })}
 
         ${renderPanel({
-          eyebrow: "Infrastructure",
-          title: "System health",
-          action: { label: "Health", route: "admin/system-health" },
+          eyebrow: getCopy("Infrastructure", "Ababen more rayuwa"),
+          title: getCopy("System health", "Lafiyar tsarin"),
+          action: { label: getCopy("Health", "Lafiya"), route: "admin/system-health" },
           body: `
             <div class="dash-health-grid">
-              <article data-state="ok"><strong>API</strong><span>Health endpoint available</span></article>
-              <article data-state="ok"><strong>Database</strong><span>Reported by /api/health</span></article>
-              <article data-state="pending"><strong>Blob storage</strong><span>Add admin health probe</span></article>
-              <article data-state="pending"><strong>Email</strong><span>Add delivery provider status</span></article>
+              <article data-state="ok"><strong>API</strong><span>${getCopy("Health endpoint available", "Hanyar lafiya tana akwai")}</span></article>
+              <article data-state="ok"><strong>${getCopy("Database", "Bayanan")}</strong><span>${getCopy("Reported by /api/health", "An ruwaito ta /api/health")}</span></article>
+              <article data-state="pending"><strong>${getCopy("Blob storage", "Ajiyar fayiloli")}</strong><span>${getCopy("Add admin health probe", "Ƙara binciken lafiyar admin")}</span></article>
+              <article data-state="pending"><strong>${getCopy("Email", "Imel")}</strong><span>${getCopy("Add delivery provider status", "Ƙara matsayin mai isar da imel")}</span></article>
             </div>
-            ${renderEmptyState("No critical alerts", "System alerts will show here once health probes and logging are connected.")}
+            ${renderEmptyState(getCopy("No critical alerts", "Babu gargaɗi mai mahimmanci"), getCopy("System alerts will show here once health probes and logging are connected.", "Gargaɗin tsarin za su bayyana a nan da zarar an haɗa binciken lafiya da yin log."))}
           `,
         })}
 
         ${renderPanel({
-          eyebrow: "Legacy operations",
-          title: "Existing admin controls",
+          eyebrow: getCopy("Legacy operations", "Ayyukan da suka gabata"),
+          title: getCopy("Existing admin controls", "Madafun admin da ake da su"),
           className: "dash-panel-wide",
           body: `
             <div class="dash-legacy-admin-grid">
