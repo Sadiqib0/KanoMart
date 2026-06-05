@@ -1,7 +1,11 @@
-import { createHash, pbkdf2Sync, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, pbkdf2, pbkdf2Sync, randomUUID, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+const pbkdf2Async = promisify(pbkdf2);
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
+import { Redis } from "@upstash/redis";
+import { Ratelimit } from "@upstash/ratelimit";
 import { put as blobPut } from "@vercel/blob";
 import {
   sendEmail,
@@ -76,8 +80,27 @@ let _sql;
 function db() {
   if (!_sql) {
     const url = process.env.DATABASE_URL;
-    if (!url) throw new Error("DATABASE_URL is not set");
-    _sql = neon(url);
+    if (!url) {
+      // Fail hard — never silently fall back to in-memory storage in production.
+      throw new Error(
+        "DATABASE_URL is not set. " +
+        "Set it in your Vercel project environment variables or local .env file. " +
+        "The server cannot start without a database connection."
+      );
+    }
+    _sql = postgres(url, {
+      ssl: "require",
+      // Vercel Fluid Compute can serve multiple concurrent requests on one instance,
+      // so a small pool (not 1) is correct. Neon's pooler endpoint handles the rest.
+      max: Number(process.env.DB_POOL_MAX ?? 5),
+      idle_timeout: 20,       // close idle connections after 20 s
+      connect_timeout: 10,    // fail fast rather than hanging on cold-start
+      connection: {
+        // Kill any query that runs longer than 30 s — prevents request pile-ups
+        // when a query plan degrades or a table lock is held.
+        statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 30_000),
+      },
+    });
   }
   return _sql;
 }
@@ -254,9 +277,9 @@ async function dbUpdateUser(id, fields) {
   return userFromRow(r);
 }
 
-async function dbGetAllUsers() {
+async function dbGetAllUsers({ limit = 100, offset = 0 } = {}) {
   const sql = db();
-  const rs = await sql`SELECT * FROM users ORDER BY created_at DESC`;
+  const rs = await sql`SELECT * FROM users ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
   return rs.map(userFromRow);
 }
 
@@ -291,6 +314,7 @@ async function dbDeleteSession(token) {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   await sql`DELETE FROM sessions WHERE token_hash = ${tokenHash}`;
 }
+
 
 async function dbCreateVendorApplication(app) {
   const sql = db();
@@ -330,17 +354,18 @@ async function dbGetVendorApplicationByUserId(userId) {
   return r ? r : null;
 }
 
-async function dbGetAllVendorApplications(status) {
+async function dbGetAllVendorApplications(status, { limit = 100, offset = 0 } = {}) {
   const sql = db();
   const rs = status
     ? await sql`SELECT va.*, u.display_name as user_name, u.phone as user_phone, u.email as user_email,
                        u.role as user_role, u.vendor_status as user_vendor_status
                 FROM vendor_applications va JOIN users u ON u.id = va.user_id
-                WHERE va.status = ${status} ORDER BY va.created_at DESC`
+                WHERE va.status = ${status}
+                ORDER BY va.created_at DESC LIMIT ${limit} OFFSET ${offset}`
     : await sql`SELECT va.*, u.display_name as user_name, u.phone as user_phone, u.email as user_email,
                        u.role as user_role, u.vendor_status as user_vendor_status
                 FROM vendor_applications va JOIN users u ON u.id = va.user_id
-                ORDER BY va.created_at DESC`;
+                ORDER BY va.created_at DESC LIMIT ${limit} OFFSET ${offset}`;
   return rs;
 }
 
@@ -368,29 +393,31 @@ async function dbGetProductById(productId, includeVendorPhone) {
   return productFromRow(r);
 }
 
-async function dbGetProductsForVendor(vendorUserId) {
+async function dbGetProductsForVendor(vendorUserId, { limit = 100, offset = 0 } = {}) {
   const sql = db();
   const rs = await sql`
     SELECT p.*, u.phone as vendor_phone FROM products p
     JOIN users u ON u.id = p.vendor_user_id
-    WHERE p.vendor_user_id = ${vendorUserId} ORDER BY p.created_at DESC
+    WHERE p.vendor_user_id = ${vendorUserId}
+    ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
   `;
   return rs.map(productFromRow);
 }
 
-async function dbGetPublicCatalog(category, query) {
+async function dbGetPublicCatalog(category, query, { limit = 60, offset = 0 } = {}) {
   const sql = db();
+  // Use ILIKE so pg_trgm GIN indexes apply (LOWER(col) LIKE was preventing index use).
+  const q = query ? `%${query}%` : null;
   let rs;
-  if (category && query) {
-    const q = `%${query.toLowerCase()}%`;
+  if (category && q) {
     rs = await sql`
       SELECT p.*, u.phone as vendor_phone FROM products p
       JOIN users u ON u.id = p.vendor_user_id
       WHERE p.moderation_status = 'approved' AND p.listing_status = 'active'
         AND p.category = ${category}
-        AND (LOWER(p.name_en) LIKE ${q} OR LOWER(p.name_ha) LIKE ${q}
-             OR EXISTS (SELECT 1 FROM unnest(p.tags) t WHERE t LIKE ${q}))
-      ORDER BY p.created_at DESC
+        AND (p.name_en ILIKE ${q} OR p.name_ha ILIKE ${q}
+             OR EXISTS (SELECT 1 FROM unnest(p.tags) t WHERE t ILIKE ${q}))
+      ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
     `;
   } else if (category) {
     rs = await sql`
@@ -398,38 +425,38 @@ async function dbGetPublicCatalog(category, query) {
       JOIN users u ON u.id = p.vendor_user_id
       WHERE p.moderation_status = 'approved' AND p.listing_status = 'active'
         AND p.category = ${category}
-      ORDER BY p.created_at DESC
+      ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
     `;
-  } else if (query) {
-    const q = `%${query.toLowerCase()}%`;
+  } else if (q) {
     rs = await sql`
       SELECT p.*, u.phone as vendor_phone FROM products p
       JOIN users u ON u.id = p.vendor_user_id
       WHERE p.moderation_status = 'approved' AND p.listing_status = 'active'
-        AND (LOWER(p.name_en) LIKE ${q} OR LOWER(p.name_ha) LIKE ${q}
-             OR EXISTS (SELECT 1 FROM unnest(p.tags) t WHERE t LIKE ${q}))
-      ORDER BY p.created_at DESC
+        AND (p.name_en ILIKE ${q} OR p.name_ha ILIKE ${q}
+             OR EXISTS (SELECT 1 FROM unnest(p.tags) t WHERE t ILIKE ${q}))
+      ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
     `;
   } else {
     rs = await sql`
       SELECT p.*, u.phone as vendor_phone FROM products p
       JOIN users u ON u.id = p.vendor_user_id
       WHERE p.moderation_status = 'approved' AND p.listing_status = 'active'
-      ORDER BY p.created_at DESC
+      ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}
     `;
   }
   return rs.map(productFromRow);
 }
 
-async function dbGetAllProducts(status) {
+async function dbGetAllProducts(status, { limit = 100, offset = 0 } = {}) {
   const sql = db();
   const rs = status
     ? await sql`SELECT p.*, u.phone as vendor_phone FROM products p
                 JOIN users u ON u.id = p.vendor_user_id
-                WHERE p.moderation_status = ${status} ORDER BY p.created_at DESC`
+                WHERE p.moderation_status = ${status}
+                ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}`
     : await sql`SELECT p.*, u.phone as vendor_phone FROM products p
                 JOIN users u ON u.id = p.vendor_user_id
-                ORDER BY p.created_at DESC`;
+                ORDER BY p.created_at DESC LIMIT ${limit} OFFSET ${offset}`;
   return rs.map(productFromRow);
 }
 
@@ -471,15 +498,18 @@ async function dbUpdateProductModeration(productId, status, reviewNote) {
   return productFromRow(r);
 }
 
+// Returns false if stock was insufficient (concurrent checkout took the last unit).
 async function dbDecrementProductQuantity(productId, qty) {
   const sql = db();
-  await sql`
+  const [r] = await sql`
     UPDATE products SET
-      quantity_available = GREATEST(0, quantity_available - ${qty}),
+      quantity_available = quantity_available - ${qty},
       listing_status = CASE WHEN quantity_available - ${qty} <= 0 THEN 'out_of_stock' ELSE listing_status END,
       updated_at = now()
-    WHERE id = ${productId}
+    WHERE id = ${productId} AND quantity_available >= ${qty}
+    RETURNING id
   `;
+  return !!r; // false → stock was insufficient at the moment of update
 }
 
 async function dbGetCart(userId) {
@@ -519,116 +549,263 @@ async function dbClearCart(userId) {
 }
 
 async function dbCreateOrderWithItems(order, items, payment) {
+  // All writes wrapped in a single transaction — a mid-flight failure rolls everything back.
   const sql = db();
-  await sql`
-    INSERT INTO orders (id, customer_user_id, customer_name, customer_phone,
-      delivery_option, delivery_address, delivery_area, delivery_fee,
-      payment_method, payment_reference, payment_status, payment_id,
-      items_subtotal, subtotal, commission_total, vendor_payout_total, status)
-    VALUES (${order.id}, ${order.customerUserId}, ${order.customerName}, ${order.customerPhone},
-      ${order.deliveryOption}, ${order.deliveryAddress ?? null}, ${order.deliveryArea},
-      ${order.deliveryFee}, ${order.paymentMethod}, ${order.paymentReference},
-      ${order.paymentStatus}, ${payment.id},
-      ${order.itemsSubtotal}, ${order.subtotal}, ${order.commissionTotal}, ${order.vendorPayoutTotal},
-      'awaiting_confirmation')
-  `;
-  for (const item of items) {
-    await sql`
-      INSERT INTO order_items (id, order_id, product_id, vendor_user_id, vendor_name,
-        name_en, name_ha, unit_price, original_unit_price, quantity, line_total,
-        discount_amount, promotion_id, commission_rate, commission_amount, vendor_payout)
-      VALUES (${randomUUID()}, ${order.id}, ${item.productId}, ${item.vendorUserId},
-        ${item.vendorName ?? ''}, ${item.name.en}, ${item.name.ha},
-        ${item.unitPrice}, ${item.originalUnitPrice}, ${item.quantity}, ${item.lineTotal},
-        ${item.discountAmount}, ${item.promotionId ?? null},
-        ${item.commissionRate}, ${item.commissionAmount}, ${item.vendorPayout})
+  await sql.begin(async (tx) => {
+    await tx`
+      INSERT INTO orders (id, customer_user_id, customer_name, customer_phone,
+        delivery_option, delivery_address, delivery_area, delivery_fee,
+        payment_method, payment_reference, payment_status, payment_id,
+        items_subtotal, subtotal, commission_total, vendor_payout_total, status)
+      VALUES (${order.id}, ${order.customerUserId}, ${order.customerName}, ${order.customerPhone},
+        ${order.deliveryOption}, ${order.deliveryAddress ?? null}, ${order.deliveryArea},
+        ${order.deliveryFee}, ${order.paymentMethod}, ${order.paymentReference},
+        ${order.paymentStatus}, ${payment.id},
+        ${order.itemsSubtotal}, ${order.subtotal}, ${order.commissionTotal}, ${order.vendorPayoutTotal},
+        'awaiting_confirmation')
     `;
-  }
-  await sql`
-    INSERT INTO payments (id, order_id, reference, method, gateway, amount, currency, status, verified_at)
-    VALUES (${payment.id}, ${payment.orderId}, ${payment.reference}, ${payment.method},
-      ${payment.gateway}, ${payment.amount}, ${payment.currency}, ${payment.status},
-      ${payment.verifiedAt ?? null})
-  `;
-  if (order.paymentStatus === "paid") {
-    await dbCreateLedgerForOrder(order.id, items);
-  }
+    // Bulk-insert all order items in one round-trip
+    if (items.length) {
+      const itemValues = items.map((item) => ({
+        id: randomUUID(), order_id: order.id, product_id: item.productId,
+        vendor_user_id: item.vendorUserId, vendor_name: item.vendorName ?? "",
+        name_en: item.name.en, name_ha: item.name.ha,
+        unit_price: item.unitPrice, original_unit_price: item.originalUnitPrice,
+        quantity: item.quantity, line_total: item.lineTotal,
+        discount_amount: item.discountAmount, promotion_id: item.promotionId ?? null,
+        commission_rate: item.commissionRate, commission_amount: item.commissionAmount,
+        vendor_payout: item.vendorPayout,
+      }));
+      await tx`INSERT INTO order_items ${tx(itemValues)}`;
+    }
+    await tx`
+      INSERT INTO payments (id, order_id, reference, method, gateway, amount, currency, status, verified_at)
+      VALUES (${payment.id}, ${payment.orderId}, ${payment.reference}, ${payment.method},
+        ${payment.gateway}, ${payment.amount}, ${payment.currency}, ${payment.status},
+        ${payment.verifiedAt ?? null})
+    `;
+    if (order.paymentStatus === "paid") {
+      await dbCreateLedgerForOrder(order.id, items, tx);
+    }
+  });
 }
 
-async function dbCreateLedgerForOrder(orderId, items) {
-  const sql = db();
-  for (const item of items) {
-    await sql`
-      INSERT INTO wallet_ledger (id, order_id, product_id, vendor_user_id, type, status, amount)
-      VALUES (${randomUUID()}, ${orderId}, ${item.productId}, ${item.vendorUserId},
-              'vendor_pending_credit', 'pending', ${item.vendorPayout})
-    `;
-    await sql`
-      INSERT INTO wallet_ledger (id, order_id, product_id, vendor_user_id, type, status, amount)
-      VALUES (${randomUUID()}, ${orderId}, ${item.productId}, ${item.vendorUserId},
-              'platform_commission', 'available', ${item.commissionAmount})
-    `;
+async function dbCreateLedgerForOrder(orderId, items, tx) {
+  const sql = tx ?? db();
+  if (!items.length) return;
+  const ledgerRows = items.flatMap((item) => [
+    { id: randomUUID(), order_id: orderId, product_id: item.productId,
+      vendor_user_id: item.vendorUserId, type: "vendor_pending_credit",
+      status: "pending", amount: item.vendorPayout },
+    { id: randomUUID(), order_id: orderId, product_id: item.productId,
+      vendor_user_id: item.vendorUserId, type: "platform_commission",
+      status: "available", amount: item.commissionAmount },
+  ]);
+  await sql`INSERT INTO wallet_ledger ${sql(ledgerRows)}`;
+}
+
+// ── Shared helper: hydrate orders from flat JOIN rows ────────────────────────
+// Each row has o.* columns plus oi.* prefixed with "oi_" and p.* prefixed "pay_".
+// A single SQL query replaces the N+1 loop (1 query vs 3N queries at scale).
+function buildOrdersFromJoinRows(rows) {
+  const orderMap = new Map();
+  for (const r of rows) {
+    if (!orderMap.has(r.id)) {
+      orderMap.set(r.id, {
+        row: r,
+        items: [],
+        paymentRow: r.pay_id ? {
+          id: r.pay_id, order_id: r.id, reference: r.pay_reference,
+          method: r.pay_method, gateway: r.pay_gateway, amount: r.pay_amount,
+          currency: r.pay_currency, status: r.pay_status,
+          admin_note: r.pay_admin_note, verified_at: r.pay_verified_at,
+          failed_at: r.pay_failed_at, refunded_at: r.pay_refunded_at,
+          created_at: r.pay_created_at,
+        } : null,
+      });
+    }
+    if (r.oi_id) {
+      orderMap.get(r.id).items.push({
+        id: r.oi_id, order_id: r.id, product_id: r.oi_product_id,
+        vendor_user_id: r.oi_vendor_user_id, vendor_name: r.oi_vendor_name,
+        name_en: r.oi_name_en, name_ha: r.oi_name_ha,
+        unit_price: r.oi_unit_price, original_unit_price: r.oi_original_unit_price,
+        quantity: r.oi_quantity, line_total: r.oi_line_total,
+        discount_amount: r.oi_discount_amount, promotion_id: r.oi_promotion_id,
+        commission_rate: r.oi_commission_rate, commission_amount: r.oi_commission_amount,
+        vendor_payout: r.oi_vendor_payout,
+      });
+    }
   }
+  return [...orderMap.values()].map(({ row, items, paymentRow }) =>
+    orderFromRow(row, items.map(orderItemFromRow), paymentFromRow(paymentRow))
+  );
 }
 
 async function dbGetOrderWithItems(orderId) {
   const sql = db();
-  const [orderRow] = await sql`SELECT * FROM orders WHERE id = ${orderId} LIMIT 1`;
-  if (!orderRow) return null;
-  const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${orderId}`;
-  const [paymentRow] = orderRow.payment_id
-    ? await sql`SELECT * FROM payments WHERE id = ${orderRow.payment_id} LIMIT 1`
-    : [null];
-  return orderFromRow(orderRow, itemRows.map(orderItemFromRow), paymentFromRow(paymentRow));
+  const rows = await sql`
+    SELECT o.*,
+      oi.id            AS oi_id,
+      oi.product_id    AS oi_product_id,
+      oi.vendor_user_id AS oi_vendor_user_id,
+      oi.vendor_name   AS oi_vendor_name,
+      oi.name_en       AS oi_name_en,
+      oi.name_ha       AS oi_name_ha,
+      oi.unit_price    AS oi_unit_price,
+      oi.original_unit_price AS oi_original_unit_price,
+      oi.quantity      AS oi_quantity,
+      oi.line_total    AS oi_line_total,
+      oi.discount_amount AS oi_discount_amount,
+      oi.promotion_id  AS oi_promotion_id,
+      oi.commission_rate AS oi_commission_rate,
+      oi.commission_amount AS oi_commission_amount,
+      oi.vendor_payout AS oi_vendor_payout,
+      p.id             AS pay_id,
+      p.reference      AS pay_reference,
+      p.method         AS pay_method,
+      p.gateway        AS pay_gateway,
+      p.amount         AS pay_amount,
+      p.currency       AS pay_currency,
+      p.status         AS pay_status,
+      p.admin_note     AS pay_admin_note,
+      p.verified_at    AS pay_verified_at,
+      p.failed_at      AS pay_failed_at,
+      p.refunded_at    AS pay_refunded_at,
+      p.created_at     AS pay_created_at
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN payments p ON p.id = o.payment_id
+    WHERE o.id = ${orderId}
+  `;
+  if (!rows.length) return null;
+  return buildOrdersFromJoinRows(rows)[0] ?? null;
 }
 
-async function dbGetOrdersForCustomer(userId) {
+async function dbGetOrdersForCustomer(userId, { limit = 50, offset = 0 } = {}) {
   const sql = db();
-  const orderRows = await sql`SELECT * FROM orders WHERE customer_user_id = ${userId} ORDER BY created_at DESC`;
-  const orders = [];
-  for (const row of orderRows) {
-    const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${row.id}`;
-    const [paymentRow] = row.payment_id
-      ? await sql`SELECT * FROM payments WHERE id = ${row.payment_id} LIMIT 1`
-      : [null];
-    orders.push(orderFromRow(row, itemRows.map(orderItemFromRow), paymentFromRow(paymentRow)));
-  }
-  return orders;
-}
-
-async function dbGetOrdersForVendor(vendorUserId) {
-  const sql = db();
-  const orderRows = await sql`
-    SELECT DISTINCT o.* FROM orders o
-    JOIN order_items oi ON oi.order_id = o.id
-    WHERE oi.vendor_user_id = ${vendorUserId}
+  const rows = await sql`
+    SELECT o.*,
+      oi.id            AS oi_id,
+      oi.product_id    AS oi_product_id,
+      oi.vendor_user_id AS oi_vendor_user_id,
+      oi.vendor_name   AS oi_vendor_name,
+      oi.name_en       AS oi_name_en,
+      oi.name_ha       AS oi_name_ha,
+      oi.unit_price    AS oi_unit_price,
+      oi.original_unit_price AS oi_original_unit_price,
+      oi.quantity      AS oi_quantity,
+      oi.line_total    AS oi_line_total,
+      oi.discount_amount AS oi_discount_amount,
+      oi.promotion_id  AS oi_promotion_id,
+      oi.commission_rate AS oi_commission_rate,
+      oi.commission_amount AS oi_commission_amount,
+      oi.vendor_payout AS oi_vendor_payout,
+      p.id             AS pay_id,
+      p.reference      AS pay_reference,
+      p.method         AS pay_method,
+      p.gateway        AS pay_gateway,
+      p.amount         AS pay_amount,
+      p.currency       AS pay_currency,
+      p.status         AS pay_status,
+      p.admin_note     AS pay_admin_note,
+      p.verified_at    AS pay_verified_at,
+      p.failed_at      AS pay_failed_at,
+      p.refunded_at    AS pay_refunded_at,
+      p.created_at     AS pay_created_at
+    FROM (
+      SELECT * FROM orders WHERE customer_user_id = ${userId}
+      ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
+    ) o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN payments p ON p.id = o.payment_id
     ORDER BY o.created_at DESC
   `;
-  const orders = [];
-  for (const row of orderRows) {
-    const itemRows = await sql`
-      SELECT * FROM order_items WHERE order_id = ${row.id} AND vendor_user_id = ${vendorUserId}
-    `;
-    const [paymentRow] = row.payment_id
-      ? await sql`SELECT * FROM payments WHERE id = ${row.payment_id} LIMIT 1`
-      : [null];
-    orders.push(orderFromRow(row, itemRows.map(orderItemFromRow), paymentFromRow(paymentRow)));
-  }
-  return orders;
+  return buildOrdersFromJoinRows(rows);
 }
 
-async function dbGetAllOrders() {
+async function dbGetOrdersForVendor(vendorUserId, { limit = 50, offset = 0 } = {}) {
   const sql = db();
-  const orderRows = await sql`SELECT * FROM orders ORDER BY created_at DESC`;
-  const orders = [];
-  for (const row of orderRows) {
-    const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${row.id}`;
-    const [paymentRow] = row.payment_id
-      ? await sql`SELECT * FROM payments WHERE id = ${row.payment_id} LIMIT 1`
-      : [null];
-    orders.push(orderFromRow(row, itemRows.map(orderItemFromRow), paymentFromRow(paymentRow)));
-  }
-  return orders;
+  const rows = await sql`
+    SELECT o.*,
+      oi.id            AS oi_id,
+      oi.product_id    AS oi_product_id,
+      oi.vendor_user_id AS oi_vendor_user_id,
+      oi.vendor_name   AS oi_vendor_name,
+      oi.name_en       AS oi_name_en,
+      oi.name_ha       AS oi_name_ha,
+      oi.unit_price    AS oi_unit_price,
+      oi.original_unit_price AS oi_original_unit_price,
+      oi.quantity      AS oi_quantity,
+      oi.line_total    AS oi_line_total,
+      oi.discount_amount AS oi_discount_amount,
+      oi.promotion_id  AS oi_promotion_id,
+      oi.commission_rate AS oi_commission_rate,
+      oi.commission_amount AS oi_commission_amount,
+      oi.vendor_payout AS oi_vendor_payout,
+      p.id             AS pay_id,
+      p.reference      AS pay_reference,
+      p.method         AS pay_method,
+      p.gateway        AS pay_gateway,
+      p.amount         AS pay_amount,
+      p.currency       AS pay_currency,
+      p.status         AS pay_status,
+      p.admin_note     AS pay_admin_note,
+      p.verified_at    AS pay_verified_at,
+      p.failed_at      AS pay_failed_at,
+      p.refunded_at    AS pay_refunded_at,
+      p.created_at     AS pay_created_at
+    FROM (
+      SELECT DISTINCT o.* FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id AND oi.vendor_user_id = ${vendorUserId}
+      ORDER BY o.created_at DESC LIMIT ${limit} OFFSET ${offset}
+    ) o
+    LEFT JOIN order_items oi ON oi.order_id = o.id AND oi.vendor_user_id = ${vendorUserId}
+    LEFT JOIN payments p ON p.id = o.payment_id
+    ORDER BY o.created_at DESC
+  `;
+  return buildOrdersFromJoinRows(rows);
+}
+
+async function dbGetAllOrders({ limit = 100, offset = 0 } = {}) {
+  const sql = db();
+  const rows = await sql`
+    SELECT o.*,
+      oi.id            AS oi_id,
+      oi.product_id    AS oi_product_id,
+      oi.vendor_user_id AS oi_vendor_user_id,
+      oi.vendor_name   AS oi_vendor_name,
+      oi.name_en       AS oi_name_en,
+      oi.name_ha       AS oi_name_ha,
+      oi.unit_price    AS oi_unit_price,
+      oi.original_unit_price AS oi_original_unit_price,
+      oi.quantity      AS oi_quantity,
+      oi.line_total    AS oi_line_total,
+      oi.discount_amount AS oi_discount_amount,
+      oi.promotion_id  AS oi_promotion_id,
+      oi.commission_rate AS oi_commission_rate,
+      oi.commission_amount AS oi_commission_amount,
+      oi.vendor_payout AS oi_vendor_payout,
+      p.id             AS pay_id,
+      p.reference      AS pay_reference,
+      p.method         AS pay_method,
+      p.gateway        AS pay_gateway,
+      p.amount         AS pay_amount,
+      p.currency       AS pay_currency,
+      p.status         AS pay_status,
+      p.admin_note     AS pay_admin_note,
+      p.verified_at    AS pay_verified_at,
+      p.failed_at      AS pay_failed_at,
+      p.refunded_at    AS pay_refunded_at,
+      p.created_at     AS pay_created_at
+    FROM (
+      SELECT * FROM orders ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
+    ) o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN payments p ON p.id = o.payment_id
+    ORDER BY o.created_at DESC
+  `;
+  return buildOrdersFromJoinRows(rows);
 }
 
 async function dbUpdateOrderStatus(orderId, status, deliveryPerson) {
@@ -654,64 +831,70 @@ async function dbGetPaymentById(paymentId) {
   return paymentFromRow(r);
 }
 
-async function dbGetAllPayments() {
+async function dbGetAllPayments({ limit = 100, offset = 0 } = {}) {
   const sql = db();
-  const rs = await sql`SELECT * FROM payments ORDER BY created_at DESC`;
+  const rs = await sql`SELECT * FROM payments ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
   return rs.map(paymentFromRow);
 }
 
 async function dbUpdatePaymentStatus(paymentId, orderId, status, adminNote) {
   const sql = db();
   const now = new Date().toISOString();
-  await sql`
-    UPDATE payments SET status = ${status},
-      admin_note = ${adminNote ?? null},
-      verified_at = CASE WHEN ${status} = 'paid' THEN ${now}::timestamptz ELSE verified_at END,
-      failed_at   = CASE WHEN ${status} = 'failed' THEN ${now}::timestamptz ELSE failed_at END,
-      refunded_at = CASE WHEN ${status} = 'refunded' THEN ${now}::timestamptz ELSE refunded_at END
-    WHERE id = ${paymentId}
-  `;
-  await sql`UPDATE orders SET payment_status = ${status}, updated_at = now() WHERE id = ${orderId}`;
-  if (status === "paid") {
-    const [existingLedger] = await sql`SELECT 1 FROM wallet_ledger WHERE order_id = ${orderId} LIMIT 1`;
-    if (!existingLedger) {
-      const itemRows = await sql`SELECT * FROM order_items WHERE order_id = ${orderId}`;
-      await dbCreateLedgerForOrder(orderId, itemRows.map(orderItemFromRow));
+  await sql.begin(async (tx) => {
+    await tx`
+      UPDATE payments SET status = ${status},
+        admin_note = ${adminNote ?? null},
+        verified_at = CASE WHEN ${status} = 'paid' THEN ${now}::timestamptz ELSE verified_at END,
+        failed_at   = CASE WHEN ${status} = 'failed' THEN ${now}::timestamptz ELSE failed_at END,
+        refunded_at = CASE WHEN ${status} = 'refunded' THEN ${now}::timestamptz ELSE refunded_at END
+      WHERE id = ${paymentId}
+    `;
+    await tx`UPDATE orders SET payment_status = ${status}, updated_at = now() WHERE id = ${orderId}`;
+    if (status === "paid") {
+      const [existingLedger] = await tx`SELECT 1 FROM wallet_ledger WHERE order_id = ${orderId} LIMIT 1`;
+      if (!existingLedger) {
+        const itemRows = await tx`SELECT * FROM order_items WHERE order_id = ${orderId}`;
+        await dbCreateLedgerForOrder(orderId, itemRows.map(orderItemFromRow), tx);
+      }
+      const [orderRow] = await tx`SELECT status FROM orders WHERE id = ${orderId}`;
+      if (orderRow?.status === "delivered") {
+        await tx`
+          UPDATE wallet_ledger SET status = 'available', available_at = now()
+          WHERE order_id = ${orderId} AND type = 'vendor_pending_credit' AND status = 'pending'
+        `;
+      }
     }
-    const [orderRow] = await sql`SELECT status FROM orders WHERE id = ${orderId}`;
-    if (orderRow?.status === "delivered") {
-      await sql`
-        UPDATE wallet_ledger SET status = 'available', available_at = now()
-        WHERE order_id = ${orderId} AND type = 'vendor_pending_credit' AND status = 'pending'
-      `;
-    }
-  }
+  });
 }
 
 async function dbGetVendorWallet(vendorUserId) {
+  // Single aggregation query — never materialises the ledger into JS at scale.
   const sql = db();
-  const rs = await sql`
-    SELECT type, status, amount FROM wallet_ledger WHERE vendor_user_id = ${vendorUserId}
+  const [r] = await sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN type = 'vendor_pending_credit' AND status = 'available' THEN amount
+                       WHEN type = 'vendor_withdrawal_debit'                          THEN -amount
+                       ELSE 0 END), 0)::int  AS available_balance,
+      COALESCE(SUM(CASE WHEN type = 'vendor_pending_credit' AND status = 'pending'   THEN amount
+                       ELSE 0 END), 0)::int  AS pending_balance,
+      COALESCE(SUM(CASE WHEN type = 'platform_commission'                            THEN amount
+                       ELSE 0 END), 0)::int  AS total_commission
+    FROM wallet_ledger WHERE vendor_user_id = ${vendorUserId}
   `;
-  return rs.reduce(
-    (s, e) => {
-      if (e.type === "vendor_pending_credit") {
-        if (e.status === "available") s.availableBalance += e.amount;
-        else s.pendingBalance += e.amount;
-      }
-      if (e.type === "platform_commission") s.totalCommission += e.amount;
-      if (e.type === "vendor_withdrawal_debit") s.availableBalance -= e.amount;
-      return s;
-    },
-    { vendorUserId, pendingBalance: 0, availableBalance: 0, totalCommission: 0 },
-  );
+  return {
+    vendorUserId,
+    availableBalance: r?.available_balance ?? 0,
+    pendingBalance:   r?.pending_balance   ?? 0,
+    totalCommission:  r?.total_commission  ?? 0,
+  };
 }
 
-async function dbGetPayoutRequests(vendorUserId) {
+async function dbGetPayoutRequests(vendorUserId, { limit = 100, offset = 0 } = {}) {
   const sql = db();
   const rs = vendorUserId
-    ? await sql`SELECT * FROM payout_requests WHERE vendor_user_id = ${vendorUserId} ORDER BY requested_at DESC`
-    : await sql`SELECT * FROM payout_requests ORDER BY requested_at DESC`;
+    ? await sql`SELECT * FROM payout_requests WHERE vendor_user_id = ${vendorUserId}
+                ORDER BY requested_at DESC LIMIT ${limit} OFFSET ${offset}`
+    : await sql`SELECT * FROM payout_requests ORDER BY requested_at DESC LIMIT ${limit} OFFSET ${offset}`;
   return rs.map(fromRow);
 }
 
@@ -756,9 +939,14 @@ async function dbCreateNotification(n) {
 async function dbNotifyAdmins(n) {
   const sql = db();
   const admins = await sql`SELECT id FROM users WHERE role = 'admin'`;
-  for (const admin of admins) {
-    await dbCreateNotification({ ...n, audience: "admin", recipientUserId: admin.id });
-  }
+  if (!admins.length) return;
+  // Bulk-insert all admin notifications in one round-trip instead of N sequential inserts.
+  const rows = admins.map((admin) => ({
+    id: randomUUID(), audience: "admin", recipient_user_id: admin.id,
+    title: n.title, message: n.message, type: n.type,
+    order_id: n.orderId ?? null, product_id: n.productId ?? null,
+  }));
+  await sql`INSERT INTO notifications ${sql(rows)}`;
 }
 
 async function dbGetNotifications(userId) {
@@ -779,7 +967,7 @@ async function dbMarkNotificationRead(notifId, userId) {
   return fromRow(r);
 }
 
-async function dbGetWishlist(userId) {
+async function dbGetWishlist(userId, { limit = 100, offset = 0 } = {}) {
   const sql = db();
   const rs = await sql`
     SELECT p.*, u.phone as vendor_phone FROM wishlists w
@@ -787,6 +975,7 @@ async function dbGetWishlist(userId) {
     JOIN users u ON u.id = p.vendor_user_id
     WHERE w.user_id = ${userId}
       AND p.moderation_status = 'approved' AND p.listing_status = 'active'
+    ORDER BY w.created_at DESC LIMIT ${limit} OFFSET ${offset}
   `;
   return rs.map(productFromRow);
 }
@@ -804,23 +993,28 @@ async function dbRemoveWishlist(userId, productId) {
   await sql`DELETE FROM wishlists WHERE user_id = ${userId} AND product_id = ${productId}`;
 }
 
-async function dbGetReviews(productId, includeHidden) {
+async function dbGetReviews(productId, includeHidden, { limit = 50, offset = 0 } = {}) {
   const sql = db();
   const rs = includeHidden
-    ? await sql`SELECT * FROM reviews WHERE product_id = ${productId} ORDER BY created_at DESC`
-    : await sql`SELECT * FROM reviews WHERE product_id = ${productId} AND hidden = false ORDER BY created_at DESC`;
+    ? await sql`SELECT * FROM reviews WHERE product_id = ${productId}
+                ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`
+    : await sql`SELECT * FROM reviews WHERE product_id = ${productId} AND hidden = false
+                ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
   return rs.map(fromRow);
 }
 
-async function dbGetVendorReviews(vendorUserId) {
+async function dbGetVendorReviews(vendorUserId, { limit = 50, offset = 0 } = {}) {
   const sql = db();
-  const rs = await sql`SELECT * FROM reviews WHERE vendor_user_id = ${vendorUserId} ORDER BY created_at DESC`;
+  const rs = await sql`
+    SELECT * FROM reviews WHERE vendor_user_id = ${vendorUserId}
+    ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}
+  `;
   return rs.map(fromRow);
 }
 
-async function dbGetAllReviews() {
+async function dbGetAllReviews({ limit = 100, offset = 0 } = {}) {
   const sql = db();
-  const rs = await sql`SELECT * FROM reviews ORDER BY created_at DESC`;
+  const rs = await sql`SELECT * FROM reviews ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
   return rs.map(fromRow);
 }
 
@@ -855,11 +1049,12 @@ async function dbCustomerHasDeliveredOrder(customerId, productId) {
   return !!r;
 }
 
-async function dbGetPromotions(activeOnly) {
+async function dbGetPromotions(activeOnly, { limit = 100, offset = 0 } = {}) {
   const sql = db();
   const rs = activeOnly
-    ? await sql`SELECT * FROM promotions WHERE active = true AND starts_at <= now() ORDER BY created_at DESC`
-    : await sql`SELECT * FROM promotions ORDER BY created_at DESC`;
+    ? await sql`SELECT * FROM promotions WHERE active = true AND starts_at <= now()
+                ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`
+    : await sql`SELECT * FROM promotions ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
   return rs.map(fromRow);
 }
 
@@ -939,15 +1134,35 @@ async function dbGetUpload(uploadId) {
 
 async function dbRecordSearchEvent(query) {
   const sql = db();
-  await sql`INSERT INTO search_events (id, query) VALUES (${randomUUID()}, ${query})`;
+  // Fire-and-forget: don't block the search response on the analytics write.
+  sql`INSERT INTO search_events (id, query) VALUES (${randomUUID()}, ${query})`.catch(() => undefined);
+}
+
+// Cleanup logic lives here so it can be called by the cron endpoint (api/cron.mjs).
+// setInterval is NOT used — Vercel function instances are ephemeral; intervals die
+// silently when the instance is recycled. Vercel Cron calls the endpoint instead.
+export async function runMaintenanceTasks() {
+  const sql = db();
+  const [sessions] = await sql`
+    DELETE FROM sessions WHERE expires_at < now() RETURNING count(*)::int AS deleted
+  `.catch(() => [{ deleted: 0 }]);
+  const [events] = await sql`
+    DELETE FROM search_events WHERE created_at < now() - INTERVAL '90 days'
+    RETURNING count(*)::int AS deleted
+  `.catch(() => [{ deleted: 0 }]);
+  return {
+    sessionsDeleted: sessions?.deleted ?? 0,
+    searchEventsDeleted: events?.deleted ?? 0,
+  };
 }
 
 async function dbIncrementProductView(productId) {
   const sql = db();
-  await sql`
+  // Fire-and-forget: don't block the product page response on the analytics write.
+  sql`
     INSERT INTO product_views (product_id, views, last_viewed_at) VALUES (${productId}, 1, now())
     ON CONFLICT (product_id) DO UPDATE SET views = product_views.views + 1, last_viewed_at = now()
-  `;
+  `.catch(() => undefined);
 }
 
 async function dbGetAnalytics() {
@@ -995,18 +1210,18 @@ function normalizeEmail(value = "") {
   return String(value).trim().toLowerCase();
 }
 
-function hashPassword(password) {
+async function hashPassword(password) {
   const salt = randomUUID().replace(/-/g, "");
   const minIter = process.env.NODE_ENV === "test" ? 1_000 : 100_000;
   const iterations = Math.max(minIter, Number(process.env.PASSWORD_HASH_ITERATIONS ?? (process.env.NODE_ENV === "test" ? 1_000 : 210_000)));
-  const hash = pbkdf2Sync(String(password), salt, iterations, 32, "sha256").toString("hex");
+  const hash = (await pbkdf2Async(String(password), salt, iterations, 32, "sha256")).toString("hex");
   return `pbkdf2_sha256$${iterations}$${salt}$${hash}`;
 }
 
-function verifyPassword(password, storedHash = "") {
+async function verifyPassword(password, storedHash = "") {
   const [algorithm, iterations, salt, expected] = storedHash.split("$");
   if (algorithm !== "pbkdf2_sha256" || !iterations || !salt || !expected) return false;
-  const actual = pbkdf2Sync(String(password), salt, Number(iterations), 32, "sha256");
+  const actual = await pbkdf2Async(String(password), salt, Number(iterations), 32, "sha256");
   const expectedBuf = Buffer.from(expected, "hex");
   if (actual.length !== expectedBuf.length) return false;
   return timingSafeEqual(actual, expectedBuf);
@@ -1317,6 +1532,15 @@ function validateCategoryInput(input) {
   return { valid: Object.keys(errors).length === 0, errors, value: { key, name: { en: nameEn, ha: nameHa }, searchTerms } };
 }
 
+// ── Pagination helper ─────────────────────────────────────────────────────────
+// Reads ?page= and ?limit= from any request URL.
+// page is 1-based. limit is capped at 200 to prevent abuse.
+function parsePagination(url, defaultLimit = 50) {
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? defaultLimit)));
+  const page  = Math.max(1, Number(url.searchParams.get("page") ?? 1));
+  return { limit, offset: (page - 1) * limit, page };
+}
+
 function validateUploadInput(input) {
   const fileName = sanitizeText(input.fileName ?? "product-image", 120);
   const mimeType = sanitizeText(input.mimeType ?? "", 80);
@@ -1385,8 +1609,11 @@ function assertAdmin(response, user) {
   return true;
 }
 
-function assertAuthenticated(response, user) {
+async function assertAuthenticated(response, user, request, rl) {
   if (!user) { sendError(response, 401, "unauthenticated", "Sign in is required."); return false; }
+  if (rl && request && !await rl.check(request, user.id)) {
+    sendError(response, 429, "rate_limited", "Too many requests. Please slow down."); return false;
+  }
   return true;
 }
 
@@ -1403,19 +1630,94 @@ function corsHeaders(request, allowedOrigin) {
   };
 }
 
-function createRateLimiter(options = {}) {
-  const windowMs = Number(options.windowMs ?? process.env.API_RATE_LIMIT_WINDOW_MS ?? 60_000);
-  const maxRequests = Number(options.maxRequests ?? process.env.API_RATE_LIMIT_MAX ?? 600);
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+//
+// Two tiers:
+//   IP  — 600 req / min  (all traffic, including unauthenticated)
+//   User — 120 writes/min (authenticated mutating requests only)
+//
+// When UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN are set, limits are
+// enforced via Upstash Redis and are shared across ALL Vercel function instances.
+// Without those env vars the server falls back to an in-memory Map that is
+// per-instance only — fine for dev/test, not for production at scale.
+
+function createMemoryBuckets(windowMs, maxRequests) {
   const buckets = new Map();
+  const cleanup = setInterval(() => {
+    const now = Date.now();
+    for (const [k, b] of buckets) { if (b.resetAt <= now) buckets.delete(k); }
+  }, 5 * 60_000);
+  if (cleanup.unref) cleanup.unref();
   return {
-    check(request) {
+    async check(key) {
       if (maxRequests <= 0) return true;
-      const key = request.headers["x-forwarded-for"]?.split(",")[0]?.trim() || request.socket?.remoteAddress || "local";
       const now = Date.now();
-      const bucket = buckets.get(key);
-      if (!bucket || bucket.resetAt <= now) { buckets.set(key, { count: 1, resetAt: now + windowMs }); return true; }
-      bucket.count += 1;
-      return bucket.count <= maxRequests;
+      const b = buckets.get(key);
+      if (!b || b.resetAt <= now) { buckets.set(key, { count: 1, resetAt: now + windowMs }); return true; }
+      b.count += 1;
+      return b.count <= maxRequests;
+    },
+  };
+}
+
+function createRateLimiter(options = {}) {
+  const ipMax   = Number(options.maxRequests ?? process.env.API_RATE_LIMIT_MAX      ?? 600);
+  const userMax = Number(process.env.API_USER_RATE_LIMIT_MAX ?? 120);
+
+  const upstashUrl   = process.env.UPSTASH_REDIS_REST_URL;
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (upstashUrl && upstashToken) {
+    // ── Redis-backed (cross-instance, production-safe) ──────────────────────
+    const redis = new Redis({ url: upstashUrl, token: upstashToken });
+    const ipLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(ipMax, "1 m"),
+      prefix:  "rl:ip",
+      analytics: false,
+    });
+    const userLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(userMax, "1 m"),
+      prefix:  "rl:user",
+      analytics: false,
+    });
+
+    return {
+      async check(request, userId) {
+        const ip = request.headers["x-forwarded-for"]?.split(",")[0]?.trim()
+                   || request.socket?.remoteAddress || "unknown";
+        const { success: ipOk } = await ipLimiter.limit(ip);
+        if (!ipOk) return false;
+        if (userId && request.method !== "GET" && request.method !== "OPTIONS") {
+          const { success: userOk } = await userLimiter.limit(userId);
+          if (!userOk) return false;
+        }
+        return true;
+      },
+    };
+  }
+
+  // ── In-memory fallback (per-instance — dev / test only) ──────────────────
+  if (process.env.NODE_ENV === "production") {
+    console.warn(
+      "[rate-limit] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set. " +
+      "Rate limiting is per-instance only. Add Upstash from the Vercel Marketplace " +
+      "to enforce limits across the entire fleet."
+    );
+  }
+  const windowMs = Number(options.windowMs ?? process.env.API_RATE_LIMIT_WINDOW_MS ?? 60_000);
+  const ipBuckets   = createMemoryBuckets(windowMs, ipMax);
+  const userBuckets = createMemoryBuckets(windowMs, userMax);
+  return {
+    async check(request, userId) {
+      const ip = request.headers["x-forwarded-for"]?.split(",")[0]?.trim()
+                 || request.socket?.remoteAddress || "local";
+      if (!await ipBuckets.check(ip)) return false;
+      if (userId && request.method !== "GET" && request.method !== "OPTIONS") {
+        if (!await userBuckets.check(userId)) return false;
+      }
+      return true;
     },
   };
 }
@@ -1453,7 +1755,6 @@ export function createApp(options = {}) {
     try { initial = JSON.parse(readFileSync(options.dataFile, "utf8")); } catch { /* first run */ }
     store = createMemoryStore(initial?.data ?? null);
   }
-
   // Memory-mode tests register admin as "+2348000000000"; production uses env/default.
   const adminPhone = options.adminPhone ??
     (store ? "08000000000" : (process.env.KANO_ADMIN_PHONE ?? DEFAULT_ADMIN_PHONE));
@@ -1489,7 +1790,8 @@ export function createApp(options = {}) {
     const headers = corsHeaders(request, allowedOrigin);
 
     if (method === "OPTIONS") { response.writeHead(204, headers); response.end(); return; }
-    if (!rateLimiter.check(request)) { sendError(response, 429, "rate_limited", "Too many requests."); return; }
+    // IP check only at the gate; per-user check happens after session resolution below.
+    if (!await rateLimiter.check(request, null)) { sendError(response, 429, "rate_limited", "Too many requests."); return; }
 
     try {
 
@@ -1520,7 +1822,7 @@ export function createApp(options = {}) {
 
         const user = await dbCreateUser({
           id: randomUUID(), phone: parsed.value.phone, email: parsed.value.email || null,
-          passwordHash: hashPassword(parsed.value.password), firstName, lastName, name: displayName,
+          passwordHash: await hashPassword(parsed.value.password), firstName, lastName, name: displayName,
           role, deliveryAddress: parsed.value.deliveryAddress || null,
           preferredLanguage: parsed.value.preferredLanguage,
           vendorStatus: role === "vendor" ? "pending" : null,
@@ -1547,7 +1849,7 @@ export function createApp(options = {}) {
         const identifier = String(body.identifier ?? body.phone ?? body.email ?? "").trim();
         const password = String(body.password ?? "");
         const user = await dbGetUserByIdentifier(identifier);
-        if (!user || !verifyPassword(password, user.passwordHash)) {
+        if (!user || !(await verifyPassword(password, user.passwordHash))) {
           sendError(response, 401, "invalid_credentials", "Phone/email or password is incorrect."); return;
         }
         const session = await dbCreateSession(user.id);
@@ -1572,7 +1874,7 @@ export function createApp(options = {}) {
 
       if (method === "PATCH" && requestUrl.pathname === "/me") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         const body = await readJson(request);
         const rawName = sanitizeText(String(body.name ?? ""), 120);
         const [firstName, ...nameParts] = rawName.trim().split(/\s+/);
@@ -1592,7 +1894,7 @@ export function createApp(options = {}) {
 
       if (method === "GET" && requestUrl.pathname === "/notifications") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         const notifications = await dbGetNotifications(user.id);
         send(response, 200, { notifications: notifications.map(publicNotification) }, headers);
         return;
@@ -1601,7 +1903,7 @@ export function createApp(options = {}) {
       const notifMatch = requestUrl.pathname.match(/^\/notifications\/([^/]+)$/);
       if (method === "PATCH" && notifMatch) {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         const notif = await dbMarkNotificationRead(decodeURIComponent(notifMatch[1]), user.id);
         if (!notif) { sendError(response, 404, "notification_not_found", "Notification not found."); return; }
         send(response, 200, { notification: publicNotification(notif) }, headers);
@@ -1640,7 +1942,7 @@ export function createApp(options = {}) {
 
       if (method === "GET" && requestUrl.pathname === "/vendor/application") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
         const app = await dbGetVendorApplicationByUserId(user.id);
         if (!app) { sendError(response, 404, "vendor_application_not_found", "Application not found."); return; }
@@ -1650,16 +1952,17 @@ export function createApp(options = {}) {
 
       if (method === "GET" && requestUrl.pathname === "/vendor/products") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
-        const products = await dbGetProductsForVendor(user.id);
-        send(response, 200, { products: products.map((p) => publicProduct(p, { includeAdminFields: true })) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const products = await dbGetProductsForVendor(user.id, pg);
+        send(response, 200, { products: products.map((p) => publicProduct(p, { includeAdminFields: true })), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/vendor/products") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
         if (user.vendorStatus !== "approved") { sendError(response, 403, "vendor_not_approved", "Vendor approval required."); return; }
         const body = await readJson(request);
@@ -1672,7 +1975,7 @@ export function createApp(options = {}) {
 
       if (method === "POST" && requestUrl.pathname === "/vendor/uploads") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
         if (user.vendorStatus !== "approved") { sendError(response, 403, "vendor_not_approved", "Vendor approval required."); return; }
         const parsed = validateUploadInput(await readJson(request));
@@ -1684,22 +1987,23 @@ export function createApp(options = {}) {
         const ext = parsed.value.mimeType === "image/png" ? "png" : parsed.value.mimeType === "image/webp" ? "webp" : "jpg";
         const blobPath = `products/${uploadId}.${ext}`;
 
-        let blobUrl = null;
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-          const blob = await blobPut(blobPath, buffer, {
-            access: "public",
-            contentType: parsed.value.mimeType,
-            token: process.env.BLOB_READ_WRITE_TOKEN,
-          });
-          blobUrl = blob.url;
+        // Blob storage is mandatory — storing 750 KB base64 strings in the DB row
+        // bloats the table by ~15 TB at 1M vendors × 10 products × 2 images.
+        if (!process.env.BLOB_READ_WRITE_TOKEN) {
+          sendError(response, 503, "blob_unavailable", "Image storage is not configured. Set BLOB_READ_WRITE_TOKEN."); return;
         }
+        const blob = await blobPut(blobPath, buffer, {
+          access: "public",
+          contentType: parsed.value.mimeType,
+          token: process.env.BLOB_READ_WRITE_TOKEN,
+        });
+        const blobUrl = blob.url;
 
-        const finalUrl = blobUrl ?? `${publicApiBasePath}/uploads/${uploadId}`;
+        const finalUrl = blobUrl;
         const upload = await dbSaveUpload({
           id: uploadId, vendorUserId: user.id, fileName: parsed.value.fileName,
           mimeType: parsed.value.mimeType,
-          // Only store raw data if Blob storage is unavailable (fallback)
-          dataUrl: blobUrl ? null : parsed.value.dataUrl,
+          dataUrl: null,   // never store base64 in DB
           blobUrl,
           url: finalUrl,
         });
@@ -1710,7 +2014,7 @@ export function createApp(options = {}) {
       const vendorProductMatch = requestUrl.pathname.match(/^\/vendor\/products\/([^/]+)$/);
       if (method === "PATCH" && vendorProductMatch) {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
         const product = await dbGetProductById(decodeURIComponent(vendorProductMatch[1]));
         if (!product || product.vendorUserId !== user.id) { sendError(response, 404, "product_not_found", "Product not found."); return; }
@@ -1727,9 +2031,10 @@ export function createApp(options = {}) {
       if (method === "GET" && requestUrl.pathname === "/products") {
         const category = requestUrl.searchParams.get("category")?.toLowerCase();
         const query = requestUrl.searchParams.get("q")?.trim().toLowerCase();
+        const pg = parsePagination(requestUrl, 60);
         if (query) await dbRecordSearchEvent(query);
-        const products = await dbGetPublicCatalog(category, query);
-        send(response, 200, { products: products.map((p) => publicProduct(p)) }, headers);
+        const products = await dbGetPublicCatalog(category, query, pg);
+        send(response, 200, { products: products.map((p) => publicProduct(p)), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
@@ -1748,16 +2053,17 @@ export function createApp(options = {}) {
 
       if (method === "GET" && requestUrl.pathname === "/wishlist") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
-        const products = await dbGetWishlist(user.id);
-        send(response, 200, { products: products.map((p) => publicProduct(p)) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const products = await dbGetWishlist(user.id, pg);
+        send(response, 200, { products: products.map((p) => publicProduct(p)), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/wishlist") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const body = await readJson(request);
         const product = await dbGetProductById(String(body.productId ?? ""), true);
@@ -1773,7 +2079,7 @@ export function createApp(options = {}) {
       const wishlistMatch = requestUrl.pathname.match(/^\/wishlist\/([^/]+)$/);
       if (method === "DELETE" && wishlistMatch) {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         await dbRemoveWishlist(user.id, decodeURIComponent(wishlistMatch[1]));
         const products = await dbGetWishlist(user.id);
@@ -1785,14 +2091,15 @@ export function createApp(options = {}) {
 
       if (method === "GET" && requestUrl.pathname.match(/^\/products\/[^/]+\/reviews$/)) {
         const productId = decodeURIComponent(requestUrl.pathname.split("/")[2]);
-        const reviews = await dbGetReviews(productId, false);
-        send(response, 200, { reviews: reviews.map(publicReview) }, headers);
+        const pg = parsePagination(requestUrl, 50);
+        const reviews = await dbGetReviews(productId, false, pg);
+        send(response, 200, { reviews: reviews.map(publicReview), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
       if (method === "POST" && requestUrl.pathname === "/reviews") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const body = await readJson(request);
         const parsed = validateReviewInput(body);
@@ -1811,7 +2118,7 @@ export function createApp(options = {}) {
 
       if (method === "GET" && requestUrl.pathname === "/cart") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const cartRows = await dbGetCart(user.id);
         const items = cartRows.map((r) => {
@@ -1824,7 +2131,7 @@ export function createApp(options = {}) {
 
       if (method === "POST" && requestUrl.pathname === "/cart/items") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const body = await readJson(request);
         const parsed = validateCartItem(body);
@@ -1842,7 +2149,7 @@ export function createApp(options = {}) {
       const cartItemMatch = requestUrl.pathname.match(/^\/cart\/items\/([^/]+)$/);
       if ((method === "PATCH" || method === "DELETE") && cartItemMatch) {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const productId = decodeURIComponent(cartItemMatch[1]);
         if (method === "DELETE") {
@@ -1866,7 +2173,7 @@ export function createApp(options = {}) {
 
       if (method === "POST" && requestUrl.pathname === "/checkout") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
         const body = await readJson(request);
         const parsed = validateCheckout(body);
@@ -1906,8 +2213,14 @@ export function createApp(options = {}) {
         };
         const payment = { id: paymentId, orderId: order.id, reference: order.paymentReference, method: order.paymentMethod, gateway: paymentGatewayForMethod(order.paymentMethod), amount: order.subtotal, currency: "NGN", status: paymentStatus, verifiedAt: paymentStatus === "paid" ? now : null };
 
+        // Decrement stock atomically — fails fast if a concurrent checkout took the last unit.
+        for (const item of orderItems) {
+          const ok = await dbDecrementProductQuantity(item.productId, item.quantity);
+          if (!ok) {
+            sendError(response, 409, "out_of_stock", `"${item.name.en}" is no longer available in the requested quantity.`); return;
+          }
+        }
         await dbCreateOrderWithItems(order, orderItems, payment);
-        for (const item of orderItems) await dbDecrementProductQuantity(item.productId, item.quantity);
         await dbClearCart(user.id);
 
         await dbCreateNotification({ audience: "customer", recipientUserId: user.id, title: "Order placed", message: `Order ${order.id} has been placed.`, type: "order", orderId: order.id });
@@ -1932,34 +2245,37 @@ export function createApp(options = {}) {
 
       if (method === "GET" && requestUrl.pathname === "/orders") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "customer") { sendError(response, 403, "forbidden", "Customer access required."); return; }
-        const orders = await dbGetOrdersForCustomer(user.id);
-        send(response, 200, { orders: orders.map(publicOrder) }, headers);
+        const pg = parsePagination(requestUrl, 50);
+        const orders = await dbGetOrdersForCustomer(user.id, pg);
+        send(response, 200, { orders: orders.map(publicOrder), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/vendor/orders") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
-        const orders = await dbGetOrdersForVendor(user.id);
-        send(response, 200, { orders: orders.map(publicOrder) }, headers);
+        const pg = parsePagination(requestUrl, 50);
+        const orders = await dbGetOrdersForVendor(user.id, pg);
+        send(response, 200, { orders: orders.map(publicOrder), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/vendor/reviews") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
-        const reviews = await dbGetVendorReviews(user.id);
-        send(response, 200, { reviews: reviews.map(publicReview) }, headers);
+        const pg = parsePagination(requestUrl, 50);
+        const reviews = await dbGetVendorReviews(user.id, pg);
+        send(response, 200, { reviews: reviews.map(publicReview), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
       if (method === "GET" && requestUrl.pathname === "/vendor/wallet") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
         const wallet = await dbGetVendorWallet(user.id);
         const payouts = await dbGetPayoutRequests(user.id);
@@ -1969,7 +2285,7 @@ export function createApp(options = {}) {
 
       if (method === "POST" && requestUrl.pathname === "/vendor/payouts") {
         const user = await dbGetSessionUser(getSessionToken(request));
-        if (!assertAuthenticated(response, user)) return;
+        if (!await assertAuthenticated(response, user, request, rateLimiter)) return;
         if (user.role !== "vendor") { sendError(response, 403, "forbidden", "Vendor access required."); return; }
         const body = await readJson(request);
         const parsed = validatePayoutInput(body);
@@ -1987,8 +2303,9 @@ export function createApp(options = {}) {
       if (method === "GET" && requestUrl.pathname === "/admin/users") {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const users = await dbGetAllUsers();
-        send(response, 200, { users: users.map(publicUser) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const users = await dbGetAllUsers(pg);
+        send(response, 200, { users: users.map(publicUser), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
@@ -2006,8 +2323,9 @@ export function createApp(options = {}) {
       if (method === "GET" && requestUrl.pathname === "/admin/promotions") {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const promotions = await dbGetPromotions(false);
-        send(response, 200, { promotions: promotions.map((p) => ({ id: p.id, title: { en: p.titleEn ?? p.title_en, ha: p.titleHa ?? p.title_ha }, type: p.type, discountPercent: p.discountPercent ?? p.discount_percent, code: p.code, productId: p.productId ?? p.product_id, vendorUserId: p.vendorUserId ?? p.vendor_user_id, category: p.category, active: p.active, startsAt: p.startsAt ?? p.starts_at, endsAt: p.endsAt ?? p.ends_at, createdAt: p.createdAt ?? p.created_at })) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const promotions = await dbGetPromotions(false, pg);
+        send(response, 200, { promotions: promotions.map((p) => ({ id: p.id, title: { en: p.titleEn ?? p.title_en, ha: p.titleHa ?? p.title_ha }, type: p.type, discountPercent: p.discountPercent ?? p.discount_percent, code: p.code, productId: p.productId ?? p.product_id, vendorUserId: p.vendorUserId ?? p.vendor_user_id, category: p.category, active: p.active, startsAt: p.startsAt ?? p.starts_at, endsAt: p.endsAt ?? p.ends_at, createdAt: p.createdAt ?? p.created_at })), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
@@ -2036,8 +2354,9 @@ export function createApp(options = {}) {
       if (method === "GET" && requestUrl.pathname === "/admin/reviews") {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const reviews = await dbGetAllReviews();
-        send(response, 200, { reviews: reviews.map(publicReview) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const reviews = await dbGetAllReviews(pg);
+        send(response, 200, { reviews: reviews.map(publicReview), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
@@ -2055,8 +2374,9 @@ export function createApp(options = {}) {
       if (method === "GET" && requestUrl.pathname === "/admin/payouts") {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const payouts = await dbGetPayoutRequests(null);
-        send(response, 200, { payouts: payouts.map(publicPayoutRequest) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const payouts = await dbGetPayoutRequests(null, pg);
+        send(response, 200, { payouts: payouts.map(publicPayoutRequest), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
@@ -2096,8 +2416,9 @@ export function createApp(options = {}) {
       if (method === "GET" && requestUrl.pathname === "/admin/orders") {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const orders = await dbGetAllOrders();
-        send(response, 200, { orders: orders.map(publicOrder) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const orders = await dbGetAllOrders(pg);
+        send(response, 200, { orders: orders.map(publicOrder), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
@@ -2126,8 +2447,9 @@ export function createApp(options = {}) {
       if (method === "GET" && requestUrl.pathname === "/admin/payments") {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
-        const payments = await dbGetAllPayments();
-        send(response, 200, { payments: payments.map(publicPayment) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const payments = await dbGetAllPayments(pg);
+        send(response, 200, { payments: payments.map(publicPayment), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
@@ -2163,7 +2485,8 @@ export function createApp(options = {}) {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
         const status = requestUrl.searchParams.get("status");
-        const products = await dbGetAllProducts(status);
+        const pg = parsePagination(requestUrl, 100);
+        const products = await dbGetAllProducts(status, pg);
         send(response, 200, { products: products.map((p) => publicProduct(p, { includeAdminFields: true })) }, headers);
         return;
       }
@@ -2188,8 +2511,9 @@ export function createApp(options = {}) {
         const user = await dbGetSessionUser(getSessionToken(request));
         if (!assertAdmin(response, user)) return;
         const status = requestUrl.searchParams.get("status");
-        const apps = await dbGetAllVendorApplications(status);
-        send(response, 200, { applications: apps.map(publicVendorApplication) }, headers);
+        const pg = parsePagination(requestUrl, 100);
+        const apps = await dbGetAllVendorApplications(status, pg);
+        send(response, 200, { applications: apps.map(publicVendorApplication), page: pg.page, limit: pg.limit }, headers);
         return;
       }
 
@@ -2222,10 +2546,10 @@ export function createApp(options = {}) {
   }
 
   // File persistence: write snapshot after every mutating request
-  let finalHandle = handle;
+  let innerHandle = handle;
   if (store && options.dataFile) {
     const dataFile = options.dataFile;
-    finalHandle = async (req, res) => {
+    innerHandle = async (req, res) => {
       await handle(req, res);
       const m = req.method ?? "GET";
       if (m !== "GET" && m !== "OPTIONS") {
@@ -2233,6 +2557,47 @@ export function createApp(options = {}) {
       }
     };
   }
+
+  // ── Observability wrapper ──────────────────────────────────────────────────
+  // Adds to every request:
+  //   • x-request-id header (echoed back to caller; used in log drain correlation)
+  //   • Structured JSON log line: { ts, requestId, method, path, status, durationMs }
+  //
+  // Vercel captures stdout as structured logs. Point a Vercel Log Drain at
+  // Datadog / Axiom / Logtail and every line is searchable and alertable.
+  const finalHandle = async (req, res) => {
+    const requestId = req.headers["x-request-id"] || randomUUID();
+    const start     = Date.now();
+    const method    = req.method ?? "GET";
+    const path      = (() => {
+      try { return new URL(req.url ?? "/", "http://localhost").pathname; } catch { return req.url ?? "/"; }
+    })();
+
+    // Intercept writeHead so we can capture the status code and inject the request ID.
+    let statusCode = 200;
+    const origWriteHead = res.writeHead.bind(res);
+    res.writeHead = (status, hdrs = {}) => {
+      statusCode = status;
+      return origWriteHead(status, { "x-request-id": requestId, ...hdrs });
+    };
+
+    try {
+      await innerHandle(req, res);
+    } finally {
+      const durationMs = Date.now() - start;
+      // Skip logging for OPTIONS preflight and health-check noise in dev.
+      if (method !== "OPTIONS" && !(method === "GET" && path === "/health")) {
+        console.log(JSON.stringify({
+          ts:          new Date().toISOString(),
+          requestId,
+          method,
+          path,
+          status:      statusCode,
+          durationMs,
+        }));
+      }
+    }
+  };
 
   return { handle: finalHandle, store };
 }

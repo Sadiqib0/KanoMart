@@ -31,12 +31,22 @@
   ],
   "rewrites": [
     {
+      "source": "/api/cron/maintenance",
+      "destination": "/api/cron.mjs"
+    },
+    {
       "source": "/api",
       "destination": "/api/server.mjs"
     },
     {
       "source": "/api/(.*)",
       "destination": "/api/server.mjs"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/maintenance",
+      "schedule": "0 3 * * *"
     }
   ]
 }

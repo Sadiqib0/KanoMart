@@ -86,3 +86,11 @@ export function renderStars(rating: number): string {
     `<span class="star${i < full ? " star-filled" : ""}" aria-hidden="true">★</span>`
   ).join("");
 }
+
+export function isValidPhone(phone: string): boolean {
+  return /^[0-9+\s\-()]{7,20}$/.test(phone.trim());
+}
+
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}

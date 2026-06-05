@@ -67,6 +67,12 @@ CREATE TABLE products (
 
 CREATE INDEX products_vendor_user_id_idx ON products(vendor_user_id);
 CREATE INDEX products_public_catalog_idx ON products(category, moderation_status, listing_status);
+-- Created_at index for fast ORDER BY on admin list and vendor catalog endpoints
+CREATE INDEX products_created_at_idx ON products(created_at DESC);
+-- pg_trgm enables fast ILIKE / similarity search without leading-wildcard penalty.
+-- Run once per DB: CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX products_name_en_trgm_idx ON products USING GIN (name_en gin_trgm_ops);
+CREATE INDEX products_name_ha_trgm_idx ON products USING GIN (name_ha gin_trgm_ops);
 
 CREATE TABLE cart_items (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -147,9 +153,17 @@ CREATE TABLE wallet_ledger (
 );
 
 CREATE INDEX orders_customer_user_id_idx ON orders(customer_user_id);
+CREATE INDEX orders_created_at_idx ON orders(created_at DESC);
+-- Used by dbCustomerHasDeliveredOrder to check purchase eligibility for reviews
+CREATE INDEX orders_status_idx ON orders(status);
 CREATE INDEX order_items_vendor_user_id_idx ON order_items(vendor_user_id);
+CREATE INDEX order_items_order_id_idx ON order_items(order_id);
 CREATE INDEX payments_status_idx ON payments(status);
+CREATE INDEX payments_order_id_idx ON payments(order_id);
 CREATE INDEX wallet_ledger_vendor_user_id_idx ON wallet_ledger(vendor_user_id);
+CREATE INDEX wallet_ledger_order_id_idx ON wallet_ledger(order_id);
+-- Fast admin role lookup for dbNotifyAdmins
+CREATE INDEX users_role_idx ON users(role);
 
 CREATE TABLE notifications (
   id UUID PRIMARY KEY,

@@ -17,6 +17,8 @@ import {
   getVendorStatusCounts,
   groupByValue,
   isAdminPhone,
+  isValidEmail,
+  isValidPhone,
   localizeCategory,
   normalize,
   normalizePhone,
@@ -38,9 +40,21 @@ import {
   updateUserProfile,
   vendorProfiles,
   verifyPassword
-} from "./chunk-V6VR6KCH.js";
+} from "./chunk-Q6LRC7JY.js";
 
 // src/backend/products.ts
+var categoryCopy = {
+  food: { en: "Food", ha: "Abinci" },
+  fashion: { en: "Fashion", ha: "Kaya" },
+  children: { en: "Children", ha: "Yara" },
+  essentials: { en: "Essentials", ha: "Kayan yau da kullum" }
+};
+function sanitizeProductText(value, maxLength = 120) {
+  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+function formatProductPrice(amount) {
+  return `NGN ${amount.toLocaleString("en-NG")}`;
+}
 function getVendorProducts() {
   return getStoredList(storageKeys.vendorProducts).map((product) => ({
     ...product,
@@ -90,6 +104,42 @@ function getProductById(productId, options = {}) {
   if (!product) return void 0;
   if (options.includeModerated) return product;
   return isProductApproved(productId) && (product.listingStatus ?? "active") === "active" ? product : void 0;
+}
+function saveVendorProduct(input) {
+  const name = sanitizeProductText(input.name, 90);
+  const category = categoryCopy[input.category] ?? categoryCopy.essentials;
+  const product = {
+    id: createId(),
+    name: { en: name, ha: sanitizeProductText(input.nameHa || name, 90) },
+    description: {
+      en: sanitizeProductText(input.descriptionEn || "", 240),
+      ha: sanitizeProductText(input.descriptionHa || input.descriptionEn || "", 240)
+    },
+    category,
+    subcategory: { en: "Vendor product", ha: "Kayan dan kasuwa" },
+    price: formatProductPrice(Math.max(0, input.priceValue)),
+    quantityAvailable: Math.max(0, Number(input.quantityAvailable ?? 1)),
+    imageDataUrl: input.imageDataUrl,
+    vendor: sanitizeProductText(input.vendor, 80),
+    vendorPhone: sanitizeProductText(input.vendorPhone, 24),
+    area: sanitizeProductText(input.area || "Kano", 80),
+    availability: Number(input.quantityAvailable ?? 1) > 0 ? { en: "Available now", ha: "Akwai yanzu" } : { en: "Out of stock", ha: "Ya kare" },
+    listingStatus: Number(input.quantityAvailable ?? 1) > 0 ? "active" : "out_of_stock",
+    // New products always start pending — admin must approve before they appear in catalog
+    moderationStatus: "pending",
+    accent: "#1f7b84",
+    tags: [name, input.category, input.vendor, input.area].filter(Boolean).map((item) => item.toLowerCase())
+  };
+  setStoredList(storageKeys.vendorProducts, [product, ...getVendorProducts()]);
+  const records = getProductModerationRecords();
+  const pendingRecord = {
+    productId: product.id,
+    status: "pending",
+    reviewedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    reviewNote: ""
+  };
+  setStoredList(storageKeys.productModeration, [pendingRecord, ...records]);
+  return product;
 }
 function getProductsForVendor(vendorPhone) {
   return getVendorProducts().filter((product) => product.vendorPhone === vendorPhone);
@@ -391,7 +441,7 @@ var api = {
 function getWishlist() {
   return getStoredList(storageKeys.wishlist);
 }
-function isWishlisted2(productId) {
+function isWishlisted(productId) {
   return getWishlist().includes(productId);
 }
 function toggleWishlist(productId, productName) {
@@ -523,6 +573,33 @@ function getAverageRating(productId) {
   if (reviews.length === 0) return 0;
   return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
 }
+function addReview(productId, reviewerName, rating, comment) {
+  const stored = getStoredList(storageKeys.reviews);
+  const product = products.find((item) => item.id === productId);
+  const review = {
+    id: createId(),
+    productId,
+    vendor: product?.vendor,
+    reviewerName,
+    rating,
+    comment,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  stored.unshift(review);
+  setStoredList(storageKeys.reviews, stored);
+  if (product) {
+    createNotification({
+      audience: "vendor",
+      recipient: product.vendor,
+      title: "New product review",
+      message: `${product.name.en} received a ${review.rating}-star review.`,
+      type: "review"
+    });
+  }
+  if (getApiToken()) {
+    api.createReview({ productId, rating, comment }).catch(() => void 0);
+  }
+}
 function hideReview(reviewId, adminNote = "Removed by admin") {
   const stored = getStoredList(storageKeys.reviews);
   const seeded = seedReviews.find((review2) => review2.id === reviewId);
@@ -532,6 +609,50 @@ function hideReview(reviewId, adminNote = "Removed by admin") {
   review.adminNote = adminNote;
   setStoredList(storageKeys.reviews, [review, ...stored.filter((item) => item.id !== reviewId)]);
   return review;
+}
+function renderReviewList(productId) {
+  const reviews = getProductReviews(productId).slice(0, 5);
+  if (reviews.length === 0) return "";
+  return reviews.map(
+    (r) => `
+      <div class="review-item">
+        <div class="review-header">
+          <span class="review-stars">${renderStars(r.rating)}</span>
+          <strong>${escapeHtml(r.reviewerName)}</strong>
+          <span class="review-date">${escapeHtml(formatDate(r.createdAt))}</span>
+        </div>
+        <p>${escapeHtml(r.comment)}</p>
+      </div>
+    `
+  ).join("");
+}
+function renderReviewForm(productId) {
+  return `
+    <form class="review-form" id="reviewForm" data-product-id="${escapeHtml(productId)}">
+      <h4>${getCopy("Write a review", "Rubuta sakamako")}</h4>
+      <label>
+        <span>${getCopy("Your name", "Sunanka")}</span>
+        <input type="text" name="reviewerName" required minlength="2" />
+      </label>
+      <fieldset class="star-fieldset">
+        <legend>${getCopy("Rating", "Daraj\u0430")}</legend>
+        ${[5, 4, 3, 2, 1].map(
+    (n) => `
+          <label class="star-label">
+            <input type="radio" name="rating" value="${n}" required />
+            <span aria-hidden="true">\u2605</span>
+          </label>
+        `
+  ).join("")}
+      </fieldset>
+      <label>
+        <span>${getCopy("Comment", "Ra'ayi")}</span>
+        <textarea name="comment" required minlength="10" rows="3"></textarea>
+      </label>
+      <button type="submit">${getCopy("Submit review", "Aika sakamako")}</button>
+      <p class="form-message" id="reviewMessage" role="status"></p>
+    </form>
+  `;
 }
 
 // src/backend/marketplace-settings.ts
@@ -990,13 +1111,13 @@ function renderCartPanel() {
   elements.cartItemsEl.innerHTML = items.map((item) => {
     const product = getCartProduct(item.productId);
     if (!product) return "";
-    const name2 = product.name[state.language];
+    const name = product.name[state.language];
     const lineTotal = formatPrice(parsePrice(product.price) * item.quantity);
     return `
         <div class="cart-item" data-product-id="${escapeHtml(item.productId)}">
           <div class="cart-item-thumb" style="--accent: ${product.accent}" aria-hidden="true"></div>
           <div class="cart-item-info">
-            <strong>${escapeHtml(name2)}</strong>
+            <strong>${escapeHtml(name)}</strong>
             <span class="cart-item-price">${escapeHtml(lineTotal)}</span>
           </div>
           <div class="cart-item-controls">
@@ -1062,9 +1183,6 @@ function getDiscountedPrice(amount, promotion) {
 
 // src/frontend/orders.ts
 var liveOrders = null;
-function getLiveOrders() {
-  return liveOrders;
-}
 async function fetchLiveOrders() {
   const res = await api.orders();
   liveOrders = res.orders;
@@ -1220,8 +1338,8 @@ function renderOrdersPanel() {
   if (liveOrders !== null && liveOrders.length > 0) {
     return liveOrders.slice(0, 10).map((order) => {
       const itemSummary = (order.items ?? []).map((i) => {
-        const name2 = typeof i.name === "object" ? i.name.en ?? "" : String(i.name ?? i.productId ?? "");
-        return `${escapeHtml(name2)} \xD7${i.quantity}`;
+        const name = typeof i.name === "object" ? i.name.en ?? "" : String(i.name ?? i.productId ?? "");
+        return `${escapeHtml(name)} \xD7${i.quantity}`;
       }).join(", ");
       const paymentStatus = order.paymentStatus ?? "pending";
       const deliveryOption = order.deliveryOption ?? "delivery";
@@ -1378,11 +1496,11 @@ function getMarketplaceAnalytics() {
 
 // src/frontend/render.ts
 function renderProductCard(product) {
-  const name2 = product.name[state.language];
+  const name = product.name[state.language];
   const category = product.category[state.language];
   const subcategory = product.subcategory[state.language];
   const availability = product.availability[state.language];
-  const wished = isWishlisted2(product.id);
+  const wished = isWishlisted(product.id);
   const avg = getAverageRating(product.id);
   const reviewCount = getProductReviews(product.id).length;
   const promotion = getPromotionForProduct(product);
@@ -1391,7 +1509,7 @@ function renderProductCard(product) {
   return `
     <article class="product-card" data-product-id="${escapeHtml(product.id)}">
       <div class="product-thumb" style="--accent: ${product.accent}">
-        ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name2)}" loading="lazy" />` : ""}
+        ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : ""}
         <span>${escapeHtml(subcategory)}</span>
         <button type="button"
           class="wish-btn${wished ? " is-wishlisted" : ""}"
@@ -1403,7 +1521,7 @@ function renderProductCard(product) {
           </svg>
         </button>
       </div>
-      <h3>${escapeHtml(name2)}</h3>
+      <h3>${escapeHtml(name)}</h3>
       ${promotion ? `<span class="promo-badge">${escapeHtml(promotion.title[state.language])}${promotion.discountPercent ? ` - ${promotion.discountPercent}%` : ""}</span>` : ""}
       <p class="product-meta">
         <span>${escapeHtml(category)}</span>
@@ -1864,11 +1982,11 @@ function buildCheckoutModal() {
   const itemsHtml = items.map((item) => {
     const product = getCartProduct(item.productId);
     if (!product) return "";
-    const name2 = escapeHtml(product.name[state.language]);
+    const name = escapeHtml(product.name[state.language]);
     const lineTotal = escapeHtml(formatPrice(
       parseInt(product.price.replace(/[^0-9]/g, ""), 10) * item.quantity
     ));
-    return `<div class="checkout-item"><span>${name2} \xD7${item.quantity}</span><span>${lineTotal}</span></div>`;
+    return `<div class="checkout-item"><span>${name} \xD7${item.quantity}</span><span>${lineTotal}</span></div>`;
   }).join("");
   el.innerHTML = `
     <div class="modal-box">
@@ -1959,10 +2077,40 @@ function openCheckoutModal() {
     const submitBtn = form.querySelector("button[type='submit']");
     const data = new FormData(form);
     const errorEl = modal.querySelector("#checkoutError");
+    const customerName = String(data.get("customerName") || "").trim();
+    const customerPhone = String(data.get("customerPhone") || "").trim();
     const deliveryOption = String(data.get("deliveryOption") || "delivery") === "pickup" ? "pickup" : "delivery";
-    const deliveryAddress = String(data.get("deliveryAddress") || "");
-    const deliveryArea = String(data.get("deliveryArea") || "");
+    const deliveryAddress = String(data.get("deliveryAddress") || "").trim();
+    const deliveryArea = String(data.get("deliveryArea") || "").trim();
     const paymentMethod = String(data.get("paymentMethod") || "");
+    if (!customerName) {
+      errorEl.textContent = getCopy("Enter your full name.", "Shigar da cikakken sunanka.");
+      form.querySelector("input[name='customerName']")?.focus();
+      return;
+    }
+    if (!customerPhone || !isValidPhone(customerPhone)) {
+      errorEl.textContent = getCopy("Enter a valid phone number.", "Shigar da lambar waya mai inganci.");
+      form.querySelector("input[name='customerPhone']")?.focus();
+      return;
+    }
+    if (deliveryOption === "delivery" && !deliveryAddress) {
+      errorEl.textContent = getCopy(
+        "Delivery address is required for delivery orders.",
+        "Adireshin kai kaya yana da mahimmanci don oda kai kaya."
+      );
+      form.querySelector("input[name='deliveryAddress']")?.focus();
+      return;
+    }
+    if (!deliveryArea) {
+      errorEl.textContent = getCopy("Delivery area is required.", "Ana bu\u0199atar yankin isarwa.");
+      form.querySelector("input[name='deliveryArea']")?.focus();
+      return;
+    }
+    if (!paymentMethod) {
+      errorEl.textContent = getCopy("Choose a payment method.", "Za\u0253i hanyar biyan ku\u0257i.");
+      form.querySelector("select[name='paymentMethod']")?.focus();
+      return;
+    }
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.textContent = getCopy("Placing order\u2026", "Ana sanya oda\u2026");
@@ -2002,8 +2150,8 @@ function openCheckoutModal() {
       }
     }
     const order = placeOrder(
-      String(data.get("customerName") || ""),
-      String(data.get("customerPhone") || ""),
+      customerName,
+      customerPhone,
       deliveryArea,
       paymentMethod,
       deliveryOption,
@@ -2284,8 +2432,23 @@ function wireAuthModal(modal) {
   }
   phoneForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    phoneError.textContent = "";
     const identifier = (modal.querySelector("#authPhone")?.value || "").trim();
-    if (!identifier) return;
+    if (!identifier) {
+      phoneError.textContent = getCopy("Enter your phone number or email address.", "Shigar da lambar waya ko adireshin email.");
+      modal.querySelector("#authPhone")?.focus();
+      return;
+    }
+    if (identifier.includes("@") && !isValidEmail(identifier)) {
+      phoneError.textContent = getCopy("Enter a valid email address.", "Shigar da adireshin email mai inganci.");
+      modal.querySelector("#authPhone")?.focus();
+      return;
+    }
+    if (!identifier.includes("@") && !isValidPhone(identifier)) {
+      phoneError.textContent = getCopy("Enter a valid phone number.", "Shigar da lambar waya mai inganci.");
+      modal.querySelector("#authPhone")?.focus();
+      return;
+    }
     const emailProfile = identifier.includes("@") ? findUserProfileByEmail(identifier) : null;
     pendingPhone = emailProfile?.phone || normalizePhone(identifier);
     needsSignup = requiresSignup(pendingPhone);
@@ -2330,15 +2493,39 @@ function wireAuthModal(modal) {
       const businessName = (modal.querySelector("#authBusinessName")?.value || "").trim();
       const area = (modal.querySelector("#authArea")?.value || "").trim();
       const category = modal.querySelector("#authCategory")?.value || "essentials";
-      if (!firstName || !lastName || !email || !password || !deliveryAddress || selectedType === "vendor" && (!businessName || !area)) {
-        otpError.textContent = getCopy(
-          "Complete the required sign-up details.",
-          "Kammala muhimman bayanan rajista."
-        );
+      if (!firstName || firstName.length < 2) {
+        otpError.textContent = getCopy("First name must be at least 2 characters.", "Sunan farko ya zama akalla haruffa 2.");
+        modal.querySelector("#authFirstName")?.focus();
         return;
       }
-      if (password.length < 8) {
+      if (!lastName || lastName.length < 2) {
+        otpError.textContent = getCopy("Last name must be at least 2 characters.", "Sunan karshe ya zama akalla haruffa 2.");
+        modal.querySelector("#authLastName")?.focus();
+        return;
+      }
+      if (!email || !isValidEmail(email)) {
+        otpError.textContent = getCopy("Enter a valid email address.", "Shigar da adireshin email mai inganci.");
+        modal.querySelector("#authEmail")?.focus();
+        return;
+      }
+      if (!password || password.length < 8) {
         otpError.textContent = getCopy("Password must be at least 8 characters.", "Kalmar sirri ta kasance akalla haruffa 8.");
+        modal.querySelector("#authPassword")?.focus();
+        return;
+      }
+      if (!deliveryAddress) {
+        otpError.textContent = getCopy("Delivery address is required.", "Ana bu\u0199atar adireshin isarwa.");
+        modal.querySelector("#authDeliveryAddress")?.focus();
+        return;
+      }
+      if (selectedType === "vendor" && !businessName) {
+        otpError.textContent = getCopy("Business name is required.", "Ana bu\u0199atar sunan kasuwanci.");
+        modal.querySelector("#authBusinessName")?.focus();
+        return;
+      }
+      if (selectedType === "vendor" && !area) {
+        otpError.textContent = getCopy("Business area is required.", "Ana bu\u0199atar yankin kasuwanci.");
+        modal.querySelector("#authArea")?.focus();
         return;
       }
       saveUserProfile({
@@ -2377,6 +2564,12 @@ function wireAuthModal(modal) {
     } else {
       const profile = findUserProfileByPhone(pendingPhone);
       const password = (modal.querySelector("#authLoginPassword")?.value || "").trim();
+      const loginPasswordWrap = modal.querySelector("#authLoginPasswordWrap");
+      if (loginPasswordWrap && !loginPasswordWrap.hidden && !password) {
+        otpError.textContent = getCopy("Password is required to sign in.", "Ana bu\u0199atar kalmar sirri don shiga.");
+        modal.querySelector("#authLoginPassword")?.focus();
+        return;
+      }
       if (isAdminPhone(pendingPhone) && password.length < 8) {
         otpError.textContent = getCopy("Enter an admin password of at least 8 characters.", "Shigar da kalmar admin akalla haruffa 8.");
         return;
@@ -2526,15 +2719,15 @@ function openUserPanel() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const name2 = String(data.get("name") || "").trim();
+    const name = String(data.get("name") || "").trim();
     const email = String(data.get("email") || "");
     const deliveryAddress = String(data.get("deliveryAddress") || "");
     const preferredLanguage = data.get("preferredLanguage") === "ha" ? "ha" : "en";
-    const [firstName, ...rest] = name2.split(/\s+/);
+    const [firstName, ...rest] = name.split(/\s+/);
     const lastName = rest.join(" ");
     if (state.currentUser?.token) {
       try {
-        const result = await api.updateMe({ name: name2, email, deliveryAddress, preferredLanguage });
+        const result = await api.updateMe({ name, email, deliveryAddress, preferredLanguage });
         const updated2 = { ...state.currentUser, ...result.user, token: state.currentUser.token };
         saveSession(updated2);
       } catch {
@@ -2557,6 +2750,222 @@ function closeUserPanel() {
   if (!panel) return;
   panel.classList.remove("modal-visible");
   panel.addEventListener("transitionend", () => panel.remove(), { once: true });
+}
+
+// src/frontend/product-modal.ts
+var activeProductId = null;
+function buildVendorProfile(vendorName) {
+  const profile = vendorProfiles[vendorName];
+  if (!profile) return "";
+  const stars = renderStars(profile.rating);
+  return `
+    <div class="vendor-profile-card">
+      <div class="vendor-profile-header">
+        <strong>${escapeHtml(profile.name)}</strong>
+        <span class="vendor-since">${getCopy(`Since ${profile.since}`, `Tun ${profile.since}`)}</span>
+      </div>
+      <div class="vendor-stats">
+        <span class="vendor-rating-stars">${stars} <strong>${profile.rating.toFixed(1)}</strong></span>
+        <span>${escapeHtml(String(profile.totalOrders))} ${getCopy("orders", "oda")}</span>
+        <span>${escapeHtml(String(profile.fulfillmentRate))}% ${getCopy("fulfilled", "an cika")}</span>
+      </div>
+      <p class="vendor-response">${getCopy("Response: ", "Amsa: ")}${escapeHtml(getLocalizedValue(profile.responseTime))}</p>
+    </div>
+  `;
+}
+function buildModalHtml(product) {
+  const name = product.name[state.language];
+  const subcategory = product.subcategory[state.language];
+  const availability = product.availability[state.language];
+  const avg = getAverageRating(product.id);
+  const reviewCount = getProductReviews(product.id).length;
+  const wished = isWishlisted(product.id);
+  return `
+    <div class="modal-backdrop" id="productModal" role="dialog" aria-modal="true" aria-labelledby="productModalName">
+      <div class="modal-box modal-box-wide">
+        <div class="modal-header">
+          <h2 id="productModalName">${escapeHtml(name)}</h2>
+          <button type="button" class="modal-close" aria-label="${getCopy("Close", "Rufe")}">\xD7</button>
+        </div>
+
+        <div class="product-modal-body">
+          <div class="product-modal-thumb" style="--accent: ${product.accent}">
+            ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(name)}" loading="lazy" />` : `<span>${escapeHtml(subcategory)}</span>`}
+          </div>
+
+          <div class="product-modal-meta">
+            <p class="product-meta">
+              <span>${escapeHtml(product.category[state.language])}</span>
+              <span>${escapeHtml(product.vendor)}</span>
+              <span>${escapeHtml(product.area)}</span>
+            </p>
+            <p class="availability">${escapeHtml(availability)}</p>
+            ${product.description?.[state.language] ? `<p>${escapeHtml(product.description[state.language])}</p>` : ""}
+            <p>${getCopy("Stock", "Adadi")}: ${escapeHtml(String(product.quantityAvailable ?? "Available"))}</p>
+            ${reviewCount > 0 ? `
+              <div class="modal-review-summary">
+                ${renderStars(avg)} <span class="review-count-label">${avg.toFixed(1)} (${reviewCount} ${getCopy("reviews", "ra'ayoyi")})</span>
+              </div>
+            ` : ""}
+          </div>
+
+          <div class="product-modal-price">
+            <span class="price">${escapeHtml(product.price)}</span>
+          </div>
+
+          <div class="product-modal-actions">
+            <button type="button" class="btn-primary" id="modalAddToCart">
+              ${getCopy("Add to cart", "Saka a kwando")}
+            </button>
+            <button type="button" class="btn-wishlist${wished ? " is-wishlisted" : ""}" id="modalWishlist"
+              aria-pressed="${wished}" aria-label="${wished ? getCopy("Remove from wishlist", "Cire daga jerin da aka ajiye") : getCopy("Save to wishlist", "Ajiye zuwa jerin kaya")}">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
+                <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/>
+              </svg>
+              ${wished ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}
+            </button>
+          </div>
+
+          ${buildVendorProfile(product.vendor)}
+
+          <section class="reviews-section">
+            <h3>${getCopy("Customer reviews", "Ra'ayoyin kwastomomi")}</h3>
+            <div id="modalReviewList">
+              ${reviewCount > 0 ? renderReviewList(product.id) : `<p class="muted">${getCopy("No reviews yet. Be the first!", "Babu ra'ayoyi tukuna. Ka fara!")}</p>`}
+            </div>
+            <div id="modalReviewForm">
+              ${renderReviewForm(product.id)}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function openProductModal(productId) {
+  const product = getProductById(productId);
+  if (!product) return;
+  closeProductModal();
+  activeProductId = productId;
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = buildModalHtml(product);
+  const modal = wrapper.firstElementChild;
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => modal.classList.add("modal-visible"));
+  });
+  modal.querySelector(".modal-close")?.addEventListener("click", closeProductModal);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeProductModal();
+  });
+  modal.querySelector(".product-modal-thumb img")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const src = e.currentTarget.src;
+    const lb = document.createElement("div");
+    lb.className = "img-lightbox";
+    lb.innerHTML = `<button class="img-lightbox-close" aria-label="Close">\xD7</button><img src="${escapeHtml(src)}" alt="${escapeHtml(product.name[state.language])}" />`;
+    document.body.appendChild(lb);
+    const close = () => lb.remove();
+    lb.addEventListener("click", close);
+    lb.querySelector(".img-lightbox-close")?.addEventListener("click", close);
+    const onKey = (ev) => {
+      if (ev.key === "Escape") {
+        close();
+        document.removeEventListener("keydown", onKey);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+  });
+  modal.querySelector("#modalAddToCart")?.addEventListener("click", () => {
+    if (!state.currentUser) {
+      closeProductModal();
+      openAuthModal();
+      return;
+    }
+    addToCart(productId);
+    const btn = modal.querySelector("#modalAddToCart");
+    btn.textContent = getCopy("Added!", "An saka!");
+    window.setTimeout(() => {
+      btn.textContent = getCopy("Add to cart", "Saka a kwando");
+    }, 1400);
+  });
+  modal.querySelector("#modalWishlist")?.addEventListener("click", () => {
+    if (!state.currentUser) {
+      closeProductModal();
+      openAuthModal();
+      return;
+    }
+    toggleWishlist(productId, product.name[state.language]);
+    syncWishlistCount();
+    const btn = modal.querySelector("#modalWishlist");
+    const now = isWishlisted(productId);
+    btn.classList.toggle("is-wishlisted", now);
+    btn.setAttribute("aria-pressed", String(now));
+    btn.querySelector("svg")?.nextSibling?.replaceWith(
+      document.createTextNode(` ${now ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}`)
+    );
+  });
+  const reviewForm = modal.querySelector("#reviewForm");
+  reviewForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const data = new FormData(reviewForm);
+    const name = String(data.get("reviewerName") || "").trim();
+    const rating = Number(data.get("rating") || 0);
+    const comment = String(data.get("comment") || "").trim();
+    const msgEl = modal.querySelector("#reviewMessage");
+    if (!name) {
+      msgEl.textContent = getCopy("Enter your name before submitting a review.", "Shigar da sunanka kafin ka aika ra'ayi.");
+      reviewForm.querySelector("input[name='reviewerName']")?.focus();
+      return;
+    }
+    if (!rating) {
+      msgEl.textContent = getCopy("Choose a rating for your review.", "Za\u0253i daraja don ra'ayinka.");
+      reviewForm.querySelector("input[name='rating']")?.focus();
+      return;
+    }
+    if (!comment || comment.length < 10) {
+      msgEl.textContent = getCopy(
+        "Write a longer review comment (at least 10 characters).",
+        "Rubuta tsawon sharhi na ra'ayi (akalla haruffa 10)."
+      );
+      reviewForm.querySelector("textarea[name='comment']")?.focus();
+      return;
+    }
+    addReview(productId, name, rating, comment);
+    msgEl.textContent = getCopy("Review submitted. Thank you!", "An aika ra'ayin. Na gode!");
+    reviewForm.reset();
+    const listEl = modal.querySelector("#modalReviewList");
+    listEl.innerHTML = renderReviewList(productId);
+    showToast({ message: getCopy("Review added!", "An saka ra'ayi!") });
+  });
+  document.addEventListener("keydown", handleModalKeydown);
+  modal.querySelector("#modalAddToCart")?.focus();
+  api.productReviews(productId).then((res) => {
+    const listEl = modal.querySelector("#modalReviewList");
+    if (!listEl || !res.reviews.length) return;
+    listEl.innerHTML = res.reviews.slice(0, 5).map(
+      (r) => `
+          <div class="review-item">
+            <div class="review-header">
+              <span class="review-stars">${renderStars(r.rating)}</span>
+              <strong>${escapeHtml(r.reviewerName ?? "")}</strong>
+              <span class="review-date">${escapeHtml(formatDate(r.createdAt))}</span>
+            </div>
+            <p>${escapeHtml(r.comment)}</p>
+          </div>`
+    ).join("");
+  }).catch(() => void 0);
+}
+function closeProductModal() {
+  const modal = document.getElementById("productModal");
+  if (!modal) return;
+  modal.classList.remove("modal-visible");
+  modal.addEventListener("transitionend", () => modal.remove(), { once: true });
+  document.removeEventListener("keydown", handleModalKeydown);
+  activeProductId = null;
+}
+function handleModalKeydown(e) {
+  if (e.key === "Escape") closeProductModal();
 }
 
 // src/frontend/admin-gate.ts
@@ -2685,9 +3094,6 @@ async function refreshLiveAdminQueues() {
   }
 }
 var liveAdminData = null;
-function getLiveAdminData() {
-  return liveAdminData;
-}
 async function fetchLiveAdminData() {
   const [ordersRes, paymentsRes, reviewsRes, promotionsRes, payoutsRes, analyticsRes, usersRes] = await Promise.all([
     api.adminOrders().catch(() => ({ orders: [] })),
@@ -2710,9 +3116,6 @@ async function fetchLiveAdminData() {
   return liveAdminData;
 }
 var liveVendorData = null;
-function getLiveVendorData() {
-  return liveVendorData;
-}
 async function fetchLiveVendorData() {
   const [ordersRes, reviewsRes, walletRes] = await Promise.all([
     api.vendorOrders().catch(() => ({ orders: [] })),
@@ -2728,9 +3131,6 @@ async function fetchLiveVendorData() {
   return liveVendorData;
 }
 var liveNotifications = [];
-function getLiveNotifications() {
-  return liveNotifications;
-}
 async function fetchLiveNotifications() {
   const res = await api.notifications().catch(() => ({ notifications: [] }));
   liveNotifications = res.notifications;
@@ -2747,9 +3147,6 @@ async function refreshSession() {
   return res?.user ?? null;
 }
 var liveVendorApplication = null;
-function getLiveVendorApplication() {
-  return liveVendorApplication;
-}
 async function fetchLiveVendorApplication() {
   const res = await api.vendorApplication().catch(() => null);
   liveVendorApplication = res?.application ?? null;
@@ -2757,13 +3154,6 @@ async function fetchLiveVendorApplication() {
 }
 
 // src/frontend/auth-pages.ts
-function isValidEmail(v) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
-}
-function isValidPhone(v) {
-  const digits = v.replace(/\D/g, "");
-  return digits.length >= 10 && digits.length <= 15;
-}
 function validateLogin(id, pw) {
   const e = {};
   if (!id.trim()) e.identifier = "Email or phone number is required.";
@@ -3001,970 +3391,55 @@ async function submitSignup(form, role) {
   }
 }
 
-// src/frontend/router/dashboard-routes.ts
-var dashboardRoutes = [
-  { role: "customer", path: "customer/overview", page: "customer", label: "Overview", description: "Orders, saved products, cart, support" },
-  { role: "customer", path: "customer/orders", page: "orders", label: "Orders", description: "Track purchases and receipts" },
-  { role: "customer", path: "customer/wishlist", page: "customer", label: "Wishlist", description: "Saved products and reorder ideas" },
-  { role: "customer", path: "customer/cart", page: "customer", label: "Cart", description: "Checkout-ready basket" },
-  { role: "customer", path: "customer/profile", page: "customer", label: "Profile", description: "Delivery, language, account" },
-  { role: "customer", path: "customer/notifications", page: "customer", label: "Notifications", description: "Order and support updates" },
-  { role: "vendor", path: "vendor/overview", page: "vendor", label: "Overview", description: "Sales, orders, inventory, payouts" },
-  { role: "vendor", path: "vendor/products", page: "vendor", label: "Products", description: "Catalog and moderation state" },
-  { role: "vendor", path: "vendor/inventory", page: "vendor", label: "Inventory", description: "Stock health and alerts" },
-  { role: "vendor", path: "vendor/orders", page: "vendor", label: "Orders", description: "Fulfillment queue" },
-  { role: "vendor", path: "vendor/revenue", page: "vendor", label: "Revenue", description: "Sales and payout performance" },
-  { role: "vendor", path: "vendor/payouts", page: "vendor", label: "Payouts", description: "Wallet and settlement requests" },
-  { role: "vendor", path: "vendor/reviews", page: "vendor", label: "Reviews", description: "Customer feedback" },
-  { role: "vendor", path: "vendor/analytics", page: "vendor", label: "Analytics", description: "Views and top products" },
-  { role: "vendor", path: "vendor/store", page: "vendor", label: "Store", description: "Profile and approval state" },
-  { role: "admin", path: "admin/overview", page: "admin", label: "Overview", description: "Platform control room" },
-  { role: "admin", path: "admin/users", page: "admin", label: "Users", description: "Customers, vendors, admins" },
-  { role: "admin", path: "admin/vendors", page: "admin", label: "Vendors", description: "Applications and seller health" },
-  { role: "admin", path: "admin/products", page: "admin", label: "Products", description: "Catalog and moderation" },
-  { role: "admin", path: "admin/orders", page: "admin", label: "Orders", description: "Fulfillment operations" },
-  { role: "admin", path: "admin/payments", page: "admin", label: "Payments", description: "Payment exceptions and refunds" },
-  { role: "admin", path: "admin/payouts", page: "admin", label: "Payouts", description: "Vendor settlements" },
-  { role: "admin", path: "admin/categories", page: "admin", label: "Categories", description: "Catalog taxonomy" },
-  { role: "admin", path: "admin/reports", page: "admin", label: "Reports", description: "Growth and revenue analysis" },
-  { role: "admin", path: "admin/audit-logs", page: "admin", label: "Audit logs", description: "Admin activity trail" },
-  { role: "admin", path: "admin/system-health", page: "admin", label: "System health", description: "API, DB, storage, email" }
-];
-function getDashboardRoute(path) {
-  return dashboardRoutes.find((route) => route.path === path);
-}
-function getDashboardRoutesForRole(role) {
-  return dashboardRoutes.filter((route) => route.role === role);
-}
-function getDefaultDashboardRoute(role) {
-  if (role === "admin") return "admin/overview";
-  if (role === "vendor") return "vendor/overview";
-  if (role === "customer") return "customer/overview";
-  return "home";
-}
-function getRoutePage(path) {
-  if (path === "my-orders") return "orders";
-  if (path === "results" || path === "categories") return "catalog";
-  if (path.startsWith("p/")) return "product";
-  if (path.startsWith("v/")) return "vendorpage";
-  if (path === "sell") return "sell";
-  return getDashboardRoute(path)?.page ?? (path.split("/")[0] || "home");
-}
-
-// src/frontend/services/dashboard-data.ts
-function getCustomerDashboardData(user) {
-  const liveOrders2 = getLiveOrders();
-  const orders = liveOrders2?.length ? liveOrders2.filter((order) => order.customerUserId === user.id || order.customerPhone === user.phone).map((order) => ({
-    id: order.id,
-    status: order.status,
-    paymentStatus: order.paymentStatus ?? "pending",
-    total: order.subtotal ?? 0,
-    createdAt: order.createdAt,
-    items: order.items?.map((item) => item.name?.en ?? item.productId).filter(Boolean) ?? []
-  })) : getOrders().filter((order) => order.customerPhone === user.phone).map((order) => ({
-    id: order.id,
-    status: order.status,
-    paymentStatus: order.paymentStatus,
-    total: order.subtotal,
-    createdAt: order.createdAt,
-    items: order.items.map((item) => item.name)
-  }));
-  const wishlistIds = getWishlist();
-  const recommended = getCatalogProducts().filter((product) => !wishlistIds.includes(product.id)).sort((a, b) => (b.quantityAvailable ?? 0) - (a.quantityAvailable ?? 0)).slice(0, 4);
-  const notifications = getLiveNotifications().filter((item) => item.audience === "customer").slice(0, 5);
-  return {
-    orders,
-    activeOrders: orders.filter((order) => !["delivered", "cancelled"].includes(order.status)).slice(0, 3),
-    recentPurchases: orders.slice(0, 4),
-    wishlistCount: wishlistIds.length,
-    cartCount: getCartItems().reduce((total, item) => total + item.quantity, 0),
-    cartSubtotal: getCartSubtotal(),
-    recommended,
-    notifications
-  };
-}
-function getVendorDashboardData(user) {
-  const live = getLiveVendorData();
-  const app = getLiveVendorApplication();
-  const vendor = findVendorByPhone(user.phone);
-  const businessName = app?.businessName || vendor?.businessName || user.name;
-  const liveOrders2 = live?.orders ?? [];
-  const localOrders = getOrders().filter((order) => order.items.some((item) => item.vendor === businessName));
-  const orders = liveOrders2.length ? liveOrders2.map((order) => ({
-    id: order.id,
-    status: order.status,
-    paymentStatus: order.paymentStatus ?? "pending",
-    total: order.subtotal ?? 0,
-    createdAt: order.createdAt
-  })) : localOrders.map((order) => ({
-    id: order.id,
-    status: order.status,
-    paymentStatus: order.paymentStatus,
-    total: order.items.filter((item) => item.vendor === businessName).reduce((sum, item) => sum + item.lineTotal, 0),
-    createdAt: order.createdAt
-  }));
-  const products2 = getProductsForVendor(user.phone);
-  const wallet = live?.wallet ?? getVendorWalletSummaries().find((summary) => summary.vendor === businessName) ?? null;
-  const reviews = live?.reviews ?? getAllReviews().filter((review) => review.vendor === businessName);
-  const lowStock = products2.filter((product) => (product.quantityAvailable ?? 0) <= 3);
-  const paidSales = orders.filter((order) => order.paymentStatus === "paid").reduce((sum, order) => sum + order.total, 0);
-  return {
-    businessName,
-    approvalStatus: app?.status ?? user.vendorStatus ?? vendor?.status ?? "pending",
-    approvalNote: app?.adminNote ?? vendor?.reviewNote,
-    products: products2,
-    orders,
-    pendingOrders: orders.filter((order) => ["awaiting_confirmation", "preparing_order"].includes(order.status)),
-    lowStock,
-    topProducts: [...products2].sort((a, b) => parsePrice(b.price) - parsePrice(a.price)).slice(0, 5),
-    wallet,
-    payouts: live?.payouts ?? [],
-    reviews: reviews.slice(0, 5),
-    paidSales
-  };
-}
-function getAdminDashboardData() {
-  const live = getLiveAdminData();
-  const localUsers = getUserProfiles();
-  const localVendors = getVendorRequests();
-  const vendorCounts = getVendorStatusCounts(localVendors);
-  const productCounts = getProductStatusCounts();
-  const orders = live?.orders ?? getOrders();
-  const payments = live?.payments ?? getPayments();
-  const users = live?.users ?? localUsers;
-  const vendors = live ? [] : localVendors;
-  const analytics = live?.analytics ?? null;
-  const paymentSummary = getPaymentSummary();
-  const activeVendors = live ? live.users.filter((user) => user.role === "vendor" && user.vendorStatus === "approved").length : vendorCounts.approved;
-  const pendingVendorApprovals = live ? live.users.filter((user) => user.role === "vendor" && user.vendorStatus === "pending").length : vendorCounts.pending;
-  const totalRevenue = analytics?.totalSales ?? orders.reduce((sum, order) => sum + (order.subtotal ?? 0), 0);
-  return {
-    users,
-    vendors,
-    orders,
-    payments,
-    payouts: live?.payouts ?? [],
-    reviews: live?.reviews ?? getAllReviews(),
-    promotions: live?.promotions ?? [],
-    analytics,
-    counts: {
-      totalUsers: users.length,
-      activeVendors,
-      pendingVendorApprovals,
-      pendingProductApprovals: productCounts.pending,
-      totalOrders: orders.length,
-      failedPayments: payments.filter((payment) => payment.status === "failed").length,
-      disputes: 0,
-      systemAlerts: 0,
-      products: getAllProducts().length
-    },
-    revenue: {
-      total: totalRevenue,
-      paid: analytics?.totalSales ?? paymentSummary.paidAmount,
-      pending: paymentSummary.pendingAmount,
-      refunded: paymentSummary.refundedAmount,
-      commission: getPlatformCommissionTotal()
-    }
-  };
-}
-function productToMiniMeta(product) {
-  return `${product.vendor} - ${product.price} - ${(product.quantityAvailable ?? 0).toLocaleString()} in stock`;
-}
-
-// src/frontend/components/dashboard/primitives.ts
-function renderStatusBadge(status, label = status) {
-  const normalized = String(status || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_");
-  return `<span class="dash-status dash-status-${escapeHtml(normalized)}">${escapeHtml(label.replace(/_/g, " "))}</span>`;
-}
-function renderStatCard(stat) {
-  return `
-    <article class="dash-stat-card" data-tone="${escapeHtml(stat.tone ?? "neutral")}">
-      <span>${escapeHtml(stat.label)}</span>
-      <strong>${escapeHtml(String(stat.value))}</strong>
-      ${stat.detail ? `<small>${escapeHtml(stat.detail)}</small>` : ""}
-    </article>
-  `;
-}
-function renderStatGrid(stats) {
-  return `<div class="dash-stat-grid">${stats.map(renderStatCard).join("")}</div>`;
-}
-function renderEmptyState(title, body, action) {
-  return `
-    <div class="dash-empty-state">
-      <strong>${escapeHtml(title)}</strong>
-      <p>${escapeHtml(body)}</p>
-      ${action ? renderDashboardAction(action) : ""}
-    </div>
-  `;
-}
-function renderDashboardAction(action) {
-  const tone = action.tone ?? "primary";
-  if (action.href || action.route) {
-    const href = action.href ?? `#${action.route}`;
-    return `<a class="dash-action dash-action-${tone}" href="${escapeHtml(href)}"${action.route ? ` data-route="${escapeHtml(action.route)}"` : ""}>${escapeHtml(action.label)}</a>`;
-  }
-  return `<button class="dash-action dash-action-${tone}" type="button"${action.id ? ` id="${escapeHtml(action.id)}"` : ""}>${escapeHtml(action.label)}</button>`;
-}
-function renderDashboardHeader(input) {
-  return `
-    <header class="dash-page-header">
-      <div>
-        <p class="dash-eyebrow">${escapeHtml(input.eyebrow)}</p>
-        <h2>${escapeHtml(input.title)}</h2>
-        <p>${escapeHtml(input.description)}</p>
-      </div>
-      ${input.actions?.length ? `<div class="dash-header-actions">${input.actions.map(renderDashboardAction).join("")}</div>` : ""}
-    </header>
-  `;
-}
-function renderPanel(input) {
-  return `
-    <section class="dash-panel ${escapeHtml(input.className ?? "")}">
-      <div class="dash-panel-heading">
-        <div>
-          ${input.eyebrow ? `<span>${escapeHtml(input.eyebrow)}</span>` : ""}
-          <h3>${escapeHtml(input.title)}</h3>
-        </div>
-        ${input.action ? renderDashboardAction({ ...input.action, tone: input.action.tone ?? "secondary" }) : ""}
-      </div>
-      <div class="dash-panel-body">${input.body}</div>
-    </section>
-  `;
-}
-function renderMiniRows(rows, empty) {
-  if (rows.length === 0) return renderEmptyState(empty.title, empty.body, empty.action);
-  return `
-    <div class="dash-mini-list">
-      ${rows.map(
-    (row) => `
-            <article class="dash-mini-row">
-              <div>
-                <strong>${escapeHtml(row.title)}</strong>
-                ${row.meta ? `<span>${escapeHtml(row.meta)}</span>` : ""}
-              </div>
-              ${row.value ? `<b>${escapeHtml(row.value)}</b>` : ""}
-              ${row.status ? renderStatusBadge(row.status) : ""}
-              ${row.action ? renderDashboardAction({ ...row.action, tone: row.action.tone ?? "secondary" }) : ""}
-            </article>
-          `
-  ).join("")}
-    </div>
-  `;
-}
-function renderMoney(amount) {
-  return formatPrice(Math.max(0, Number(amount ?? 0) || 0));
-}
-
-// src/frontend/components/dashboard/role-nav.ts
-function renderRoleDashboardNav(role, currentPath) {
-  const routes2 = getDashboardRoutesForRole(role);
-  return `
-    <nav class="dash-role-nav" aria-label="${escapeHtml(role)} dashboard sections">
-      ${routes2.map(
-    (route) => `
-            <a href="#${escapeHtml(route.path)}" data-route="${escapeHtml(route.path)}" class="${route.path === currentPath ? "is-active" : ""}">
-              <strong>${escapeHtml(route.label)}</strong>
-              <span>${escapeHtml(route.description)}</span>
-            </a>
-          `
-  ).join("")}
-    </nav>
-  `;
-}
-
-// src/frontend/pages/customer/overview.ts
-function renderCustomerOverview(user, currentPath = "customer/overview") {
-  const data = getCustomerDashboardData(user);
-  const firstName = user.firstName || user.name.split(" ")[0] || "there";
-  return `
-    <div class="dash-shell dash-shell-customer">
-      ${renderDashboardHeader({
-    eyebrow: getCopy("Customer workspace", "Wurin aiki na kwastoma"),
-    title: `${getCopy("Welcome back", "Barka da dawowar")}, ${firstName}`,
-    description: getCopy("Track active orders, continue shopping, review saved products, and handle support from one clean dashboard.", "Bi diddigin ododi masu aiki, ci gaba da siyayya, duba kayanda aka ajiye, da sarrafa tallafi daga allon sarrafa guda \u0257aya mai tsabta."),
-    actions: [
-      { label: getCopy("Shop catalog", "Saya daga jerin kaya"), route: "catalog" },
-      { label: getCopy("Open cart", "Bu\u0257e kwandon saya"), id: "customerCartBtn", tone: "secondary" }
-    ]
-  })}
-
-      ${renderRoleDashboardNav("customer", currentPath)}
-
-      ${renderStatGrid([
-    { label: getCopy("Active orders", "Ododi masu aiki"), value: data.activeOrders.length, detail: `${data.orders.length} ${getCopy("total orders", "jimillar ododi")}`, tone: "info" },
-    { label: getCopy("Cart subtotal", "Jimlar kwandon saya"), value: renderMoney(data.cartSubtotal), detail: `${data.cartCount} ${getCopy("items ready", "kaya a shirye")}`, tone: "success" },
-    { label: getCopy("Wishlist", "Jerin abubuwan da ake so"), value: data.wishlistCount, detail: getCopy("Saved products", "Kayan da aka ajiye"), tone: "warning" },
-    { label: getCopy("Unread updates", "Sanarwa da ba a karanta ba"), value: data.notifications.filter((item) => !item.readAt).length, detail: getCopy("Notifications", "Sanarwa"), tone: "neutral" }
-  ])}
-
-      <div class="dash-overview-grid">
-        ${renderPanel({
-    eyebrow: getCopy("Fulfillment", "Cika oda"),
-    title: getCopy("Active orders", "Ododi masu aiki"),
-    action: { label: getCopy("View all", "Duba duka"), route: "customer/orders" },
-    body: renderMiniRows(
-      data.activeOrders.map((order) => ({
-        title: order.id,
-        meta: `${order.items.slice(0, 2).join(", ") || getCopy("Order items", "Kayan oda")} - ${formatDate(order.createdAt)}`,
-        value: renderMoney(order.total),
-        status: order.status
-      })),
-      {
-        title: getCopy("No active orders", "Babu ododi masu aiki"),
-        body: getCopy("Start shopping and your live delivery timeline will appear here.", "Fara siyayya kuma jadawalin isar da kaya naka mai rai zai bayyana a nan."),
-        action: { label: getCopy("Browse products", "Duba kaya"), route: "catalog" }
-      }
-    )
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Discovery", "Bincike"),
-    title: getCopy("Recommended products", "Kayan da aka ba da shawara"),
-    action: { label: getCopy("Shop more", "Saya \u0199ari"), route: "catalog" },
-    body: data.recommended.length ? `<div class="dash-product-rail">${data.recommended.map(
-      (product) => `
-                    <article class="dash-product-card">
-                      <div class="dash-product-thumb" style="--accent: ${escapeHtml(product.accent)}">
-                        ${product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${escapeHtml(getLocalizedValue(product.name))}" loading="lazy" />` : ""}
-                      </div>
-                      <strong>${escapeHtml(getLocalizedValue(product.name))}</strong>
-                      <span>${escapeHtml(product.vendor)}</span>
-                      <b>${escapeHtml(product.price)}</b>
-                    </article>
-                  `
-    ).join("")}</div>` : renderEmptyState(getCopy("No recommendations yet", "Babu shawara tukuna"), getCopy("Search or save products to improve recommendations.", "Nemi ko ajiye kaya don inganta shawarwari."), { label: getCopy("Search catalog", "Nemi kaya"), route: "catalog" })
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Saved shopping", "Siyayya da aka ajiye"),
-    title: getCopy("Wishlist and cart", "Jerin abubuwan da ake so da kwandon saya"),
-    body: `
-            <div class="dash-action-stack">
-              <button class="dash-command-card" type="button" id="customerWishlistBtn">
-                <strong>${getCopy("Wishlist summary", "Ta\u0199aitaccen jerin abubuwan da ake so")}</strong>
-                <span>${data.wishlistCount} ${getCopy("saved products waiting for review.", "kayan da aka ajiye suna jiran duba.")}</span>
-              </button>
-              <button class="dash-command-card" type="button" id="customerCartBtnSecondary">
-                <strong>${getCopy("Cart checkout", "Biyan ku\u0257in kwandon saya")}</strong>
-                <span>${data.cartCount} ${getCopy("items", "kaya")} - ${renderMoney(data.cartSubtotal)}</span>
-              </button>
-              <a class="dash-command-card" href="#customer/profile" data-route="customer/profile">
-                <strong>${getCopy("Profile and delivery", "Bayani na sirri da isarwa")}</strong>
-                <span>${getCopy("Keep your address, language, and contact details current.", "Kiyaye adireshin ka, yare, da bayanin hul\u0257a.")}</span>
-              </a>
-            </div>
-          `
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Recent activity", "Ayyukan kwanan nan"),
-    title: getCopy("Purchases and notifications", "Siyayya da sanarwa"),
-    body: `
-            ${renderMiniRows(
-      data.recentPurchases.slice(0, 3).map((order) => ({
-        title: order.id,
-        meta: `${formatDate(order.createdAt)} - ${getCopy("payment", "biya")} ${order.paymentStatus}`,
-        value: renderMoney(order.total),
-        status: order.status
-      })),
-      { title: getCopy("No purchases yet", "Babu siyayya tukuna"), body: getCopy("Completed orders will appear here for easy reordering.", "Ododi da aka kammala za su bayyana a nan don sake oda cikin sau\u0199i.") }
-    )}
-            <div class="dash-notification-stack">
-              ${data.notifications.length ? data.notifications.map(
-      (item) => `
-                          <article>
-                            <strong>${escapeHtml(item.title)}</strong>
-                            <span>${escapeHtml(item.message)}</span>
-                            ${item.readAt ? renderStatusBadge("read", getCopy("Read", "An karanta")) : renderStatusBadge("unread", getCopy("Unread", "Ba a karanta ba"))}
-                          </article>
-                        `
-    ).join("") : renderEmptyState(getCopy("No notifications", "Babu sanarwa"), getCopy("Order, payment, and support updates will appear here.", "Sabuntawa na oda, biya, da tallafi za su bayyana a nan."))}
-            </div>
-          `
-  })}
-      </div>
-    </div>
-  `;
-}
-
-// src/frontend/pages/vendor/overview.ts
-function renderApprovalBanner(status, note) {
-  if (status === "approved") {
-    return `
-      <div class="dash-alert dash-alert-success">
-        <strong>${getCopy("Store approved", "An amince da shago")}</strong>
-        <span>${getCopy("Your products can be submitted for catalog moderation and orders can flow to this workspace.", "Ana iya aika kayanka don duba jerin kaya kuma ododi za su iya zuwa wannan wurin aiki.")}</span>
-      </div>
-    `;
-  }
-  const rejected = status === "rejected";
-  return `
-    <div class="dash-alert ${rejected ? "dash-alert-danger" : "dash-alert-warning"}">
-      <strong>${rejected ? getCopy("Store needs attention", "Shago yana bu\u0199atar kulawa") : getCopy("Store approval pending", "Amincewa da shago na jira")}</strong>
-      <span>${escapeHtml(note || (rejected ? getCopy("Review your business details and contact support before resubmitting.", "Duba bayanan kasuwancinka ka tuntubi tallafi kafin sake aika.") : getCopy("You can prepare products, but publishing is limited until admin approval.", "Kana iya shirya kaya, amma buga yana iyakantacce har admin ya amince.")))}</span>
-    </div>
-  `;
-}
-function renderVendorOverview(user, currentPath = "vendor/overview") {
-  const data = getVendorDashboardData(user);
-  return `
-    <div class="dash-shell dash-shell-vendor">
-      ${renderDashboardHeader({
-    eyebrow: getCopy("Vendor workspace", "Wurin aiki na dillali"),
-    title: data.businessName,
-    description: getCopy("Manage products, inventory, orders, revenue, payouts, reviews, analytics, and store readiness.", "Kula da kaya, ajiya, ododi, ku\u0257in shiga, biyan ku\u0257i, ra'ayoyi, nazari, da shirye-shiryen shago."),
-    actions: [
-      { label: getCopy("Add product", "Saka kaya"), href: "#vendorProductForm" },
-      { label: getCopy("Request payout", "Neman biya"), route: "vendor/payouts", tone: "secondary" }
-    ]
-  })}
-
-      ${renderRoleDashboardNav("vendor", currentPath)}
-
-      <div class="vendor-dash-header dash-hidden-compat">
-        <div class="vendor-dash-title">
-          <p class="eyebrow">${getCopy("Vendor workspace", "Wurin aiki na dillali")}</p>
-          <h2 id="vendorDashBusinessName">${escapeHtml(data.businessName)}</h2>
-        </div>
-        <span class="vendor-status-badge" id="vendorStatusBadge" data-status="${escapeHtml(data.approvalStatus)}">${escapeHtml(data.approvalStatus)}</span>
-      </div>
-
-      ${renderApprovalBanner(data.approvalStatus, data.approvalNote)}
-
-      ${renderStatGrid([
-    { label: getCopy("Total sales", "Jimillar siyarwa"), value: renderMoney(data.paidSales), detail: getCopy("Paid order value", "Darajar oda da aka biya"), tone: "success" },
-    { label: getCopy("Pending orders", "Ododi da ke jira"), value: data.pendingOrders.length, detail: `${data.orders.length} ${getCopy("total orders", "jimillar ododi")}`, tone: "warning" },
-    { label: getCopy("Low stock", "\u0198arancin ajiya"), value: data.lowStock.length, detail: getCopy("Products at 3 or fewer units", "Kaya da ke da na\xFAra 3 ko \u0199asa da haka"), tone: data.lowStock.length ? "danger" : "neutral" },
-    { label: getCopy("Available payout", "Biya da ake da shi"), value: renderMoney(data.wallet?.availableBalance), detail: `${renderMoney(data.wallet?.pendingBalance)} ${getCopy("pending", "jira")}`, tone: "info" }
-  ])}
-
-      <div class="dash-overview-grid">
-        ${renderPanel({
-    eyebrow: getCopy("Fulfillment", "Cika oda"),
-    title: getCopy("Recent orders", "Ododi na kwanan nan"),
-    action: { label: getCopy("Orders", "Ododi"), route: "vendor/orders" },
-    body: renderMiniRows(
-      data.orders.slice(0, 6).map((order) => ({
-        title: order.id,
-        meta: `${formatDate(order.createdAt)} - ${getCopy("payment", "biya")} ${order.paymentStatus}`,
-        value: renderMoney(order.total),
-        status: order.status
-      })),
-      { title: getCopy("No vendor orders yet", "Babu ododi na dillali tukuna"), body: getCopy("New paid and pending orders will appear here when customers buy your products.", "Ododi sabbi da wa\u0257anda aka biya da wa\u0257anda ke jira za su bayyana a nan sa'ad da kwastoma suka sayi kayanka.") }
-    )
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Inventory", "Ajiya"),
-    title: getCopy("Low stock products", "Kaya da \u0199arancin ajiya"),
-    action: { label: getCopy("Inventory", "Ajiya"), route: "vendor/inventory" },
-    body: renderMiniRows(
-      data.lowStock.slice(0, 5).map((product) => ({
-        title: getLocalizedValue(product.name),
-        meta: productToMiniMeta(product),
-        status: (product.quantityAvailable ?? 0) === 0 ? "out_of_stock" : "low_stock"
-      })),
-      { title: getCopy("Inventory is healthy", "Ajiya tana cikin lafiya"), body: getCopy("Products with low or empty stock will be highlighted here.", "Kaya da ke da \u0199arancin ajiya ko babu za a nuna su a nan.") }
-    )
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Catalog", "Jerin kaya"),
-    title: getCopy("Top products", "Kayan da suka fi"),
-    action: { label: getCopy("Products", "Kaya"), route: "vendor/products" },
-    body: renderMiniRows(
-      data.topProducts.map((product) => ({
-        title: getLocalizedValue(product.name),
-        meta: productToMiniMeta(product),
-        status: product.moderationStatus ?? product.listingStatus ?? "active"
-      })),
-      { title: getCopy("No products yet", "Babu kaya tukuna"), body: getCopy("Add your first product with price, stock, image, and bilingual description.", "\u0198ara kayan farko tare da farashin, ajiya, hoto, da bayani mai harsuna biyu.") }
-    )
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Payouts", "Biyan ku\u0257i"),
-    title: getCopy("Wallet and settlement", "Walat da tantancewa"),
-    action: { label: getCopy("Payouts", "Biyan ku\u0257i"), route: "vendor/payouts" },
-    body: `
-            <div class="dash-money-stack">
-              <article><span>${getCopy("Available", "Da ake da shi")}</span><strong>${renderMoney(data.wallet?.availableBalance)}</strong></article>
-              <article><span>${getCopy("Pending", "Jira")}</span><strong>${renderMoney(data.wallet?.pendingBalance)}</strong></article>
-              <article><span>${getCopy("Commission paid", "Kwamiti da aka biya")}</span><strong>${renderMoney(data.wallet?.totalCommission)}</strong></article>
-            </div>
-            ${data.payouts.length ? renderMiniRows(
-      data.payouts.slice(0, 3).map((payout) => ({
-        title: payout.id,
-        meta: `${payout.bankName ?? getCopy("Bank", "Banki")} - ${payout.requestedAt ? formatDate(payout.requestedAt) : getCopy("requested", "an nema")}`,
-        value: renderMoney(payout.amount),
-        status: payout.status
-      })),
-      { title: getCopy("No payout requests", "Babu bu\u0199atun biya"), body: getCopy("Request payouts once your available balance is ready.", "Nemi biyan ku\u0257i da zarar ku\u0257in da ake da shi ya shirya.") }
-    ) : renderEmptyState(getCopy("No payout requests", "Babu bu\u0199atun biya"), getCopy("Settlement requests and admin decisions will appear here.", "Bu\u0199atun tantancewa da yanke shawara na admin za su bayyana a nan."))}
-          `
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Feedback", "Ra'ayi"),
-    title: getCopy("Latest reviews", "Ra'ayoyi na kwanan nan"),
-    action: { label: getCopy("Reviews", "Ra'ayoyi"), route: "vendor/reviews" },
-    body: renderMiniRows(
-      data.reviews.map((review) => ({
-        title: `${review.rating}/5 - ${review.reviewerName ?? getCopy("Customer", "Kwastoma")}`,
-        meta: review.comment,
-        status: review.hidden ? "hidden" : "visible"
-      })),
-      { title: getCopy("No reviews yet", "Babu ra'ayoyi tukuna"), body: getCopy("Customer reviews will help you monitor quality and trust.", "Ra'ayoyin kwastoma za su taimaka maka ka sa ido kan inganci da amana.") }
-    )
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Manage", "Sarrafa"),
-    title: getCopy("Product operations", "Ayyukan kaya"),
-    className: "dash-panel-wide",
-    body: `
-            <div class="vendor-product-manager dash-embedded-manager" aria-labelledby="vendor-products-title">
-              <div class="vendor-product-heading">
-                <div>
-                  <span>${getCopy("Seller catalog", "Jerin kayan mai siyarwa")}</span>
-                  <h3 id="vendor-products-title">${getCopy("Add and manage products", "\u0198ara da sarrafa kaya")}</h3>
-                </div>
-                <p>${getCopy("Products are submitted for admin moderation before appearing in the public catalog.", "Ana aika kaya don duba admin kafin su bayyana a cikin jerin kayan jama'a.")}</p>
-              </div>
-              <div class="vendor-product-gate" id="vendorProductGate" role="status" aria-live="polite"></div>
-              <form class="vendor-product-form" id="vendorProductForm" novalidate>
-                <label><span>Product name (English)</span><input type="text" name="productName" minlength="2" maxlength="90" required placeholder="e.g. Plain black jallabiya" /></label>
-                <label><span>Product name (Hausa)</span><input type="text" name="productNameHa" minlength="2" maxlength="90" placeholder="misali Jallabiya baki" /></label>
-                <label><span>Description (English)</span><input type="text" name="descriptionEn" maxlength="240" placeholder="Short product description" /></label>
-                <label><span>Description (Hausa)</span><input type="text" name="descriptionHa" maxlength="240" placeholder="Takaitaccen bayanin kaya" /></label>
-                <label><span>Value / price</span><input type="text" inputmode="numeric" name="productValue" required placeholder="e.g. 15000" autocomplete="off" /></label>
-                <label><span>Quantity available</span><input type="number" name="quantityAvailable" min="0" step="1" required placeholder="10" /></label>
-                <label><span>Category</span><select name="productCategory" required><option value="food">Food</option><option value="fashion">Fashion</option><option value="children">Children</option><option value="essentials">Essentials</option></select></label>
-                <label><span>Product picture</span><input type="file" name="productImage" accept="image/png,image/jpeg,image/webp" required /><small>JPEG, PNG, or WebP. Large phone photos are optimized before upload.</small></label>
-                <button type="submit">Add product</button>
-                <p class="form-message" id="vendorProductMessage" role="status" aria-live="polite"></p>
-              </form>
-              <div class="vendor-products-list" id="vendorProductsList" aria-live="polite"></div>
-            </div>
-          `
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Compatibility", "Daidaitawa"),
-    title: getCopy("Order queue and notifications", "Layin oda da sanarwa"),
-    className: "dash-panel-wide",
-    body: `<div class="vendor-commerce-list" id="vendorCommerceList" aria-live="polite"></div>`
-  })}
-      </div>
-    </div>
-  `;
-}
-
-// src/frontend/pages/admin/overview.ts
-function renderAdminOverview(currentPath = "admin/overview") {
-  const data = getAdminDashboardData();
-  const pendingPayments = data.payments.filter((payment) => payment.status === "pending");
-  const failedPayments = data.payments.filter((payment) => payment.status === "failed");
-  const recentOrders = data.orders.slice(0, 6);
-  return `
-    <div class="dash-shell dash-shell-admin">
-      ${renderDashboardHeader({
-    eyebrow: getCopy("Marketplace control room", "Cibiyar kula da kasuwa"),
-    title: getCopy("Admin dashboard", "Allon admin"),
-    description: getCopy("Control users, vendors, products, approvals, orders, payments, disputes, categories, reports, audit logs, and system health.", "Kula da masu amfani, dillalai, kaya, amincewa, ododi, biyan ku\u0257i, rikice-rikice, rukunai, rahotanni, tarihin aiki, da lafiyar tsarin."),
-    actions: [
-      { label: getCopy("Vendor approvals", "Amincewa da dillalai"), route: "admin/vendors" },
-      { label: getCopy("System health", "Lafiyar tsarin"), route: "admin/system-health", tone: "secondary" }
-    ]
-  })}
-
-      ${renderRoleDashboardNav("admin", currentPath)}
-
-      ${renderStatGrid([
-    { label: getCopy("Total users", "Jimillar masu amfani"), value: data.counts.totalUsers, detail: getCopy("Registered accounts", "Asusun da aka yi rajista"), tone: "info" },
-    { label: getCopy("Active vendors", "Dillalan da ke aiki"), value: data.counts.activeVendors, detail: `${data.counts.pendingVendorApprovals} ${getCopy("pending vendor approvals", "amincewa da dillalai ke jira")}`, tone: "success" },
-    { label: getCopy("Pending approvals", "Amincewa da ke jira"), value: data.counts.pendingVendorApprovals + data.counts.pendingProductApprovals, detail: getCopy("Vendor and product queues", "Layukan dillalai da kaya"), tone: "warning" },
-    { label: getCopy("Total orders", "Jimillar ododi"), value: data.counts.totalOrders, detail: `${renderMoney(data.revenue.total)} GMV`, tone: "neutral" },
-    { label: getCopy("Revenue", "Ku\u0257in shiga"), value: renderMoney(data.revenue.paid), detail: `${renderMoney(data.revenue.commission)} ${getCopy("commission", "kwamiti")}`, tone: "success" },
-    { label: getCopy("Payment issues", "Matsalolin biya"), value: data.counts.failedPayments, detail: `${pendingPayments.length} ${getCopy("pending payments", "biyan ku\u0257i da ke jira")}`, tone: data.counts.failedPayments ? "danger" : "neutral" },
-    { label: getCopy("Disputes", "Rikice-rikice"), value: data.counts.disputes, detail: getCopy("Requires dispute endpoint", "Ana bu\u0199atar hanyar rikice-rikice"), tone: "neutral" },
-    { label: getCopy("System alerts", "Garga\u0257in tsarin"), value: data.counts.systemAlerts, detail: getCopy("Health checks pending", "Duba lafiyar tsarin na jira"), tone: "neutral" }
-  ])}
-
-      <div class="dash-overview-grid">
-        ${renderPanel({
-    eyebrow: getCopy("Approvals", "Amincewa"),
-    title: getCopy("Priority queues", "Layukan da suka fi muhimmanci"),
-    action: { label: getCopy("Review vendors", "Duba dillalai"), route: "admin/vendors" },
-    body: `
-            <div class="dash-queue-grid">
-              <article>
-                <span>${getCopy("Vendor approvals", "Amincewa da dillalai")}</span>
-                <strong>${data.counts.pendingVendorApprovals}</strong>
-                <small>${getCopy("New sellers waiting for review", "Sabbin masu siyarwa na jiran duba")}</small>
-              </article>
-              <article>
-                <span>${getCopy("Product moderation", "Duba kayan")}</span>
-                <strong>${data.counts.pendingProductApprovals}</strong>
-                <small>${getCopy("Listings waiting for catalog approval", "Kayan da ke jiran amincewa a cikin jerin")}</small>
-              </article>
-              <article>
-                <span>${getCopy("Payout requests", "Bu\u0199atun biya")}</span>
-                <strong>${data.payouts.filter((payout) => payout.status === "pending").length}</strong>
-                <small>${getCopy("Vendor settlement decisions", "Yanke shawara kan biyan dillalai")}</small>
-              </article>
-            </div>
-            <div class="dash-legacy-queues">
-              <div class="vendor-approval-list" id="vendorApprovals"></div>
-              <div class="product-moderation-list" id="productModeration"></div>
-            </div>
-          `
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Finance", "Ku\u0257i"),
-    title: getCopy("Revenue and payment control", "Kula da ku\u0257in shiga da biyan ku\u0257i"),
-    action: { label: getCopy("Payments", "Biyan ku\u0257i"), route: "admin/payments" },
-    body: `
-            <div class="dash-money-stack">
-              <article><span>${getCopy("Paid volume", "Adadin da aka biya")}</span><strong>${renderMoney(data.revenue.paid)}</strong></article>
-              <article><span>${getCopy("Pending", "Jira")}</span><strong>${renderMoney(data.revenue.pending)}</strong></article>
-              <article><span>${getCopy("Refunded", "An mayar da ku\u0257i")}</span><strong>${renderMoney(data.revenue.refunded)}</strong></article>
-              <article><span>${getCopy("Commission", "Kwamiti")}</span><strong>${renderMoney(data.revenue.commission)}</strong></article>
-            </div>
-            ${renderMiniRows(
-      [...failedPayments, ...pendingPayments].slice(0, 5).map((payment) => ({
-        title: payment.reference ?? payment.id,
-        meta: `${payment.orderId} - ${payment.method ?? getCopy("payment", "biya")} - ${formatDate(payment.createdAt)}`,
-        value: renderMoney(payment.amount),
-        status: payment.status
-      })),
-      { title: getCopy("No payment exceptions", "Babu matsalolin biya"), body: getCopy("Pending, failed, and refunded payment actions will appear here.", "Ayyukan biya da ke jira, wa\u0257anda suka gaza, da wa\u0257anda aka mayar da su za su bayyana a nan.") }
-    )}
-          `
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Orders", "Ododi"),
-    title: getCopy("Recent platform activity", "Ayyukan dandali na kwanan nan"),
-    action: { label: getCopy("Orders", "Ododi"), route: "admin/orders" },
-    body: renderMiniRows(
-      recentOrders.map((order) => ({
-        title: order.id,
-        meta: `${"customerName" in order ? order.customerName : order.customerPhone ?? getCopy("Customer", "Kwastoma")} - ${formatDate(order.createdAt)}`,
-        value: renderMoney(order.subtotal),
-        status: order.status
-      })),
-      { title: getCopy("No orders yet", "Babu ododi tukuna"), body: getCopy("Customer orders will appear here once checkout starts.", "Ododi na kwastoma za su bayyana a nan da zarar biyan ku\u0257i ya fara.") }
-    )
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Catalog", "Jerin kaya"),
-    title: getCopy("Products, categories, and reports", "Kaya, rukunai, da rahotanni"),
-    action: { label: getCopy("Reports", "Rahotanni"), route: "admin/reports" },
-    body: `
-            <div class="dash-action-stack">
-              <a class="dash-command-card" href="#admin/products" data-route="admin/products">
-                <strong>${getCopy("Product control", "Kula da kaya")}</strong>
-                <span>${data.counts.products} ${getCopy("products across approved, pending, hidden, and rejected states.", "kaya a cikin yanayin da aka amince, na jira, \u0253oye, da wa\u0257anda aka \u0199i.")}</span>
-              </a>
-              <a class="dash-command-card" href="#admin/categories" data-route="admin/categories">
-                <strong>${getCopy("Categories", "Rukunai")}</strong>
-                <span>${getCopy("Manage bilingual taxonomy, search terms, and category merchandising.", "Kula da rarrabuwar harsuna biyu, kalmomi na bincike, da siyar da rukunai.")}</span>
-              </a>
-              <a class="dash-command-card" href="#admin/reports" data-route="admin/reports">
-                <strong>${getCopy("Growth reports", "Rahotannin girma")}</strong>
-                <span>${getCopy("Track customer growth, vendor growth, popular searches, and best sellers.", "Bi diddigin girmar kwastoma, girmar dillalai, bincike na yau da kullum, da mafi siyarwa.")}</span>
-              </a>
-            </div>
-          `
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Risk", "Ha\u0257ari"),
-    title: getCopy("Reviews, disputes, and audit trail", "Ra'ayoyi, rikice-rikice, da tarihin aiki"),
-    action: { label: getCopy("Audit logs", "Tarihin aiki"), route: "admin/audit-logs" },
-    body: `
-            ${renderMiniRows(
-      data.reviews.filter((review) => !review.hidden).slice(0, 5).map((review) => ({
-        title: `${review.rating}/5 - ${review.reviewerName ?? getCopy("Customer", "Kwastoma")}`,
-        meta: review.comment,
-        status: "visible"
-      })),
-      { title: getCopy("No visible review risks", "Babu ha\u0257arin ra'ayoyi da ake gani"), body: getCopy("Review moderation and dispute queues will appear here.", "Duba ra'ayoyi da layukan rikice-rikice za su bayyana a nan.") }
-    )}
-            <div class="dash-system-list">
-              <article><strong>${getCopy("Disputes", "Rikice-rikice")}</strong><span>${getCopy("Endpoint required: /admin/disputes", "Ana bu\u0199atar hanyar: /admin/disputes")}</span></article>
-              <article><strong>${getCopy("Audit logs", "Tarihin aiki")}</strong><span>${getCopy("Endpoint required: /admin/audit-logs", "Ana bu\u0199atar hanyar: /admin/audit-logs")}</span></article>
-            </div>
-          `
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Infrastructure", "Ababen more rayuwa"),
-    title: getCopy("System health", "Lafiyar tsarin"),
-    action: { label: getCopy("Health", "Lafiya"), route: "admin/system-health" },
-    body: `
-            <div class="dash-health-grid">
-              <article data-state="ok"><strong>API</strong><span>${getCopy("Health endpoint available", "Hanyar lafiya tana akwai")}</span></article>
-              <article data-state="ok"><strong>${getCopy("Database", "Bayanan")}</strong><span>${getCopy("Reported by /api/health", "An ruwaito ta /api/health")}</span></article>
-              <article data-state="pending"><strong>${getCopy("Blob storage", "Ajiyar fayiloli")}</strong><span>${getCopy("Add admin health probe", "\u0198ara binciken lafiyar admin")}</span></article>
-              <article data-state="pending"><strong>${getCopy("Email", "Imel")}</strong><span>${getCopy("Add delivery provider status", "\u0198ara matsayin mai isar da imel")}</span></article>
-            </div>
-            ${renderEmptyState(getCopy("No critical alerts", "Babu garga\u0257i mai mahimmanci"), getCopy("System alerts will show here once health probes and logging are connected.", "Garga\u0257in tsarin za su bayyana a nan da zarar an ha\u0257a binciken lafiya da yin log."))}
-          `
-  })}
-
-        ${renderPanel({
-    eyebrow: getCopy("Legacy operations", "Ayyukan da suka gabata"),
-    title: getCopy("Existing admin controls", "Madafun admin da ake da su"),
-    className: "dash-panel-wide",
-    body: `
-            <div class="dash-legacy-admin-grid">
-              <div hidden>
-                <span id="totalSearches"></span>
-                <span id="failedSearches"></span>
-                <span id="savedVendors"></span>
-                <span id="topDemand"></span>
-              </div>
-              <div class="record-list" id="paymentStatus"></div>
-              <div class="withdrawal-list" id="withdrawalQueue"></div>
-              <div class="record-list" id="orderRecords"></div>
-              <div class="review-moderation-list" id="reviewModeration"></div>
-              <div id="vendorSubscriptionSummary"></div>
-              <div id="advancedAnalytics"></div>
-              <div id="phaseThreeControls"></div>
-              <div id="popularSearches" hidden></div>
-              <div id="failedSearchList" hidden></div>
-              <div id="demandTrends" hidden></div>
-              <table hidden><tbody id="searchHistoryTable"></tbody></table>
-            </div>
-          `
-  })}
-      </div>
-    </div>
-  `;
-}
-
-// src/i18n/index.ts
-var _lang = "en";
-function setI18nLang(lang) {
-  _lang = lang;
-}
-function applyLanguageToDOM(lang) {
-  _lang = lang;
-  document.querySelectorAll("[data-en][data-ha]").forEach((node) => {
-    if (node.matches(".sidebar-nav a, .sidebar-vendor-cta")) return;
-    node.textContent = node.dataset[lang] ?? "";
-  });
-  document.querySelectorAll("[data-alt-en][data-alt-ha]").forEach((node) => {
-    node.alt = lang === "en" ? node.dataset.altEn ?? "" : node.dataset.altHa ?? "";
-  });
-  document.querySelectorAll("[data-aria-en][data-aria-ha]").forEach((node) => {
-    node.setAttribute("aria-label", lang === "en" ? node.dataset.ariaEn ?? "" : node.dataset.ariaHa ?? "");
-  });
-  document.querySelectorAll("[data-placeholder-en][data-placeholder-ha]").forEach((node) => {
-    node.placeholder = lang === "en" ? node.dataset.placeholderEn ?? "" : node.dataset.placeholderHa ?? "";
-  });
-}
-
-// node_modules/@vercel/analytics/dist/index.mjs
-var initQueue = () => {
-  if (window.va) return;
-  window.va = function a(...params) {
-    if (!window.vaq) window.vaq = [];
-    window.vaq.push(params);
-  };
-};
-var name = "@vercel/analytics";
-var version = "2.0.1";
-function isBrowser() {
-  return typeof window !== "undefined";
-}
-function detectEnvironment() {
-  try {
-    const env = "development";
-    if (env === "development" || env === "test") {
-      return "development";
-    }
-  } catch {
-  }
-  return "production";
-}
-function setMode(mode = "auto") {
-  if (mode === "auto") {
-    window.vam = detectEnvironment();
-    return;
-  }
-  window.vam = mode;
-}
-function getMode() {
-  const mode = isBrowser() ? window.vam : detectEnvironment();
-  return mode || "production";
-}
-function isDevelopment() {
-  return getMode() === "development";
-}
-function getScriptSrc(props) {
-  if (props.scriptSrc) {
-    return makeAbsolute(props.scriptSrc);
-  }
-  if (isDevelopment()) {
-    return "https://va.vercel-scripts.com/v1/script.debug.js";
-  }
-  if (props.basePath) {
-    return makeAbsolute(`${props.basePath}/insights/script.js`);
-  }
-  return "/_vercel/insights/script.js";
-}
-function loadProps(explicitProps, confString) {
-  var _a;
-  let props = explicitProps;
-  if (confString) {
-    try {
-      props = {
-        ...(_a = JSON.parse(confString)) == null ? void 0 : _a.analytics,
-        ...explicitProps
-      };
-    } catch {
-    }
-  }
-  setMode(props.mode);
-  const dataset = {
-    sdkn: name + (props.framework ? `/${props.framework}` : ""),
-    sdkv: version
-  };
-  if (props.disableAutoTrack) {
-    dataset.disableAutoTrack = "1";
-  }
-  if (props.viewEndpoint) {
-    dataset.viewEndpoint = makeAbsolute(props.viewEndpoint);
-  }
-  if (props.eventEndpoint) {
-    dataset.eventEndpoint = makeAbsolute(props.eventEndpoint);
-  }
-  if (props.sessionEndpoint) {
-    dataset.sessionEndpoint = makeAbsolute(props.sessionEndpoint);
-  }
-  if (isDevelopment() && props.debug === false) {
-    dataset.debug = "false";
-  }
-  if (props.dsn) {
-    dataset.dsn = props.dsn;
-  }
-  if (props.endpoint) {
-    dataset.endpoint = props.endpoint;
-  } else if (props.basePath) {
-    dataset.endpoint = makeAbsolute(`${props.basePath}/insights`);
-  }
-  return {
-    beforeSend: props.beforeSend,
-    src: getScriptSrc(props),
-    dataset
-  };
-}
-function makeAbsolute(url) {
-  return url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/") ? url : `/${url}`;
-}
-function inject(props = {
-  debug: true
-}, confString) {
-  var _a;
-  if (!isBrowser()) return;
-  const { beforeSend, src, dataset } = loadProps(props, confString);
-  initQueue();
-  if (beforeSend) {
-    (_a = window.va) == null ? void 0 : _a.call(window, "beforeSend", beforeSend);
-  }
-  if (document.head.querySelector(`script[src*="${src}"]`)) return;
-  const script = document.createElement("script");
-  script.src = src;
-  for (const [key, value] of Object.entries(dataset)) {
-    script.dataset[key] = value;
-  }
-  script.defer = true;
-  script.onerror = () => {
-    const errorMessage = isDevelopment() ? "Please check if any ad blockers are enabled and try again." : "Be sure to enable Web Analytics for your project and deploy again. See https://vercel.com/docs/analytics/quickstart for more information.";
-    console.log(
-      `[Vercel Web Analytics] Failed to load script from ${src}. ${errorMessage}`
-    );
-  };
-  document.head.appendChild(script);
-}
-
 // src/frontend/app.ts
-var routes = /* @__PURE__ */ new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup", "sell"]);
+var routes = /* @__PURE__ */ new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
 var AUTH_ROUTES = /* @__PURE__ */ new Set(["login", "signup"]);
 var SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
-var VENDOR_IMAGE_MAX_SOURCE_BYTES = 8e6;
-var VENDOR_IMAGE_MAX_DATA_URL_LENGTH = 7e5;
-var VENDOR_IMAGE_MAX_EDGE = 1400;
-var VENDOR_IMAGE_QUALITY_STEPS = [0.82, 0.74, 0.66, 0.58];
-var VENDOR_IMAGE_EDGE_STEPS = [1400, 1200, 1e3, 800, 640];
-var VENDOR_PRODUCT_CATEGORIES = /* @__PURE__ */ new Set(["food", "fashion", "children", "essentials"]);
 function getCurrentRoute() {
   const raw = window.location.hash.replace("#", "") || "home";
   if (raw === "results" || raw === "categories") return "catalog";
   if (raw === "my-orders") return "orders";
-  if (raw.startsWith("p/")) return raw;
-  if (raw.startsWith("v/")) return raw;
-  if (getDashboardRoute(raw)) return raw;
   return routes.has(raw) ? raw : "home";
 }
 function getVisitorRole() {
   return state.currentUser?.role ?? "guest";
 }
 function getDefaultRouteForRole(role = getVisitorRole()) {
-  return getDefaultDashboardRoute(role);
+  if (role === "admin") return "admin";
+  if (role === "vendor") return "vendor";
+  if (role === "customer") return "customer";
+  return "home";
 }
 function canAccessRoute(route) {
   const role = getVisitorRole();
-  const dashboardRoute = getDashboardRoute(route);
-  if (dashboardRoute) return dashboardRoute.role === role;
   if (route === "admin") return role === "admin";
   if (route === "customer") return role === "customer";
   if (route === "orders") return role === "customer";
-  if (route.startsWith("p/") || route.startsWith("v/") || route === "sell") return true;
   if (AUTH_ROUTES.has(route)) return role === "guest";
   return true;
 }
 function setRoute(route = getCurrentRoute()) {
-  let nextRoute = routes.has(route) || getDashboardRoute(route) || route.startsWith("p/") || route.startsWith("v/") ? route : "home";
-  const role = getVisitorRole();
-  if (nextRoute === "customer" && role === "customer") nextRoute = "customer/overview";
-  if (nextRoute === "vendor" && role === "vendor") nextRoute = "vendor/overview";
-  if (nextRoute === "admin" && role === "admin") nextRoute = "admin/overview";
+  let nextRoute = routes.has(route) ? route : "home";
   if (!canAccessRoute(nextRoute)) {
     nextRoute = getDefaultRouteForRole();
     if (window.location.hash.replace("#", "") !== nextRoute) {
       window.history.replaceState(null, "", `#${nextRoute}`);
     }
   }
-  const pageRoute = getRoutePage(nextRoute);
   document.querySelectorAll("[data-page]").forEach((section) => {
-    const isActive = section.dataset.page === pageRoute;
+    const isActive = section.dataset.page === nextRoute;
     section.hidden = !isActive;
     section.classList.toggle("is-active-page", isActive);
   });
   document.querySelectorAll("[data-route]").forEach((link) => {
-    const linkRoute = link.dataset.route ?? "";
-    const isActive = linkRoute === nextRoute || linkRoute === pageRoute || nextRoute.startsWith(`${linkRoute}/`);
+    const isActive = link.dataset.route === nextRoute;
     link.classList.toggle("is-active-route", isActive);
     if (link.matches(".primary-nav a")) {
       link.setAttribute("aria-current", isActive ? "page" : "false");
     }
   });
   document.body.classList.toggle("is-auth-route", AUTH_ROUTES.has(nextRoute));
-  document.body.classList.toggle("on-home", pageRoute === "home");
-  const currentRole = getVisitorRole();
-  document.body.classList.toggle("is-guest", currentRole === "guest");
-  document.body.classList.toggle("is-customer", currentRole === "customer");
-  document.body.classList.toggle("is-vendor", currentRole === "vendor");
-  document.body.classList.toggle("is-admin", currentRole === "admin");
-  if (pageRoute === "product") renderProductPage(nextRoute.replace("p/", ""));
-  if (pageRoute === "vendorpage") renderVendorStorefront(nextRoute.replace("v/", ""));
-  renderActiveDashboardRoute(nextRoute);
+  document.body.classList.toggle("on-home", nextRoute === "home");
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
 }
@@ -4109,7 +3584,7 @@ async function refreshLiveCatalog() {
     } else {
       renderCatalogPreview(false);
     }
-    renderAdminDashboard2();
+    renderAdminDashboard();
   } catch {
   }
 }
@@ -4127,170 +3602,44 @@ async function refreshLiveAdminDashboard() {
     } else {
       renderCatalogPreview(false);
     }
-    renderAdminDashboard2();
-  } catch (error) {
-    console.warn("[KanoMart] Live admin sync failed \u2014 showing local data:", error);
-    renderAdminDashboard2();
+    renderAdminDashboard();
+  } catch {
   }
 }
-function renderProductPage(productId) {
-  const section = document.getElementById("productPage");
-  if (!section) return;
-  const product = getProductById(productId);
-  if (!product) {
-    section.innerHTML = `
-      <div class="pdp-not-found">
-        <h1>${getCopy("Product not found", "Ba a sami kayan ba")}</h1>
-        <a href="#catalog" data-route="catalog">${getCopy("Back to catalog", "Koma kasuwa")}</a>
-      </div>`;
-    return;
-  }
-  const lang = state.language;
-  const name2 = escapeHtml(product.name[lang]);
-  const vendor = escapeHtml(product.vendor);
-  const price = escapeHtml(product.price);
-  const area = escapeHtml(product.area);
-  const desc = product.description?.[lang] ? `<p class="pdp-desc">${escapeHtml(product.description[lang])}</p>` : "";
-  const wished = typeof isWishlisted === "function" ? isWishlisted(product.id) : false;
-  const profile = vendorProfiles[product.vendor];
-  const vendorCard = profile ? `
-    <div class="pdp-vendor-card">
-      <div class="pdp-vendor-avatar">${escapeHtml(profile.name.slice(0, 2).toUpperCase())}</div>
-      <div class="pdp-vendor-info">
-        <strong>${escapeHtml(profile.name)}</strong>
-        <small>\u2605 ${profile.rating.toFixed(1)} \xB7 ${profile.totalOrders} ${getCopy("orders", "oda")} \xB7 ${getCopy("Verified since", "Tabbatacce tun")} ${profile.since}</small>
-      </div>
-      <a href="#v/${encodeURIComponent(product.vendor)}" data-route-vendor="${encodeURIComponent(product.vendor)}" class="pdp-vendor-link">${getCopy("Visit store \u2192", "Ziyarci shago \u2192")}</a>
-    </div>` : "";
-  const imgHtml = product.imageDataUrl ? `<img src="${escapeHtml(product.imageDataUrl)}" alt="${name2}" class="pdp-main-img" />` : `<div class="pdp-main-img pdp-img-placeholder" style="--accent:${product.accent ?? "#176b4d"}">${escapeHtml(product.subcategory[lang])}</div>`;
-  section.innerHTML = `
-    <div class="pdp-breadcrumb">
-      <a href="#home" data-route="home">${getCopy("Home", "Gida")}</a>
-      <span aria-hidden="true">\u203A</span>
-      <a href="#catalog" data-route="catalog">${getCopy("Browse", "Bincika")}</a>
-      <span aria-hidden="true">\u203A</span>
-      <strong>${name2}</strong>
-    </div>
-    <div class="pdp-body">
-      <div class="pdp-gallery">${imgHtml}</div>
-      <div class="pdp-info">
-        <small class="pdp-vendor-meta">${vendor} \xB7 ${area}</small>
-        <h1 class="pdp-name">${name2}</h1>
-        <div class="pdp-price">${price}</div>
-        ${desc}
-        <div class="pdp-stock">${getCopy("Stock", "Adadi")}: ${escapeHtml(String(product.quantityAvailable ?? getCopy("Available", "Akwai")))}</div>
-        <div class="pdp-actions">
-          <button type="button" class="pdp-add-to-cart" data-pdp-add="${escapeHtml(product.id)}">
-            ${getCopy("Add to cart", "Saka a kwando")}
-          </button>
-          <button type="button" class="pdp-wishlist${wished ? " is-wishlisted" : ""}" data-pdp-wish="${escapeHtml(product.id)}"
-            aria-pressed="${wished}" aria-label="${getCopy("Save to wishlist", "Ajiye")}">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
-            ${wished ? getCopy("Saved", "An ajiye") : getCopy("Save", "Ajiye")}
-          </button>
-        </div>
-        <ul class="pdp-trust-list">
-          <li>${getCopy("Same-day delivery in Kano", "Isarwa a ranar yau a Kano")}</li>
-          <li>${getCopy("Pay on delivery available", "Ana biya a gida")}</li>
-          <li>${getCopy("Easy 7-day returns on eligible items", "Dawowar kaya mai sauki a cikin kwanaki 7")}</li>
-        </ul>
-        ${vendorCard}
-      </div>
-    </div>`;
-  section.querySelector("[data-pdp-add]")?.addEventListener("click", (e) => {
-    const btn = e.currentTarget;
-    if (!state.currentUser) {
-      openAuthModal();
-      return;
-    }
-    addToCart(btn.dataset.pdpAdd);
-    elements.cartCountEl.textContent = String(state.cartCount);
-    btn.textContent = getCopy("Added!", "An saka!");
-    window.setTimeout(() => {
-      btn.textContent = getCopy("Add to cart", "Saka a kwando");
-    }, 1400);
-  });
-  section.querySelector("[data-pdp-wish]")?.addEventListener("click", (e) => {
-    const btn = e.currentTarget;
-    if (!state.currentUser) {
-      openAuthModal();
-      return;
-    }
-    toggleWishlist(btn.dataset.pdpWish, product.name[lang]);
-    syncWishlistCount();
-    const now = typeof isWishlisted === "function" ? isWishlisted(product.id) : false;
-    btn.classList.toggle("is-wishlisted", now);
-    btn.setAttribute("aria-pressed", String(now));
-  });
-  section.querySelector("[data-route-vendor]")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    const slug = e.currentTarget.dataset.routeVendor || "";
-    window.location.hash = `v/${slug}`;
-    setRoute(`v/${slug}`);
-  });
-}
-function renderVendorStorefront(vendorSlug) {
-  const section = document.getElementById("vendorPage");
-  if (!section) return;
-  const decodedSlug = decodeURIComponent(vendorSlug);
-  const profile = vendorProfiles[decodedSlug];
-  const products2 = getCatalogProducts().filter((p) => p.vendor === decodedSlug);
-  const lang = state.language;
-  if (!profile && products2.length === 0) {
-    section.innerHTML = `
-      <div class="pdp-not-found">
-        <h1>${getCopy("Store not found", "Ba a sami shago ba")}</h1>
-        <a href="#catalog" data-route="catalog">${getCopy("Back to catalog", "Koma kasuwa")}</a>
-      </div>`;
-    return;
-  }
-  const vendorName = escapeHtml(profile?.name ?? decodedSlug);
-  const rating = profile ? `\u2605 ${profile.rating.toFixed(1)}` : "";
-  const orders = profile ? `${profile.totalOrders} ${getCopy("orders", "oda")}` : "";
-  const since = profile ? `${getCopy("Verified since", "Tabbatacce tun")} ${profile.since}` : "";
-  const productsHtml = products2.length ? products2.map(renderProductCard).join("") : `<p class="muted">${getCopy("No products listed yet.", "Babu kaya da aka saka tukuna.")}</p>`;
-  section.innerHTML = `
-    <div class="pdp-breadcrumb">
-      <a href="#home" data-route="home">${getCopy("Home", "Gida")}</a>
-      <span aria-hidden="true">\u203A</span>
-      <span>${getCopy("Vendors", "Dillalai")}</span>
-      <span aria-hidden="true">\u203A</span>
-      <strong>${vendorName}</strong>
-    </div>
-    <div class="vendor-storefront-header">
-      <div class="vsf-avatar">${escapeHtml(vendorName.slice(0, 2).toUpperCase())}</div>
-      <div class="vsf-info">
-        <h1>${vendorName}</h1>
-        <div class="vsf-meta">${[rating, orders, since].filter(Boolean).join(" \xB7 ")}</div>
-        ${profile?.area ? `<small class="muted">${escapeHtml(profile.area ?? "")}</small>` : ""}
-      </div>
-    </div>
-    <div class="vsf-products">
-      <h2>${getCopy("Products", "Kaya")} <span class="vsf-count">(${products2.length})</span></h2>
-      <div class="product-grid" id="vendorStorefrontGrid">${productsHtml}</div>
-    </div>`;
-  syncAllWishlistButtons();
-}
-function renderActiveDashboardRoute(route = getCurrentRoute()) {
-  const user = state.currentUser;
-  if (user?.role === "customer" && getRoutePage(route) === "customer") {
-    renderCustomerDashboard(route);
-    return;
-  }
-  if (user?.role === "vendor" && getRoutePage(route) === "vendor") {
-    renderVendorDashboard(route);
-    return;
-  }
-  if (user?.role === "admin" && getRoutePage(route) === "admin") {
-    renderAdminDashboard2(route);
-  }
-}
-function renderCustomerDashboard(route = getCurrentRoute()) {
+function renderCustomerDashboard() {
   const user = state.currentUser;
   if (!user || user.role !== "customer") return;
-  const section = document.querySelector("#customer");
-  if (!section) return;
-  section.innerHTML = renderCustomerOverview(user, route);
+  const nameEl = document.querySelector("#customerWelcomeName");
+  if (nameEl) {
+    const firstName = user.firstName || user.name?.split(" ")[0] || "";
+    nameEl.textContent = firstName ? getCopy(`Welcome back, ${firstName}!`, `Barka da dawo, ${firstName}!`) : getCopy("Welcome back!", "Barka da dawo!");
+  }
+  const orderCount = getOrders().filter((o) => o.customerPhone === user.phone).length;
+  const cartCount = state.cartCount;
+  const wishlistCount = Number(elements.wishlistCountEl.textContent) || 0;
+  const statOrders = document.querySelector("#customerStatOrders");
+  const statCart = document.querySelector("#customerStatCart");
+  const statWishlist = document.querySelector("#customerStatWishlist");
+  if (statOrders) statOrders.textContent = String(orderCount);
+  if (statCart) statCart.textContent = String(cartCount);
+  if (statWishlist) statWishlist.textContent = String(wishlistCount);
+  const recentEl = document.querySelector("#customerRecentOrders");
+  if (!recentEl) return;
+  const recentOrders = getOrders().filter((o) => o.customerPhone === user.phone).slice(0, 3);
+  if (recentOrders.length === 0) {
+    recentEl.innerHTML = `<p class="muted" data-en="No orders yet. Start shopping to see your orders here." data-ha="Babu oda tukuna. Fara sayayya don ganin ododinka a nan.">${getCopy("No orders yet. Start shopping to see your orders here.", "Babu oda tukuna. Fara sayayya don ganin ododinka a nan.")}</p>`;
+    return;
+  }
+  recentEl.innerHTML = recentOrders.map((order) => `
+    <div class="customer-order-row">
+      <div class="customer-order-id">
+        <strong>${escapeHtml(order.id)}</strong>
+        <small>${escapeHtml(formatDate(order.createdAt))}</small>
+      </div>
+      <span class="order-status order-status-${escapeHtml(order.status)}">${escapeHtml(order.status.replace(/_/g, " "))}</span>
+      <span class="customer-order-total">${escapeHtml(formatPrice(order.subtotal))}</span>
+    </div>
+  `).join("");
 }
 function renderOrdersPage() {
   const ordersList = document.querySelector("#myOrdersList");
@@ -4308,9 +3657,12 @@ function renderOrdersPage() {
 function renderLanguageSensitiveViews() {
   syncUserButton();
   syncRoleNavigation();
-  renderActiveDashboardRoute();
+  renderCustomerDashboard();
   renderOrdersPage();
   renderCartPanel();
+  renderVendorProducts();
+  renderVendorCommerce();
+  renderAdminDashboard();
   const userOrdersList = document.querySelector("#userOrdersList");
   if (userOrdersList) userOrdersList.innerHTML = renderOrdersPanel();
   if (document.querySelector("#wishlistModal")) openWishlistPanel();
@@ -4318,13 +3670,13 @@ function renderLanguageSensitiveViews() {
 async function refreshLiveVendorDashboard() {
   if (state.currentUser?.role !== "vendor" || !state.currentUser.token) return;
   try {
-    const [, , application] = await Promise.all([
+    await Promise.all([
       refreshLiveVendorProducts(),
       fetchLiveVendorData(),
       fetchLiveVendorApplication()
     ]);
-    if (application?.status) syncCurrentVendorStatus(application.status);
-    renderVendorDashboard();
+    renderVendorProducts();
+    renderVendorCommerce();
   } catch {
   }
 }
@@ -4341,7 +3693,7 @@ function performSearch(rawQuery) {
     state.lastResults = results;
     updateResultCopy(query, results);
     renderProductResults(results);
-    renderAdminDashboard2();
+    renderAdminDashboard();
   }, 180);
 }
 function setLanguage(language) {
@@ -4352,8 +3704,19 @@ function setLanguage(language) {
     "Kano Mart | Local Marketplace for Kano",
     "Kano Mart | Kasuwar Kano ta yanar gizo"
   );
-  setI18nLang(language);
-  applyLanguageToDOM(language);
+  document.querySelectorAll("[data-en][data-ha]").forEach((node) => {
+    if (node.matches(".sidebar-nav a, .sidebar-vendor-cta")) return;
+    node.textContent = node.dataset[language] || "";
+  });
+  document.querySelectorAll("[data-alt-en][data-alt-ha]").forEach((node) => {
+    node.alt = node.dataset[`alt${language === "en" ? "En" : "Ha"}`] || "";
+  });
+  document.querySelectorAll("[data-aria-en][data-aria-ha]").forEach((node) => {
+    node.setAttribute("aria-label", node.dataset[`aria${language === "en" ? "En" : "Ha"}`] || "");
+  });
+  document.querySelectorAll("[data-placeholder-en][data-placeholder-ha]").forEach((node) => {
+    node.placeholder = node.dataset[`placeholder${language === "en" ? "En" : "Ha"}`] || "";
+  });
   setActiveLanguageButtons(language);
   syncSidebarLabels();
   if (state.lastQuery) {
@@ -4364,8 +3727,6 @@ function setLanguage(language) {
     renderCatalogPreview();
   }
   renderLanguageSensitiveViews();
-  applyLanguageToDOM(language);
-  syncSidebarLabels();
 }
 function handleVendorRequestSubmit(event) {
   event.preventDefault();
@@ -4396,207 +3757,28 @@ function handleVendorRequestSubmit(event) {
   );
   openAuthModal({ phone, role: "vendor", businessName, area, category });
 }
-function createVendorFormError(code) {
-  const error = new Error(code);
-  error.name = "VendorProductFormError";
-  return error;
-}
 function readImageAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
-      reject(createVendorFormError("unsupported_image"));
+      reject(new Error("Invalid image"));
       return;
     }
-    if (file.size > VENDOR_IMAGE_MAX_SOURCE_BYTES) {
-      reject(createVendorFormError("source_image_too_large"));
+    if (file.size > 15e5) {
+      reject(new Error("Image too large"));
       return;
     }
     const reader = new FileReader();
     reader.addEventListener("load", () => resolve(String(reader.result || "")));
-    reader.addEventListener("error", () => reject(createVendorFormError("image_read_failed")));
+    reader.addEventListener("error", () => reject(new Error("Could not read image")));
     reader.readAsDataURL(file);
   });
-}
-function loadImageElement(dataUrl) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.addEventListener("load", () => resolve(image), { once: true });
-    image.addEventListener("error", () => reject(createVendorFormError("image_decode_failed")), { once: true });
-    image.src = dataUrl;
-  });
-}
-function normalizeVendorImageName(fileName, mimeType) {
-  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
-  const base = sanitizePlainText(fileName.replace(/\.[^.]+$/, ""), 70).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  return `${base || "product-image"}.${ext}`;
-}
-function drawVendorImage(image, maxEdge, quality) {
-  const sourceWidth = image.naturalWidth || image.width;
-  const sourceHeight = image.naturalHeight || image.height;
-  if (!sourceWidth || !sourceHeight) throw createVendorFormError("image_decode_failed");
-  const ratio = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
-  const targetWidth = Math.max(1, Math.round(sourceWidth * ratio));
-  const targetHeight = Math.max(1, Math.round(sourceHeight * ratio));
-  const canvas = document.createElement("canvas");
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
-  const context = canvas.getContext("2d", { alpha: false });
-  if (!context) throw createVendorFormError("image_compression_failed");
-  context.fillStyle = "#fff";
-  context.fillRect(0, 0, targetWidth, targetHeight);
-  context.drawImage(image, 0, 0, targetWidth, targetHeight);
-  const dataUrl = canvas.toDataURL("image/jpeg", quality);
-  if (!dataUrl.startsWith("data:image/jpeg;base64,")) throw createVendorFormError("image_compression_failed");
-  return dataUrl;
-}
-async function prepareVendorProductImage(file) {
-  const allowedMimeTypes = /* @__PURE__ */ new Set(["image/png", "image/jpeg", "image/webp"]);
-  if (!allowedMimeTypes.has(file.type)) throw createVendorFormError("unsupported_image");
-  const sourceDataUrl = await readImageAsDataUrl(file);
-  if (sourceDataUrl.length <= VENDOR_IMAGE_MAX_DATA_URL_LENGTH) {
-    const mimeType = file.type;
-    return {
-      dataUrl: sourceDataUrl,
-      fileName: normalizeVendorImageName(file.name, mimeType),
-      mimeType,
-      originalBytes: file.size,
-      finalBytes: sourceDataUrl.length,
-      compressed: false
-    };
-  }
-  const image = await loadImageElement(sourceDataUrl);
-  for (const edge of VENDOR_IMAGE_EDGE_STEPS) {
-    const maxEdge = Math.min(edge, VENDOR_IMAGE_MAX_EDGE);
-    for (const quality of VENDOR_IMAGE_QUALITY_STEPS) {
-      const dataUrl = drawVendorImage(image, maxEdge, quality);
-      if (dataUrl.length <= VENDOR_IMAGE_MAX_DATA_URL_LENGTH) {
-        return {
-          dataUrl,
-          fileName: normalizeVendorImageName(file.name, "image/jpeg"),
-          mimeType: "image/jpeg",
-          originalBytes: file.size,
-          finalBytes: dataUrl.length,
-          compressed: true
-        };
-      }
-    }
-  }
-  throw createVendorFormError("compressed_image_too_large");
-}
-function getEffectiveVendorStatus() {
-  const user = state.currentUser;
-  if (!user || user.role !== "vendor") return "pending";
-  const application = getLiveVendorApplication();
-  const localVendor = findVendorByPhone(user.phone);
-  return application?.status ?? user.vendorStatus ?? localVendor?.status ?? "pending";
-}
-function syncCurrentVendorStatus(status) {
-  const user = state.currentUser;
-  if (!user || user.role !== "vendor" || user.vendorStatus === status) return;
-  user.vendorStatus = status;
-  localStorage.setItem(storageKeys.session, JSON.stringify(user));
-  syncRoleNavigation();
-}
-function syncSessionFromApiUser(user) {
-  const current = state.currentUser;
-  if (!current || !user || current.phone !== user.phone) return;
-  state.currentUser = {
-    ...current,
-    id: user.id ?? current.id,
-    email: user.email,
-    firstName: user.firstName ?? current.firstName,
-    lastName: user.lastName ?? current.lastName,
-    name: user.name || [user.firstName, user.lastName].filter(Boolean).join(" ") || current.name,
-    role: user.role,
-    vendorStatus: user.vendorStatus ?? current.vendorStatus,
-    deliveryAddress: user.deliveryAddress,
-    preferredLanguage: user.preferredLanguage ?? current.preferredLanguage,
-    createdAt: user.createdAt ?? current.createdAt
-  };
-  localStorage.setItem(storageKeys.session, JSON.stringify(state.currentUser));
-  syncUserButton();
-  syncRoleNavigation();
-  renderActiveDashboardRoute();
-}
-function setVendorProductMessage(message, text, stateName = "info") {
-  if (!message) return;
-  message.textContent = text;
-  message.dataset.state = stateName;
-}
-function getVendorGateCopy(status, hasToken) {
-  if (!hasToken) {
-    return {
-      title: getCopy("Sign in again to submit products", "Sake shiga domin tura kaya"),
-      body: getCopy(
-        "Your session is missing live API access. Sign out and sign in again before adding products.",
-        "Zaman shiga bai da damar API live. Fita ka sake shiga kafin saka kaya."
-      ),
-      submit: getCopy("Sign in required", "Ana bukatar shiga")
-    };
-  }
-  if (status === "approved") {
-    return {
-      title: getCopy("Store approved", "An amince da shago"),
-      body: getCopy(
-        "New products are submitted to admin review before they appear in the customer catalog.",
-        "Sabbin kaya za su je wajen admin kafin su bayyana a kasuwar kwastoma."
-      ),
-      submit: getCopy("Add product", "Saka kaya")
-    };
-  }
-  if (status === "rejected") {
-    return {
-      title: getCopy("Store not approved", "Ba a amince da shago ba"),
-      body: getCopy(
-        "Your vendor application was not approved. Contact support before adding products.",
-        "Ba a amince da rajistar dillali ba. Tuntubi tallafi kafin saka kaya."
-      ),
-      submit: getCopy("Store not approved", "Ba a amince ba")
-    };
-  }
-  return {
-    title: getCopy("Vendor approval pending", "Ana jiran amincewar dillali"),
-    body: getCopy(
-      "Admin must approve your store before products can be submitted. You can browse the dashboard while waiting.",
-      "Admin sai ya amince da shagonsa kafin a tura kaya. Za ka iya duba dashboard yayin jira."
-    ),
-    submit: getCopy("Waiting for approval", "Ana jiran amincewa")
-  };
-}
-function renderVendorProductGate() {
-  const form = document.querySelector("#vendorProductForm");
-  const gate = document.querySelector("#vendorProductGate");
-  const message = document.querySelector("#vendorProductMessage");
-  const submit = form?.querySelector('button[type="submit"]') ?? null;
-  const user = state.currentUser;
-  if (!form || !user || user.role !== "vendor") return;
-  const status = getEffectiveVendorStatus();
-  const canSubmit = Boolean(user.token) && status === "approved";
-  const copy = getVendorGateCopy(status, Boolean(user.token));
-  if (gate) {
-    gate.dataset.status = canSubmit ? "approved" : status;
-    gate.innerHTML = `
-      <strong>${escapeHtml(copy.title)}</strong>
-      <span>${escapeHtml(copy.body)}</span>
-    `;
-  }
-  form.querySelectorAll("input, select, button").forEach((control) => {
-    control.disabled = !canSubmit;
-  });
-  if (submit) {
-    submit.textContent = copy.submit;
-    submit.dataset.idleText = copy.submit;
-  }
-  if (!canSubmit && message && !message.textContent.trim()) {
-    setVendorProductMessage(message, copy.body, status === "rejected" || !user.token ? "error" : "info");
-  }
 }
 function renderVendorDashHeader() {
   const user = state.currentUser;
   if (!user || user.role !== "vendor") return;
   const vendor = findVendorByPhone(user.phone);
   const businessName = vendor?.businessName || user.name;
-  const status = getEffectiveVendorStatus();
+  const status = user.vendorStatus ?? "pending";
   const nameEl = document.querySelector("#vendorDashBusinessName");
   if (nameEl) nameEl.textContent = businessName;
   const badge = document.querySelector("#vendorStatusBadge");
@@ -4604,16 +3786,6 @@ function renderVendorDashHeader() {
     badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
     badge.dataset.status = status;
   }
-}
-function renderVendorDashboard(route = getCurrentRoute()) {
-  const user = state.currentUser;
-  if (!user || user.role !== "vendor") return;
-  const dashboard = document.querySelector(".vendor-dashboard");
-  if (!dashboard) return;
-  dashboard.innerHTML = renderVendorOverview(user, route);
-  renderVendorProducts();
-  renderVendorProductGate();
-  renderVendorCommerce();
 }
 function renderVendorProducts() {
   const list = document.querySelector("#vendorProductsList");
@@ -4718,244 +3890,113 @@ function renderVendorCommerce() {
     </div>
   `;
 }
-function renderAdminDashboard2(route = getCurrentRoute()) {
-  if (state.currentUser?.role !== "admin") {
-    renderAdminDashboard();
-    return;
-  }
-  if (elements.adminContent) {
-    elements.adminContent.innerHTML = renderAdminOverview(route);
-    refreshLegacyAdminElementRefs();
-  }
-  renderAdminDashboard();
-}
-function refreshLegacyAdminElementRefs() {
-  const assign = (key, selector) => {
-    const node = document.querySelector(selector);
-    if (node) {
-      elements[String(key)] = node;
-    }
-  };
-  assign("totalSearches", "#totalSearches");
-  assign("failedSearches", "#failedSearches");
-  assign("savedVendors", "#savedVendors");
-  assign("topDemand", "#topDemand");
-  assign("popularSearches", "#popularSearches");
-  assign("failedSearchList", "#failedSearchList");
-  assign("demandTrends", "#demandTrends");
-  assign("vendorApprovals", "#vendorApprovals");
-  assign("productModeration", "#productModeration");
-  assign("withdrawalQueue", "#withdrawalQueue");
-  assign("vendorPerformance", "#vendorPerformance");
-  assign("orderRecords", "#orderRecords");
-  assign("paymentStatus", "#paymentStatus");
-  assign("reviewModeration", "#reviewModeration");
-  assign("searchHistoryTable", "#searchHistoryTable");
-}
-function setVendorProductFormBusy(form, busy, label) {
-  const submit = form.querySelector('button[type="submit"]');
-  form.querySelectorAll("input, select, button").forEach((control) => {
-    control.disabled = busy;
-  });
-  if (submit) {
-    submit.setAttribute("aria-busy", String(busy));
-    submit.textContent = busy ? label ?? getCopy("Submitting...", "Ana turawa...") : submit.dataset.idleText || getCopy("Add product", "Saka kaya");
-  }
-}
-function firstValidationDetail(details) {
-  if (!details || typeof details !== "object") return "";
-  for (const value of Object.values(details)) {
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  return "";
-}
-function getVendorProductErrorCopy(error) {
-  if (error instanceof ApiRequestError) {
-    if (error.code === "vendor_not_approved") {
-      return getCopy(
-        "Your store is not approved yet. Admin approval is required before products can be submitted.",
-        "Ba a amince da shagonsa ba tukuna. Ana bukatar amincewar admin kafin tura kaya."
-      );
-    }
-    if (error.code === "unauthenticated") {
-      return getCopy("Your session expired. Sign in again before adding products.", "Zaman shiga ya kare. Sake shiga kafin saka kaya.");
-    }
-    if (error.code === "body_too_large" || error.message.toLowerCase().includes("too large")) {
-      return getCopy(
-        "The image is still too large after compression. Use a clearer, smaller photo and try again.",
-        "Hoton har yanzu ya yi girma bayan ragewa. Yi amfani da karamin hoto ka sake gwadawa."
-      );
-    }
-    if (error.code === "validation_failed") {
-      const detail = firstValidationDetail(error.details);
-      return detail || getCopy("Check the product details and try again.", "Duba bayanan kaya ka sake gwadawa.");
-    }
-    if (error.code === "request_timeout" || error.code === "network_error") {
-      return getCopy(
-        "Network problem while submitting. Keep this page open and try again.",
-        "Matsalar network yayin turawa. Bar wannan shafi a bude ka sake gwadawa."
-      );
-    }
-    return error.message;
-  }
-  if (error instanceof Error) {
-    if (error.name === "VendorProductFormError") {
-      const messages = {
-        unsupported_image: getCopy("Use a JPEG, PNG, or WebP product image.", "Yi amfani da hoton JPEG, PNG, ko WebP."),
-        source_image_too_large: getCopy(
-          "Image is too large. Use a product photo under 8MB.",
-          "Hoton ya yi girma. Yi amfani da hoton kaya kasa da 8MB."
-        ),
-        image_read_failed: getCopy("Could not read the image. Choose another photo.", "Ba a iya karanta hoton ba. Zabi wani hoto."),
-        image_decode_failed: getCopy("Could not open the image. Choose another JPEG, PNG, or WebP photo.", "Ba a iya bude hoton ba. Zabi wani JPEG, PNG, ko WebP."),
-        image_compression_failed: getCopy("Could not optimize the image for upload. Choose another photo.", "Ba a iya rage hoton domin turawa ba. Zabi wani hoto."),
-        compressed_image_too_large: getCopy(
-          "Image is still too large after optimization. Crop or retake it and try again.",
-          "Hoton har yanzu ya yi girma bayan ragewa. Yanke ko sake dauka ka gwada."
-        )
-      };
-      return messages[error.message] ?? getCopy("Could not prepare the image. Try another photo.", "Ba a iya shirya hoton ba. Gwada wani hoto.");
-    }
-    return error.message;
-  }
-  return getCopy("Could not add product. Check the details and try again.", "Ba a iya saka kaya ba. Duba bayanai ka sake gwadawa.");
-}
 async function handleVendorProductSubmit(event) {
   event.preventDefault();
-  const form = event.target instanceof HTMLFormElement ? event.target : event.currentTarget instanceof HTMLFormElement ? event.currentTarget : null;
+  const form = event.currentTarget;
   const message = document.querySelector("#vendorProductMessage");
-  if (!form) {
-    setVendorProductMessage(message, getCopy("Could not read the product form. Refresh and try again.", "Ba a iya karanta fom din kaya ba. Sabunta shafin ka sake gwadawa."), "error");
-    return;
-  }
   const user = state.currentUser;
   if (!user || user.role !== "vendor") {
-    setVendorProductMessage(message, getCopy("Sign in as a vendor first.", "Shiga a matsayin dan kasuwa tukuna."), "error");
-    return;
-  }
-  const approvalStatus = getEffectiveVendorStatus();
-  if (approvalStatus !== "approved") {
-    const copy = getVendorGateCopy(approvalStatus, Boolean(user.token));
-    setVendorProductMessage(message, copy.body, approvalStatus === "rejected" ? "error" : "info");
-    renderVendorProductGate();
-    return;
-  }
-  if (!user.token) {
-    const copy = getVendorGateCopy(approvalStatus, false);
-    setVendorProductMessage(message, copy.body, "error");
-    renderVendorProductGate();
+    if (message) message.textContent = getCopy("Sign in as a vendor first.", "Shiga a matsayin dan kasuwa tukuna.");
     return;
   }
   const data = new FormData(form);
   const image = data.get("productImage");
-  const name2 = sanitizePlainText(String(data.get("productName") || ""), 90);
-  const nameHa = sanitizePlainText(String(data.get("productNameHa") || ""), 90);
-  const descriptionEn = sanitizePlainText(String(data.get("descriptionEn") || ""), 240);
-  const descriptionHa = sanitizePlainText(String(data.get("descriptionHa") || ""), 240);
-  const category = sanitizePlainText(String(data.get("productCategory") || "essentials"), 40);
+  const productName = String(data.get("productName") || "").trim();
+  const productNameHa = String(data.get("productNameHa") || "").trim();
+  const descriptionEn = String(data.get("descriptionEn") || "").trim();
+  const descriptionHa = String(data.get("descriptionHa") || "").trim();
+  const category = String(data.get("productCategory") || "").trim();
+  const quantityAvailable = Number(data.get("quantityAvailable") || 0);
   const rawPriceStr = String(data.get("productValue") ?? "").replace(/[^\d.]/g, "");
   const priceValue = rawPriceStr ? Number(rawPriceStr) : 0;
-  const quantityAvailable = Number(data.get("quantityAvailable") || 0);
-  if (name2.length < 2) {
-    setVendorProductMessage(message, getCopy("Enter a product name.", "Shigar da sunan kaya."), "error");
+  if (!productName) {
+    if (message) message.textContent = getCopy("Product name is required.", "Ana bu\u0199atar sunan kaya.");
+    form.querySelector("input[name='productName']")?.focus();
     return;
   }
-  if (!VENDOR_PRODUCT_CATEGORIES.has(category)) {
-    setVendorProductMessage(message, getCopy("Choose a valid product category.", "Zabi rukuni mai inganci."), "error");
+  if (productName.length < 2) {
+    if (message) message.textContent = getCopy("Product name must be at least 2 characters.", "Sunan kaya ya zama akalla haruffa 2.");
+    form.querySelector("input[name='productName']")?.focus();
     return;
   }
-  if (!Number.isInteger(quantityAvailable) || quantityAvailable < 0) {
-    setVendorProductMessage(message, getCopy("Enter a valid stock quantity.", "Shigar da yawan kaya mai inganci."), "error");
+  if (!category) {
+    if (message) message.textContent = getCopy("Please choose a product category.", "Da fatan za a za\u0253i rukuni na kaya.");
+    form.querySelector("select[name='productCategory']")?.focus();
+    return;
+  }
+  if (!Number.isFinite(quantityAvailable) || quantityAvailable < 0) {
+    if (message) message.textContent = getCopy("Enter a valid quantity.", "Shigar da adadi mai inganci.");
+    form.querySelector("input[name='quantityAvailable']")?.focus();
     return;
   }
   if (!(image instanceof File) || !image.name || image.size === 0) {
-    setVendorProductMessage(message, getCopy(
+    if (message) message.textContent = getCopy(
       "Please choose a product image (JPEG, PNG, or WebP).",
       "Da fatan za a za\u0253i hoton kaya (JPEG, PNG, ko WebP)."
-    ), "error");
+    );
     return;
   }
   if (!Number.isFinite(priceValue) || priceValue <= 0) {
-    setVendorProductMessage(message, getCopy(
+    if (message) message.textContent = getCopy(
       "Enter a valid price (numbers only, e.g. 15000).",
       "Shigar da farashi mai inganci (lambobi kawai, misali 15000)."
-    ), "error");
+    );
     return;
   }
   try {
-    setVendorProductFormBusy(form, true, getCopy("Optimizing image...", "Ana rage hoto..."));
-    setVendorProductMessage(
-      message,
-      getCopy("Optimizing the image for fast upload...", "Ana rage hoton domin turawa da sauri..."),
-      "info"
-    );
-    const preparedImage = await prepareVendorProductImage(image);
+    const imageDataUrl = await readImageAsDataUrl(image);
     const vendor = findVendorByPhone(user.phone);
     const productInput = {
       vendor: vendor?.businessName || user.name,
       vendorPhone: user.phone,
       area: vendor?.area || "Kano",
-      name: name2,
-      nameHa,
+      name: productName,
+      nameHa: productNameHa,
       descriptionEn,
       descriptionHa,
       priceValue,
       quantityAvailable,
       category,
-      imageDataUrl: preparedImage.dataUrl
+      imageDataUrl
     };
-    setVendorProductFormBusy(form, true, getCopy("Uploading...", "Ana lodawa..."));
-    setVendorProductMessage(message, getCopy("Uploading image...", "Ana loda hoto..."), "info");
-    const upload = await api.uploadVendorImage({
-      fileName: preparedImage.fileName,
-      mimeType: preparedImage.mimeType,
-      dataUrl: preparedImage.dataUrl
-    });
-    setVendorProductFormBusy(form, true, getCopy("Submitting...", "Ana turawa..."));
-    setVendorProductMessage(message, getCopy("Submitting product for admin review...", "Ana tura kaya wajen admin..."), "info");
-    await api.createVendorProduct({
-      name: { en: productInput.name, ha: productInput.nameHa || productInput.name },
-      description: { en: productInput.descriptionEn, ha: productInput.descriptionHa || productInput.descriptionEn },
-      category: productInput.category,
-      price: productInput.priceValue,
-      quantityAvailable: productInput.quantityAvailable,
-      area: productInput.area,
-      imageUrl: upload.upload.url,
-      tags: [productInput.name, productInput.category, productInput.area]
-    });
+    saveVendorProduct(productInput);
+    let liveMessage = "";
+    if (user.token) {
+      try {
+        const upload = await api.uploadVendorImage({
+          fileName: image.name,
+          mimeType: image.type,
+          dataUrl: imageDataUrl
+        });
+        await api.createVendorProduct({
+          name: { en: productInput.name, ha: productInput.nameHa || productInput.name },
+          description: { en: productInput.descriptionEn, ha: productInput.descriptionHa || productInput.descriptionEn },
+          category: productInput.category,
+          price: productInput.priceValue,
+          quantityAvailable: productInput.quantityAvailable,
+          area: productInput.area,
+          imageUrl: upload.upload.url,
+          tags: [productInput.name, productInput.category, productInput.area]
+        });
+        await Promise.all([refreshLiveCatalog(), refreshLiveVendorDashboard()]);
+        liveMessage = getCopy(" Submitted for admin review \u2014 visible in catalog once approved.", " An tura wa admin \u2014 zai bayyana a kasuwa bayan amincewar admin.");
+      } catch (error) {
+        liveMessage = getCopy(
+          " Saved locally. Live submission needs approved vendor access.",
+          " An ajiye a gida. Tura live na bukatar amincewar dillali."
+        );
+      }
+    }
     form.reset();
-    await Promise.all([refreshLiveCatalog(), refreshLiveVendorDashboard()]).catch(() => void 0);
-    const compressionCopy = preparedImage.compressed ? getCopy(" Image optimized for upload.", " An rage hoton domin turawa.") : "";
-    const currentMessage = document.querySelector("#vendorProductMessage") ?? message;
-    setVendorProductMessage(
-      currentMessage,
-      getCopy(
-        "Product submitted for admin review. It will appear in the catalog after approval.",
-        "An tura kaya wajen admin. Zai bayyana a kasuwa bayan amincewa."
-      ) + compressionCopy,
-      "success"
-    );
-    showToast({
-      message: getCopy("Product sent to admin review.", "An tura kaya wajen admin."),
-      type: "success",
-      duration: 3e3
-    });
+    if (message) message.textContent = getCopy("Product added to your active catalog.", "An saka kaya a kasuwarka.") + liveMessage;
     renderVendorProducts();
-    renderVendorProductGate();
     renderVendorCommerce();
     renderCatalogPreview();
-    renderAdminDashboard2();
+    renderAdminDashboard();
   } catch (error) {
-    const errorCopy = getVendorProductErrorCopy(error);
-    setVendorProductMessage(message, errorCopy, "error");
-    showToast({ message: errorCopy, type: "error", duration: 4500 });
-    if (error instanceof ApiRequestError && error.code === "vendor_not_approved") {
-      const application = await fetchLiveVendorApplication().catch(() => null);
-      if (application?.status) syncCurrentVendorStatus(application.status);
+    if (message) {
+      message.textContent = error instanceof Error && error.message === "Image too large" ? getCopy("Image is too large. Use an image under 1.5MB.", "Hoton ya yi girma. Yi amfani da kasa da 1.5MB.") : getCopy("Could not add product. Check the image and try again.", "Ba a iya saka kaya ba. Duba hoton ka sake gwadawa.");
     }
-  } finally {
-    setVendorProductFormBusy(form, false);
-    renderVendorProductGate();
   }
 }
 function applyLocalVendorDecision(id, action) {
@@ -4972,7 +4013,7 @@ function applyLocalVendorDecision(id, action) {
     message: `${vendor.businessName} was ${action}.`,
     type: "vendor"
   });
-  renderAdminDashboard2();
+  renderAdminDashboard();
   showToast({
     message: action === "approved" ? getCopy(`${vendor.businessName} approved.`, `An amince da ${vendor.businessName}.`) : getCopy(`${vendor.businessName} rejected.`, `An ki ${vendor.businessName}.`),
     type: action === "approved" ? "success" : "info"
@@ -4995,7 +4036,7 @@ function applyLocalProductDecision(productId, productAction) {
   } else {
     renderCatalogPreview();
   }
-  renderAdminDashboard2();
+  renderAdminDashboard();
   renderVendorCommerce();
   showToast({
     message: getCopy("Product moderation updated.", "An sabunta duba kayan."),
@@ -5020,10 +4061,8 @@ document.addEventListener("click", (event) => {
   const link = event.target?.closest("[data-route]");
   if (!link?.dataset.route) return;
   event.preventDefault();
-  const hashRoute = link.hash?.replace("#", "");
-  const route = hashRoute && hashRoute.startsWith(`${link.dataset.route}/`) ? hashRoute : link.dataset.route;
-  window.location.hash = route;
-  setRoute(route);
+  window.location.hash = link.dataset.route;
+  setRoute(link.dataset.route);
 });
 window.addEventListener("hashchange", () => setRoute());
 elements.loadMoreProducts.addEventListener("click", () => {
@@ -5069,11 +4108,9 @@ elements.resultsGrid.addEventListener("click", (event) => {
   }
   const card = target?.closest(".product-card");
   if (card?.dataset.productId) {
-    const productId = card.dataset.productId;
-    recordProductView(productId);
-    renderAdminDashboard2();
-    window.location.hash = `p/${productId}`;
-    setRoute(`p/${productId}`);
+    recordProductView(card.dataset.productId);
+    renderAdminDashboard();
+    openProductModal(card.dataset.productId);
   }
 });
 elements.cartItemsEl.addEventListener("click", (event) => {
@@ -5094,17 +4131,11 @@ document.querySelectorAll(".cart-button").forEach((button) => {
 document.querySelectorAll(".wishlist-button").forEach((button) => {
   button.addEventListener("click", openWishlistPanel);
 });
-document.addEventListener("click", (event) => {
-  const button = event.target?.closest("#customerCartBtn, #customerCartBtnSecondary");
-  if (!button) return;
+document.querySelector("#customerCartBtn")?.addEventListener("click", () => {
   renderCartPanel();
   openCart();
 });
-document.addEventListener("click", (event) => {
-  const button = event.target?.closest("#customerWishlistBtn");
-  if (!button) return;
-  openWishlistPanel();
-});
+document.querySelector("#customerWishlistBtn")?.addEventListener("click", openWishlistPanel);
 elements.cartOverlay.addEventListener("click", closeCart);
 document.querySelector(".cart-close")?.addEventListener("click", closeCart);
 elements.checkoutButton.addEventListener("click", () => {
@@ -5119,41 +4150,34 @@ elements.languageButtons.forEach((button) => {
   button.addEventListener("click", () => setLanguage(button.dataset.language === "ha" ? "ha" : "en"));
 });
 elements.vendorForm.addEventListener("submit", handleVendorRequestSubmit);
-document.addEventListener("submit", (event) => {
-  const form = event.target;
-  if (form?.id !== "vendorProductForm") return;
+document.querySelector("#vendorProductForm")?.addEventListener("submit", (event) => {
   void handleVendorProductSubmit(event);
 });
-document.addEventListener("click", (event) => {
+document.querySelector("#vendorProductsList")?.addEventListener("click", (event) => {
   const button = event.target?.closest("[data-vendor-product-action]");
-  if (!button?.closest("#vendorProductsList")) return;
   const productId = button?.dataset.vendorProductId;
   const action = button?.dataset.vendorProductAction;
   if (!productId || action !== "active" && action !== "out_of_stock" && action !== "taken_down") return;
   setVendorProductListingStatus(productId, action);
   renderVendorProducts();
-  renderVendorProductGate();
   renderVendorCommerce();
   renderCatalogPreview(false);
-  renderAdminDashboard2();
+  renderAdminDashboard();
   showToast({
     message: action === "active" ? getCopy("Product restored to catalog.", "An mayar da kaya kasuwa.") : getCopy("Product removed from active catalog.", "An cire kaya daga kasuwa."),
     type: action === "active" ? "success" : "info"
   });
   if (state.currentUser?.token) {
-    api.updateVendorProduct(productId, action).catch((error) => {
-      showToast({ message: getVendorProductErrorCopy(error), type: "error", duration: 3500 });
-    });
+    api.updateVendorProduct(productId, action).catch(() => void 0);
   }
 });
-document.addEventListener("click", (event) => {
+document.querySelector("#vendorCommerceList")?.addEventListener("click", (event) => {
   const button = event.target?.closest("[data-vendor-order-ready]");
-  if (!button?.closest("#vendorCommerceList")) return;
   const orderId = button?.dataset.vendorOrderReady;
   if (!orderId) return;
   const order = advanceOrderStatus(orderId);
   renderVendorCommerce();
-  renderAdminDashboard2();
+  renderAdminDashboard();
   showToast({
     message: getCopy("Order marked ready for pickup or delivery.", "An nuna oda a shirye domin dauka ko kaiwa."),
     type: "success"
@@ -5167,7 +4191,7 @@ elements.adminContent.addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData(form);
     saveCommissionSettings({ defaultRate: Number(data.get("defaultRate") || 10) / 100 });
-    renderAdminDashboard2();
+    renderAdminDashboard();
     showToast({ message: getCopy("Commission settings saved.", "An ajiye saitin kwamishan."), type: "success" });
     return;
   }
@@ -5201,7 +4225,7 @@ elements.adminContent.addEventListener("submit", (event) => {
     }
     form.reset();
     renderCatalogPreview(false);
-    renderAdminDashboard2();
+    renderAdminDashboard();
     showToast({ message: getCopy("Promotion created.", "An kirkiri talla."), type: "success" });
   }
 });
@@ -5211,7 +4235,7 @@ elements.adminContent.addEventListener("change", (event) => {
   const planId = select?.value;
   if (!vendor || !planId || !["free", "standard", "premium"].includes(planId)) return;
   setVendorSubscription(vendor, planId);
-  renderAdminDashboard2();
+  renderAdminDashboard();
   showToast({ message: getCopy("Vendor plan updated.", "An sabunta plan din dillali."), type: "success" });
 });
 elements.adminContent.addEventListener("click", (event) => {
@@ -5222,7 +4246,7 @@ elements.adminContent.addEventListener("click", (event) => {
     if (wallet && wallet.availableBalance > 0) {
       const withdrawal = requestWithdrawal(wallet.vendor, wallet.availableBalance);
       if (withdrawal) {
-        renderAdminDashboard2();
+        renderAdminDashboard();
         showToast({
           message: getCopy("Withdrawal request created.", "An kirkiri bukatar cire kudi."),
           type: "success"
@@ -5266,7 +4290,7 @@ elements.adminContent.addEventListener("click", (event) => {
       if (state.currentUser?.token) {
         api.updateAdminReview(reviewButton.dataset.reviewId, { hidden: true }).catch(() => void 0);
       }
-      renderAdminDashboard2();
+      renderAdminDashboard();
       showToast({
         message: getCopy("Review removed from public listings.", "An cire ra'ayi daga fili."),
         type: "info"
@@ -5286,7 +4310,7 @@ elements.adminContent.addEventListener("click", (event) => {
           }).catch(() => void 0);
         }
       }
-      renderAdminDashboard2();
+      renderAdminDashboard();
       renderVendorCommerce();
       showToast({
         message: getCopy(`Payment ${payment.status}.`, `Biya ${payment.status}.`),
@@ -5301,7 +4325,7 @@ elements.adminContent.addEventListener("click", (event) => {
       if (state.currentUser?.token) {
         api.updateAdminOrder(orderButton.dataset.orderAdvance, { status: order.status }).catch(() => void 0);
       }
-      renderAdminDashboard2();
+      renderAdminDashboard();
       renderVendorCommerce();
       showToast({
         message: getCopy(`Order ${order.id}: ${order.status}`, `Oda ${order.id}: ${order.status}`),
@@ -5320,7 +4344,7 @@ elements.adminContent.addEventListener("click", (event) => {
         adminNote: action === "approved" ? "Approved from admin dashboard" : "Rejected from admin dashboard"
       }).catch(() => void 0);
     }
-    renderAdminDashboard2();
+    renderAdminDashboard();
     renderVendorCommerce();
     showToast({
       message: getCopy(`Withdrawal ${withdrawal.status}.`, `Cire kudi ${withdrawal.status}.`),
@@ -5355,7 +4379,11 @@ elements.userButton.addEventListener("click", openUserPanel);
 window.addEventListener("kanoMart:signed-in", () => {
   syncUserButton();
   syncRoleNavigation();
+  renderVendorProducts();
+  renderVendorCommerce();
   renderAdminGate();
+  renderAdminDashboard();
+  renderCustomerDashboard();
   renderOrdersPage();
   void refreshLiveAdminDashboard();
   void refreshLiveVendorDashboard();
@@ -5363,10 +4391,11 @@ window.addEventListener("kanoMart:signed-in", () => {
   const nextRoute = getDefaultRouteForRole();
   window.history.replaceState(null, "", `#${nextRoute}`);
   setRoute(nextRoute);
-  renderActiveDashboardRoute(nextRoute);
 });
 window.addEventListener("kanoMart:signed-out", () => {
   syncRoleNavigation();
+  renderVendorProducts();
+  renderVendorCommerce();
   renderAdminGate();
   renderOrdersPage();
   setRoute("home");
@@ -5410,9 +4439,8 @@ syncWishlistCount();
 setLanguage(state.language);
 syncUserButton();
 renderAdminGate();
-renderAdminDashboard2();
+renderAdminDashboard();
 renderVendorProducts();
-renderVendorProductGate();
 renderVendorCommerce();
 renderOrdersPage();
 syncRoleNavigation();
@@ -5423,7 +4451,7 @@ void refreshLiveCatalog();
 void refreshLiveAdminDashboard();
 void refreshLiveVendorDashboard();
 if (state.currentUser?.token) {
-  void refreshSession().then(syncSessionFromApiUser).catch(() => void 0);
+  void refreshSession().catch(() => void 0);
 }
 void fetchLiveCategories();
 initLoginPage();
@@ -5432,8 +4460,7 @@ renderCustomerDashboard();
 renderOrdersPage();
 var scheduleEnhancements = "requestIdleCallback" in window ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 }) : (callback) => window.setTimeout(callback, 350);
 scheduleEnhancements(() => {
-  import("./frontend-enhancements-NTNUIWUZ.js").then(({ initFrontendEnhancements }) => {
+  import("./frontend-enhancements-7YU2EYG5.js").then(({ initFrontendEnhancements }) => {
     initFrontendEnhancements();
   });
 });
-inject();

@@ -340,10 +340,14 @@ section.app-page.auth-page.is-active-page{padding:0;max-width:none}
 /* ════════════════════ 8 · LANDING — HERO ════════════════════ */
 .hero{
   position:relative;display:flex !important;flex-direction:column;justify-content:center;
-  min-height:calc(100vh - 64px);padding:80px 56px;overflow:hidden;
+  min-height:calc(100vh - 64px);padding:0;overflow:hidden;
   background:linear-gradient(180deg,var(--surface) 0%,var(--bg) 100%);
 }
 .hero.app-page:not(.is-active-page){display:none !important}
+.hero-inner{
+  position:relative;z-index:2;
+  width:100%;max-width:1280px;margin:0 auto;padding:80px 56px;
+}
 .hero-image{
   position:absolute;right:0;top:0;width:52%;height:100%;object-fit:cover;
   opacity:.82;mask-image:linear-gradient(90deg,transparent 0%,#000 25%);
@@ -975,7 +979,8 @@ body.cart-open .cart-panel{transform:translateX(0)}
   .global-language-toggle{margin-left:auto}
 
   .app-page{padding:24px 16px}
-  .hero{padding:48px 20px 56px;min-height:min(560px,85vh);overflow:hidden}
+  .hero{min-height:min(560px,85vh);overflow:hidden}
+  .hero-inner{padding:48px 20px 56px}
   .hero-content{max-width:100%}
   .hero-image{width:100%;opacity:.15}
   .hero-shade{background:linear-gradient(180deg,rgba(255,255,255,.92) 0%,rgba(255,255,255,.75) 60%,transparent 100%)}

@@ -1,11 +1,22 @@
-// Run once to create all tables in Neon Postgres.
-// Usage: DATABASE_URL=... node api/migrate.mjs
+/**
+ * Database migration runner.
+ * Usage: DATABASE_URL=... node api/migrate.mjs
+ *
+ * Each statement is idempotent (IF NOT EXISTS / IF NOT EXISTS on indexes).
+ * Add new migrations at the bottom — never edit existing ones.
+ */
 
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-const sql = neon(process.env.DATABASE_URL);
+const url = process.env.DATABASE_URL;
+if (!url) { console.error("DATABASE_URL is not set"); process.exit(1); }
 
-const statements = [
+const sql = postgres(url, { ssl: "require", max: 1 });
+
+const migrations = [
+
+  // ── 001: Core tables ────────────────────────────────────────────────────────
+
   `CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
     phone TEXT NOT NULL UNIQUE,
@@ -45,8 +56,6 @@ const statements = [
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
 
-  `CREATE INDEX IF NOT EXISTS vendor_applications_status_idx ON vendor_applications(status)`,
-
   `CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY,
     vendor_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -62,16 +71,15 @@ const statements = [
     area TEXT NOT NULL DEFAULT 'Kano',
     image_url TEXT,
     tags TEXT[] NOT NULL DEFAULT '{}',
-    listing_status TEXT NOT NULL DEFAULT 'active' CHECK (listing_status IN ('active','out_of_stock','taken_down')),
-    moderation_status TEXT NOT NULL DEFAULT 'pending' CHECK (moderation_status IN ('pending','approved','hidden','rejected')),
+    listing_status TEXT NOT NULL DEFAULT 'active'
+      CHECK (listing_status IN ('active','out_of_stock','taken_down')),
+    moderation_status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (moderation_status IN ('pending','approved','hidden','rejected')),
     review_note TEXT,
     reviewed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
-
-  `CREATE INDEX IF NOT EXISTS products_vendor_user_id_idx ON products(vendor_user_id)`,
-  `CREATE INDEX IF NOT EXISTS products_catalog_idx ON products(category, moderation_status, listing_status)`,
 
   `CREATE TABLE IF NOT EXISTS uploads (
     id UUID PRIMARY KEY,
@@ -84,7 +92,7 @@ const statements = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
 
-  // Schema migrations for existing deployments
+  // Safe schema evolution for existing deployments
   `ALTER TABLE uploads ADD COLUMN IF NOT EXISTS blob_url TEXT`,
   `ALTER TABLE uploads ALTER COLUMN data_url DROP NOT NULL`,
 
@@ -109,7 +117,8 @@ const statements = [
     delivery_person TEXT,
     payment_method TEXT NOT NULL,
     payment_reference TEXT NOT NULL UNIQUE,
-    payment_status TEXT NOT NULL DEFAULT 'pending' CHECK (payment_status IN ('pending','paid','failed','refunded')),
+    payment_status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (payment_status IN ('pending','paid','failed','refunded')),
     payment_id UUID,
     items_subtotal INTEGER NOT NULL,
     subtotal INTEGER NOT NULL,
@@ -122,8 +131,6 @@ const statements = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
-
-  `CREATE INDEX IF NOT EXISTS orders_customer_idx ON orders(customer_user_id)`,
 
   `CREATE TABLE IF NOT EXISTS order_items (
     id UUID PRIMARY KEY,
@@ -144,8 +151,6 @@ const statements = [
     vendor_payout INTEGER NOT NULL DEFAULT 0
   )`,
 
-  `CREATE INDEX IF NOT EXISTS order_items_vendor_idx ON order_items(vendor_user_id)`,
-
   `CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY,
     order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -154,7 +159,8 @@ const statements = [
     gateway TEXT NOT NULL DEFAULT 'manual',
     amount INTEGER NOT NULL,
     currency TEXT NOT NULL DEFAULT 'NGN',
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','failed','refunded')),
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending','paid','failed','refunded')),
     admin_note TEXT,
     verified_at TIMESTAMPTZ,
     failed_at TIMESTAMPTZ,
@@ -168,14 +174,13 @@ const statements = [
     product_id UUID,
     vendor_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     payout_request_id UUID,
-    type TEXT NOT NULL CHECK (type IN ('vendor_pending_credit','platform_commission','vendor_withdrawal_debit')),
+    type TEXT NOT NULL
+      CHECK (type IN ('vendor_pending_credit','platform_commission','vendor_withdrawal_debit')),
     status TEXT NOT NULL CHECK (status IN ('pending','available')),
     amount INTEGER NOT NULL,
     available_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
-
-  `CREATE INDEX IF NOT EXISTS wallet_ledger_vendor_idx ON wallet_ledger(vendor_user_id)`,
 
   `CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY,
@@ -189,8 +194,6 @@ const statements = [
     read_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
-
-  `CREATE INDEX IF NOT EXISTS notifications_recipient_idx ON notifications(recipient_user_id, read_at)`,
 
   `CREATE TABLE IF NOT EXISTS wishlists (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -217,7 +220,8 @@ const statements = [
     id UUID PRIMARY KEY,
     title_en TEXT NOT NULL,
     title_ha TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('discount_code','flash_sale','featured_product','featured_vendor','seasonal_campaign')),
+    type TEXT NOT NULL CHECK (type IN
+      ('discount_code','flash_sale','featured_product','featured_vendor','seasonal_campaign')),
     discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 90),
     code TEXT,
     product_id UUID,
@@ -264,26 +268,68 @@ const statements = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
 
-  `CREATE INDEX IF NOT EXISTS search_events_query_idx ON search_events(query)`,
+  // ── 002: Original baseline indexes ──────────────────────────────────────────
 
-  // Seed default categories
+  `CREATE INDEX IF NOT EXISTS vendor_applications_status_idx   ON vendor_applications(status)`,
+  `CREATE INDEX IF NOT EXISTS products_vendor_user_id_idx      ON products(vendor_user_id)`,
+  `CREATE INDEX IF NOT EXISTS products_catalog_idx             ON products(category, moderation_status, listing_status)`,
+  `CREATE INDEX IF NOT EXISTS orders_customer_idx              ON orders(customer_user_id)`,
+  `CREATE INDEX IF NOT EXISTS order_items_vendor_idx           ON order_items(vendor_user_id)`,
+  `CREATE INDEX IF NOT EXISTS wallet_ledger_vendor_idx         ON wallet_ledger(vendor_user_id)`,
+  `CREATE INDEX IF NOT EXISTS notifications_recipient_idx      ON notifications(recipient_user_id, read_at)`,
+  `CREATE INDEX IF NOT EXISTS search_events_query_idx          ON search_events(query)`,
+
+  // ── 003: Performance indexes (added after scale audit) ───────────────────────
+
+  // Fast ORDER BY on all list endpoints
+  `CREATE INDEX IF NOT EXISTS products_created_at_idx          ON products(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS orders_created_at_idx            ON orders(created_at DESC)`,
+
+  // JOIN support — stops Postgres from doing seq scans when joining order_items to orders
+  `CREATE INDEX IF NOT EXISTS order_items_order_id_idx         ON order_items(order_id)`,
+  `CREATE INDEX IF NOT EXISTS payments_order_id_idx            ON payments(order_id)`,
+  `CREATE INDEX IF NOT EXISTS wallet_ledger_order_id_idx       ON wallet_ledger(order_id)`,
+
+  // dbNotifyAdmins: SELECT id FROM users WHERE role = 'admin'
+  `CREATE INDEX IF NOT EXISTS users_role_idx                   ON users(role)`,
+
+  // dbCustomerHasDeliveredOrder: WHERE o.status = 'delivered'
+  `CREATE INDEX IF NOT EXISTS orders_status_idx                ON orders(status)`,
+
+  // ── 004: Full-text / trigram search ─────────────────────────────────────────
+  // Enables ILIKE '%query%' to use a GIN index instead of a seq scan.
+  // pg_trgm must be enabled first; the extension creation is safe to run repeatedly.
+
+  `CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+  `CREATE INDEX IF NOT EXISTS products_name_en_trgm_idx        ON products USING GIN (name_en gin_trgm_ops)`,
+  `CREATE INDEX IF NOT EXISTS products_name_ha_trgm_idx        ON products USING GIN (name_ha gin_trgm_ops)`,
+
+  // ── 005: Seed default categories ────────────────────────────────────────────
+
   `INSERT INTO categories (key, name_en, name_ha, search_terms) VALUES
-    ('food',       'Food',       'Abinci',              ARRAY['food','abinci','groceries']),
-    ('fashion',    'Fashion',    'Kaya',                ARRAY['fashion','kaya','clothes']),
-    ('children',   'Children',  'Yara',                ARRAY['children','yara','school']),
-    ('essentials', 'Essentials','Kayan yau da kullum',  ARRAY['essentials','daily'])
+    ('food',       'Food',       'Abinci',             ARRAY['food','abinci','groceries','shinkafa']),
+    ('fashion',    'Fashion',    'Kaya',               ARRAY['fashion','kaya','clothes','yaduka']),
+    ('children',   'Children',  'Yara',               ARRAY['children','yara','school','makaranta']),
+    ('essentials', 'Essentials','Kayan yau da kullum', ARRAY['essentials','daily','kayan masarufi'])
   ON CONFLICT (key) DO NOTHING`,
 ];
 
-let ok = 0, fail = 0;
-for (const stmt of statements) {
+let passed = 0;
+let failed = 0;
+
+for (const stmt of migrations) {
+  const preview = stmt.replace(/\s+/g, " ").trim().slice(0, 72);
   try {
     await sql.unsafe(stmt);
-    ok++;
+    console.log(`  ✓  ${preview}`);
+    passed++;
   } catch (err) {
-    console.error("FAILED:", stmt.slice(0, 80));
-    console.error(err.message);
-    fail++;
+    console.error(`  ✗  ${preview}`);
+    console.error(`     ${err.message}`);
+    failed++;
   }
 }
-console.log(`Migration complete — ${ok} ok, ${fail} failed.`);
+
+await sql.end();
+console.log(`\nMigration complete — ${passed} ok, ${failed} failed.`);
+if (failed > 0) process.exit(1);
