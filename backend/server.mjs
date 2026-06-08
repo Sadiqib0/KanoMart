@@ -1987,23 +1987,28 @@ export function createApp(options = {}) {
         const ext = parsed.value.mimeType === "image/png" ? "png" : parsed.value.mimeType === "image/webp" ? "webp" : "jpg";
         const blobPath = `products/${uploadId}.${ext}`;
 
-        // Blob storage is mandatory — storing 750 KB base64 strings in the DB row
-        // bloats the table by ~15 TB at 1M vendors × 10 products × 2 images.
-        if (!process.env.BLOB_READ_WRITE_TOKEN) {
-          sendError(response, 503, "blob_unavailable", "Image storage is not configured. Set BLOB_READ_WRITE_TOKEN."); return;
-        }
-        const blob = await blobPut(blobPath, buffer, {
-          access: "public",
-          contentType: parsed.value.mimeType,
-          token: process.env.BLOB_READ_WRITE_TOKEN,
-        });
-        const blobUrl = blob.url;
+        let finalUrl;
+        let blobUrl = null;
+        let storedDataUrl = null;
 
-        const finalUrl = blobUrl;
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+          const blob = await blobPut(blobPath, buffer, {
+            access: "public",
+            contentType: parsed.value.mimeType,
+            token: process.env.BLOB_READ_WRITE_TOKEN,
+          });
+          blobUrl = blob.url;
+          finalUrl = blobUrl;
+        } else {
+          // No Blob token — fall back to dataUrl storage (suitable for local dev / small pilots).
+          storedDataUrl = parsed.value.dataUrl;
+          finalUrl = `/uploads/${uploadId}`;
+        }
+
         const upload = await dbSaveUpload({
           id: uploadId, vendorUserId: user.id, fileName: parsed.value.fileName,
           mimeType: parsed.value.mimeType,
-          dataUrl: null,   // never store base64 in DB
+          dataUrl: storedDataUrl,
           blobUrl,
           url: finalUrl,
         });
@@ -2976,10 +2981,11 @@ function createMemoryDao(store) {
 
   async function dbDecrementProductQuantity(productId, qty) {
     const p = store.products.get(productId);
-    if (!p) return;
-    p.quantityAvailable = Math.max(0, (p.quantityAvailable ?? 0) - qty);
+    if (!p || (p.quantityAvailable ?? 0) < qty) return false;
+    p.quantityAvailable -= qty;
     if (p.quantityAvailable <= 0) p.listingStatus = "out_of_stock";
     p.updatedAt = now();
+    return true;
   }
 
   // ── Cart ───────────────────────────────────────────────────────────────────

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ADMIN_MOBILE_NUMBER, storageKeys } from "../src/backend/data";
-import { saveVendorRequest } from "../src/backend/vendors";
+import { ADMIN_MOBILE_NUMBER, storageKeys } from "../backend/src/data";
+import { saveVendorRequest } from "../backend/src/vendors";
 import {
   createSessionForPhone,
   findUserProfileByPhone,
   requiresSignup,
   saveUserProfile,
-} from "../src/backend/users";
+} from "../backend/src/users";
 
 describe("role-aware mobile sign-in", () => {
   beforeEach(() => {

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock state and data imports so utils/search can load in jsdom without full DOM
-vi.mock("../src/frontend/state", () => ({
+vi.mock("../frontend/src/state", () => ({
   state: { language: "en", lastQuery: "", lastResults: [], cartCount: 0, adminAuthenticated: false, currentUser: null },
   elements: {},
 }));
 
-vi.mock("../src/backend/data", () => ({
+vi.mock("../backend/src/data", () => ({
   storageKeys: {
     language: "language", cart: "cart", orders: "orders", reviews: "reviews",
     wishlist: "wishlist", searches: "searches", vendors: "vendors",
@@ -27,7 +27,7 @@ vi.mock("../src/backend/data", () => ({
   vendorProfiles: {},
 }));
 
-import { escapeHtml, normalize, parsePrice, formatPrice, renderStars, sanitizePlainText } from "../src/frontend/utils";
+import { escapeHtml, normalize, parsePrice, formatPrice, renderStars, sanitizePlainText } from "../frontend/src/utils";
 
 describe("escapeHtml", () => {
   it("escapes ampersand", () => {

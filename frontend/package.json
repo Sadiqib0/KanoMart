@@ -1,0 +1,11 @@
+{
+  "name": "kano-mart-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && esbuild src/app.ts --bundle --outdir=dist --target=es2020 --format=esm --splitting",
+    "dev": "esbuild src/app.ts --bundle --outdir=dist --target=es2020 --format=esm --splitting --watch"
+  }
+}

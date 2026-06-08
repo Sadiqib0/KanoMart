@@ -3,19 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "clean": "rm -rf dist",
-    "build": "npm run clean && esbuild src/frontend/app.ts --bundle --outdir=dist --target=es2020 --format=esm --splitting",
-    "api:dev": "node api/server.mjs",
-    "api:dev:persist": "API_DATA_FILE=./data/kano-mart-api.json node api/server.mjs",
-    "api:check": "node --check api/server.mjs",
-    "dev": "esbuild src/frontend/app.ts --bundle --outdir=dist --target=es2020 --format=esm --splitting --watch",
+    "build": "npm run build --workspace=frontend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev": "npm run dev:frontend & npm run dev:backend",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:verify": "node scripts/verify-db-backup.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.0",

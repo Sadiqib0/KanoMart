@@ -1,0 +1,12 @@
+{
+  "name": "kano-mart-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "dev:persist": "API_DATA_FILE=../data/kano-mart-api.json node server.mjs",
+    "check": "node --check server.mjs",
+    "migrate": "node migrate.mjs"
+  }
+}

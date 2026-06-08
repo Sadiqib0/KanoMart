@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Order } from "../src/backend/types";
-import { getPaymentSummary, createPaymentForOrder, getPaymentStatusForMethod } from "../src/backend/payments";
+import type { Order } from "../backend/src/types";
+import { getPaymentSummary, createPaymentForOrder, getPaymentStatusForMethod } from "../backend/src/payments";
 import {
   calculateCommission,
   createLedgerEntriesForPaidOrder,
   getPlatformCommissionTotal,
   getVendorWalletSummaries,
   settleDeliveredOrder,
-} from "../src/backend/wallet";
+} from "../backend/src/wallet";
 
 function buildOrder(overrides: Partial<Order> = {}): Order {
   return {

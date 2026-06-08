@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Order } from "../src/backend/types";
-import { createPromotion, getDiscountedPrice, getPromotionForProduct } from "../src/backend/promotions";
+import type { Order } from "../backend/src/types";
+import { createPromotion, getDiscountedPrice, getPromotionForProduct } from "../backend/src/promotions";
 import {
   getCommissionRateForVendor,
   setVendorSubscription,
   saveCommissionSettings,
-} from "../src/backend/marketplace-settings";
-import { getMarketplaceAnalytics, recordProductView } from "../src/backend/analytics";
-import { products, storageKeys } from "../src/backend/data";
+} from "../backend/src/marketplace-settings";
+import { getMarketplaceAnalytics, recordProductView } from "../backend/src/analytics";
+import { products, storageKeys } from "../backend/src/data";
 
 function buildOrder(): Order {
   return {

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
-import type { Product } from "../src/backend/types";
+import type { Product } from "../backend/src/types";
 
-vi.mock("../src/frontend/state", () => ({
+vi.mock("../frontend/src/state", () => ({
   state: { language: "en", lastQuery: "", lastResults: [], cartCount: 0, adminAuthenticated: false, currentUser: null },
   elements: {},
 }));
 
-vi.mock("../src/backend/data", () => ({
+vi.mock("../backend/src/data", () => ({
   storageKeys: {
     language: "language", cart: "cart", orders: "orders", reviews: "reviews",
     wishlist: "wishlist", searches: "searches", vendors: "vendors",
@@ -60,14 +60,14 @@ vi.mock("../src/backend/data", () => ({
   vendorProfiles: {},
 }));
 
-vi.mock("../src/backend/storage", () => ({
+vi.mock("../backend/src/storage", () => ({
   getStoredList: () => [],
   setStoredList: () => {},
   createId: () => "test-id",
 }));
 
-import { getSearchResults, inferDemandCategory, getProductText } from "../src/frontend/search";
-import { products } from "../src/backend/data";
+import { getSearchResults, inferDemandCategory, getProductText } from "../frontend/src/search";
+import { products } from "../backend/src/data";
 
 const p1 = products[0] as Product;
 

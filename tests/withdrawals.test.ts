@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { WithdrawalRequest } from "../src/backend/types";
-import { storageKeys } from "../src/backend/data";
+import type { WithdrawalRequest } from "../backend/src/types";
+import { storageKeys } from "../backend/src/data";
 import {
   approveWithdrawal,
   getWithdrawableBalance,
   getWithdrawals,
   rejectWithdrawal,
   requestWithdrawal,
-} from "../src/backend/withdrawals";
-import { getVendorWalletSummaries, recordWithdrawalDebit } from "../src/backend/wallet";
+} from "../backend/src/withdrawals";
+import { getVendorWalletSummaries, recordWithdrawalDebit } from "../backend/src/wallet";
 
 function seedAvailableBalance(vendor = "Dan Marke Stores", amount = 9000): void {
   localStorage.setItem(

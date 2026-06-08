@@ -29,18 +29,22 @@
       ]
     }
   ],
+  "functions": {
+    "backend/server.mjs": {},
+    "backend/cron.mjs": {}
+  },
   "rewrites": [
     {
       "source": "/api/cron/maintenance",
-      "destination": "/api/cron.mjs"
+      "destination": "/backend/cron.mjs"
     },
     {
       "source": "/api",
-      "destination": "/api/server.mjs"
+      "destination": "/backend/server.mjs"
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/server.mjs"
+      "destination": "/backend/server.mjs"
     }
   ],
   "crons": [

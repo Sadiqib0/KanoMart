@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { VendorRequest } from "../src/backend/types";
-import { storageKeys } from "../src/backend/data";
+import type { VendorRequest } from "../backend/src/types";
+import { storageKeys } from "../backend/src/data";
 import {
   getVendorRequests,
   getVendorStatusCounts,
   reviewVendorRequest,
   saveVendorRequest,
-} from "../src/backend/vendors";
+} from "../backend/src/vendors";
 
 describe("vendor approval lifecycle", () => {
   beforeEach(() => {

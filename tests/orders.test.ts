@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Order } from "../src/backend/types";
+import type { Order } from "../backend/src/types";
 
-vi.mock("../src/frontend/state", () => ({
+vi.mock("../frontend/src/state", () => ({
   state: {
     language: "en",
     lastQuery: "",
@@ -20,14 +20,14 @@ vi.mock("../src/frontend/state", () => ({
   },
 }));
 
-vi.mock("../src/frontend/toast", () => ({
+vi.mock("../frontend/src/toast", () => ({
   showToast: () => {},
 }));
 
-import { storageKeys } from "../src/backend/data";
-import { advanceOrderStatus } from "../src/frontend/orders";
-import { createPaymentForOrder } from "../src/backend/payments";
-import { getVendorWalletSummaries } from "../src/backend/wallet";
+import { storageKeys } from "../backend/src/data";
+import { advanceOrderStatus } from "../frontend/src/orders";
+import { createPaymentForOrder } from "../backend/src/payments";
+import { getVendorWalletSummaries } from "../backend/src/wallet";
 
 function buildOrder(overrides: Partial<Order> = {}): Order {
   return {

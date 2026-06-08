@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/backend/data", () => ({
+vi.mock("../backend/src/data", () => ({
   storageKeys: {
     productModeration: "productModeration",
     vendorProducts: "vendorProducts",
@@ -41,7 +41,7 @@ import {
   moderateProduct,
   saveVendorProduct,
   setVendorProductListingStatus,
-} from "../src/backend/products";
+} from "../backend/src/products";
 
 describe("product moderation", () => {
   beforeEach(() => {
