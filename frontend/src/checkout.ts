@@ -163,36 +163,46 @@ export function openCheckoutModal(): void {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = getCopy("Placing order…", "Ana sanya oda…"); }
     errorEl.textContent = "";
 
-    // Try live API checkout first if user is authenticated
+    function showSuccess(orderId: string, paymentStatus: string): void {
+      // Cart is cleared AFTER the order is confirmed — never before.
+      clearCart();
+      modal.querySelector<HTMLElement>("#checkoutFormView")!.hidden = true;
+      const successView = modal.querySelector<HTMLElement>("#checkoutSuccessView")!;
+      successView.hidden = false;
+      modal.querySelector<HTMLElement>("#checkoutOrderId")!.textContent = getCopy(
+        `Order ID: ${orderId} — Payment: ${paymentStatus}`,
+        `Lambar oda: ${orderId} — Biya: ${paymentStatus}`
+      );
+    }
+
+    function resetSubmit(): void {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Place order", "Sanya oda"); }
+    }
+
+    // Authenticated path — API only, no local fallback.
+    // A failed API call must NEVER silently create a duplicate local order.
     if (state.currentUser?.token) {
       try {
         const result = await api.checkout({
+          customerName,
+          customerPhone,
           deliveryOption,
           deliveryAddress,
           deliveryArea,
           paymentMethod,
         });
-        clearCart();
-        modal.querySelector<HTMLElement>("#checkoutFormView")!.hidden = true;
-        const successView = modal.querySelector<HTMLElement>("#checkoutSuccessView")!;
-        successView.hidden = false;
-        modal.querySelector<HTMLElement>("#checkoutOrderId")!.textContent = getCopy(
-          `Order ID: ${result.order.id} - Payment ${result.order.paymentStatus ?? "pending"}`,
-          `Lambar oda: ${result.order.id} - Biya ${result.order.paymentStatus ?? "pending"}`
-        );
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Place order", "Sanya oda"); }
-        return;
+        resetSubmit();
+        showSuccess(result.order.id, result.order.paymentStatus ?? "pending");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "";
-        if (message) {
-          errorEl.textContent = message;
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Place order", "Sanya oda"); }
-          return;
-        }
-        // Fall through to local checkout on network error
+        errorEl.textContent = error instanceof Error
+          ? error.message
+          : getCopy("Checkout failed. Please try again.", "Biyan kudi ya kasa. Da fatan za a sake gwadawa.");
+        resetSubmit();
       }
+      return;
     }
 
+    // Guest path — local order (demo / offline fallback).
     const order = placeOrder(
       customerName,
       customerPhone,
@@ -203,21 +213,14 @@ export function openCheckoutModal(): void {
       deliveryOption === "pickup" ? 0 : DEFAULT_DELIVERY_FEE
     );
 
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Place order", "Sanya oda"); }
+    resetSubmit();
 
     if (!order) {
       errorEl.textContent = getCopy("Cart is empty.", "Kwandona a fanko.");
       return;
     }
 
-    modal.querySelector<HTMLElement>("#checkoutFormView")!.hidden = true;
-    const successView = modal.querySelector<HTMLElement>("#checkoutSuccessView")!;
-    successView.hidden = false;
-    modal.querySelector<HTMLElement>("#checkoutOrderId")!.textContent =
-      getCopy(
-        `Order ID: ${order.id} - Payment ${order.paymentStatus}`,
-        `Lambar oda: ${order.id} - Biya ${order.paymentStatus}`
-      );
+    showSuccess(order.id, order.paymentStatus);
   }
 
   modal.querySelector(".checkout-done")?.addEventListener("click", () => closeCheckoutModal());

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createApp, createMemoryStore, inject } from "../api/server.mjs";
+import { createApp, createMemoryStore, inject } from "../backend/server.mjs";
 
 type TestApi = {
   app: ReturnType<typeof createApp>;

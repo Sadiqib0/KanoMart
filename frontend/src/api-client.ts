@@ -1,5 +1,6 @@
 const DEFAULT_API_BASE_URL = "/api";
 const API_TOKEN_KEY = "kanoMart.apiToken";
+const API_TOKEN_EXPIRY_KEY = "kanoMart.apiTokenExpiry";
 const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
 type RequestOptions = {
@@ -96,7 +97,7 @@ export type ApiOrderItem = {
   productId: string;
   vendorUserId?: string;
   vendorName?: string;
-  name?: { en?: string; ha?: string };
+  name: { en: string; ha: string };
   unitPrice?: number;
   quantity: number;
   lineTotal?: number;
@@ -230,12 +231,27 @@ export function getApiToken(): string {
   return globalThis.localStorage?.getItem(API_TOKEN_KEY) ?? "";
 }
 
-export function saveApiToken(token: string): void {
-  if (token) globalThis.localStorage?.setItem(API_TOKEN_KEY, token);
+export function saveApiToken(token: string, expiresAt?: string): void {
+  if (!token) return;
+  globalThis.localStorage?.setItem(API_TOKEN_KEY, token);
+  if (expiresAt) globalThis.localStorage?.setItem(API_TOKEN_EXPIRY_KEY, expiresAt);
 }
 
 export function clearApiToken(): void {
   globalThis.localStorage?.removeItem(API_TOKEN_KEY);
+  globalThis.localStorage?.removeItem(API_TOKEN_EXPIRY_KEY);
+}
+
+export function isApiTokenExpired(): boolean {
+  const expiry = globalThis.localStorage?.getItem(API_TOKEN_EXPIRY_KEY);
+  if (!expiry) return false;
+  return Date.now() >= new Date(expiry).getTime();
+}
+
+function dispatchSessionExpired(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("kanoMart:sessionExpired"));
+  }
 }
 
 export class ApiRequestError extends Error {
@@ -254,6 +270,17 @@ export class ApiRequestError extends Error {
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = options.token ?? getApiToken();
+
+  // Short-circuit before wasting a network round-trip on a known-expired token.
+  if (token && isApiTokenExpired()) {
+    clearApiToken();
+    dispatchSessionExpired();
+    throw new ApiRequestError("Your session has expired. Please sign in again.", {
+      status: 401,
+      code: "session_expired",
+    });
+  }
+
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
   let response: Response;
@@ -293,6 +320,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearApiToken();
+      dispatchSessionExpired();
+    }
     throw new ApiRequestError(payload.error?.message ?? "API request failed.", {
       status: response.status,
       code: payload.error?.code,

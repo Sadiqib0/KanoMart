@@ -1389,6 +1389,7 @@ function validateProductInput(input) {
   if (!nameEn) errors.name = "Product name is required.";
   if (!category) errors.category = "Category is required.";
   if (!Number.isFinite(price) || price <= 0) errors.price = "Price must be greater than zero.";
+  else if (price > 100_000_000) errors.price = "Price cannot exceed NGN 100,000,000.";
   if (!Number.isInteger(quantityAvailable) || quantityAvailable < 0) errors.quantityAvailable = "Quantity must be a whole number greater than or equal to zero.";
   return {
     valid: Object.keys(errors).length === 0, errors,
@@ -2528,6 +2529,7 @@ export function createApp(options = {}) {
         if (!assertAdmin(response, user)) return;
         const appRow = await dbGetVendorApplicationById(decodeURIComponent(vendorDecisionMatch[1]));
         if (!appRow) { sendError(response, 404, "vendor_application_not_found", "Application not found."); return; }
+        if (appRow.status !== "pending") { sendError(response, 409, "already_decided", `Application already ${appRow.status}.`); return; }
         const body = await readJson(request);
         const decision = validateVendorDecision(body);
         if (!decision.valid) { sendError(response, 422, "validation_failed", "Check the highlighted fields.", decision.errors); return; }
@@ -3469,7 +3471,9 @@ export async function createRemoteStoreApp(options) {
 
 let _app;
 export default async function handler(request, response) {
-  _app ??= createApp({ allowedOrigin: process.env.CORS_ORIGIN ?? "*", publicApiBasePath: "/api" });
+  const origin = process.env.CORS_ORIGIN;
+  if (!origin) throw new Error("CORS_ORIGIN environment variable is not set");
+  _app ??= createApp({ allowedOrigin: origin, publicApiBasePath: "/api" });
   if (request.url?.startsWith("/api")) request.url = request.url.slice(4) || "/";
   return _app.handle(request, response);
 }

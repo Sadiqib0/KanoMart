@@ -17,7 +17,7 @@ import {
 import { openCheckoutModal } from "./checkout";
 import { openProductModal } from "./product-modal";
 import { openWishlistPanel, toggleWishlist, syncWishlistCount, syncAllWishlistButtons } from "./wishlist";
-import { openAuthModal, openUserPanel, saveSession, syncUserButton } from "./auth";
+import { openAuthModal, openUserPanel, saveSession, signOut, syncUserButton } from "./auth";
 import { renderAdminGate } from "./admin-gate";
 import { reviewVendorRequest, saveVendorRequest as persistVendorRequest } from "../backend/vendors";
 import { showToast } from "./toast";
@@ -29,10 +29,10 @@ import {
   setVendorProductListingStatus,
 } from "../backend/products";
 import { getCachedSearchResults, paginateProducts, PRODUCT_PAGE_SIZE, renderProductSkeletons } from "./frontend-data";
-import { advanceOrderStatus, getOrders, renderOrdersPanel } from "./orders";
+import { advanceOrderStatus, fetchLiveOrders, getOrders, renderOrdersPanel } from "./orders";
 import { approveWithdrawal, rejectWithdrawal, requestWithdrawal } from "../backend/withdrawals";
 import { getVendorWalletSummaries } from "../backend/wallet";
-import { createSessionForPhone, findVendorByPhone } from "../backend/users";
+import { findVendorByPhone } from "../backend/users";
 import { normalizePhone } from "../backend/phone";
 import { confirmPayment, failPayment, refundPayment } from "../backend/payments";
 import { createNotification, getNotificationsFor } from "../backend/notifications";
@@ -48,6 +48,8 @@ import {
   fetchLiveAdminData,
   fetchLiveVendorData,
   fetchLiveNotifications,
+  getLiveNotifications,
+  markNotificationRead,
   fetchLiveCategories,
   fetchLiveVendorApplication,
   refreshSession,
@@ -87,6 +89,31 @@ function canAccessRoute(route: string): boolean {
   return true;
 }
 
+// ── Order auto-refresh (customer) ────────────────────────────────────────────
+// Start a 15s polling loop when the customer is on the orders page.
+// Cancelled when they navigate away.
+
+let _orderPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function startOrderPolling(): void {
+  if (_orderPollTimer !== null) return;
+  const poll = () => {
+    if (state.currentUser?.role !== "customer" || !state.currentUser.token) return;
+    fetchLiveOrders().then(() => renderOrdersPage()).catch(() => undefined);
+  };
+  poll();
+  _orderPollTimer = setInterval(poll, 15_000);
+}
+
+function stopOrderPolling(): void {
+  if (_orderPollTimer !== null) {
+    clearInterval(_orderPollTimer);
+    _orderPollTimer = null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function setRoute(route = getCurrentRoute()): void {
   let nextRoute = routes.has(route) ? route : "home";
   if (!canAccessRoute(nextRoute)) {
@@ -113,6 +140,18 @@ function setRoute(route = getCurrentRoute()): void {
   document.body.classList.toggle("on-home", nextRoute === "home");
   window.scrollTo({ top: 0, behavior: "smooth" });
   closeSidebar();
+
+  // Start/stop order polling based on active route
+  if (nextRoute === "orders" && state.currentUser?.role === "customer") {
+    startOrderPolling();
+  } else {
+    stopOrderPolling();
+  }
+
+  // Refresh vendor dashboard data every time the vendor navigates to it
+  if (nextRoute === "vendor" && state.currentUser?.role === "vendor") {
+    void refreshLiveVendorDashboard();
+  }
 }
 
 function syncRoleNavigation(): void {
@@ -301,7 +340,7 @@ function renderCustomerDashboard(): void {
   // Welcome name
   const nameEl = document.querySelector<HTMLElement>("#customerWelcomeName");
   if (nameEl) {
-    const firstName = user.firstName || user.name?.split(" ")[0] || "";
+    const firstName = user.firstName || user.name?.split?.(" ")?.[0] || "";
     nameEl.textContent = firstName
       ? getCopy(`Welcome back, ${firstName}!`, `Barka da dawo, ${firstName}!`)
       : getCopy("Welcome back!", "Barka da dawo!");
@@ -387,22 +426,37 @@ async function refreshLiveVendorDashboard(): Promise<void> {
   }
 }
 
-function performSearch(rawQuery: string): void {
+let _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function performSearch(rawQuery: string, debounceMs = 0): void {
   const query = rawQuery.trim();
   if (!query) return;
 
-  state.lastQuery = query;
-  state.visibleProductCount = PRODUCT_PAGE_SIZE;
-  renderLoadingProducts();
-  document.querySelector<HTMLElement>("#results")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  window.setTimeout(() => {
-    const results = getCachedSearchResults(query);
-    saveSearch(query, results);
-    state.lastResults = results;
-    updateResultCopy(query, results);
-    renderProductResults(results);
-    renderAdminDashboard();
-  }, 180);
+  if (_searchDebounceTimer !== null) clearTimeout(_searchDebounceTimer);
+
+  _searchDebounceTimer = setTimeout(() => {
+    _searchDebounceTimer = null;
+    state.lastQuery = query;
+    state.visibleProductCount = PRODUCT_PAGE_SIZE;
+    renderLoadingProducts();
+    document.querySelector<HTMLElement>("#results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Hit the live API for fresh results; fall back to the local cache on failure.
+    refreshLiveProducts({ q: query })
+      .then((results) => {
+        saveSearch(query, results);
+        state.lastResults = results;
+        updateResultCopy(query, results);
+        renderProductResults(results);
+      })
+      .catch(() => {
+        const results = getCachedSearchResults(query);
+        saveSearch(query, results);
+        state.lastResults = results;
+        updateResultCopy(query, results);
+        renderProductResults(results);
+      });
+  }, debounceMs);
 }
 
 // — Language —
@@ -832,7 +886,13 @@ function applyLocalProductDecision(productId: string, productAction: "approved" 
 
 elements.searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  performSearch(elements.searchInput.value);
+  performSearch(elements.searchInput.value, 0);
+});
+
+elements.searchInput.addEventListener("input", () => {
+  if (elements.searchInput.value.trim().length >= 2) {
+    performSearch(elements.searchInput.value, 300);
+  }
 });
 
 // Hero quick-search chips AND home category cards both trigger catalog search
@@ -948,6 +1008,23 @@ elements.languageButtons.forEach((button) => {
 elements.vendorForm.addEventListener("submit", handleVendorRequestSubmit);
 document.querySelector<HTMLFormElement>("#vendorProductForm")?.addEventListener("submit", (event) => {
   void handleVendorProductSubmit(event);
+});
+
+// Vendor product image preview
+document.getElementById("productImageInput")?.addEventListener("change", (event) => {
+  const input = event.target as HTMLInputElement;
+  const preview = document.getElementById("productImagePreview") as HTMLImageElement | null;
+  if (!preview) return;
+  const file = input.files?.[0];
+  if (file) {
+    const url = URL.createObjectURL(file);
+    preview.src = url;
+    preview.style.display = "block";
+    preview.onload = () => URL.revokeObjectURL(url);
+  } else {
+    preview.src = "";
+    preview.style.display = "none";
+  }
 });
 document.querySelector<HTMLElement>("#vendorProductsList")?.addEventListener("click", (event) => {
   const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-product-action]");
@@ -1304,9 +1381,91 @@ void refreshLiveCatalog();
 void refreshLiveAdminDashboard();
 void refreshLiveVendorDashboard();
 
-// Validate stored session token and refresh user data
+// Validate stored session token against the live API; clear on 401 / expired.
+// Note: a 401 from api.me() also fires kanoMart:sessionExpired (which calls signOut()),
+// so we guard with state.currentUser to avoid a double sign-out + double toast.
 if (state.currentUser?.token) {
-  void refreshSession().catch(() => undefined);
+  void refreshSession().then((user) => {
+    if (!user && state.currentUser) {
+      // Token is no longer valid AND the sessionExpired handler hasn't already cleared it.
+      signOut();
+      showToast({ message: getCopy("Your session expired. Please sign in again.", "Zaman ku ya ƙare. Da fatan za a sake shiga."), type: "info" });
+    }
+  }).catch(() => undefined);
+}
+
+// Global session-expiry handler: any 401 from any API call lands here.
+window.addEventListener("kanoMart:sessionExpired", () => {
+  if (state.currentUser) {
+    signOut();
+    openAuthModal();
+    showToast({ message: getCopy("Your session expired. Please sign in again.", "Zaman ku ya ƙare. Da fatan za a sake shiga."), type: "info" });
+  }
+});
+
+// ── Notification badge polling ─────────────────────────────────────────────
+
+const notifBtn = document.getElementById("sidebarNotifBtn") as HTMLButtonElement | null;
+const notifCountEl = document.getElementById("sidebarNotifCount") as HTMLElement | null;
+
+function updateNotifBadge(count: number): void {
+  if (!notifCountEl) return;
+  if (count > 0) {
+    notifCountEl.textContent = count > 99 ? "99+" : String(count);
+    notifCountEl.hidden = false;
+  } else {
+    notifCountEl.hidden = true;
+  }
+}
+
+let _notifPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function startNotifPolling(): void {
+  if (_notifPollTimer !== null) return;
+  const poll = () => {
+    const role = state.currentUser?.role;
+    if (role !== "vendor" && role !== "admin") return;
+    fetchLiveNotifications().then((notifs) => {
+      const unread = notifs.filter((n) => !n.readAt).length;
+      updateNotifBadge(unread);
+    }).catch(() => undefined);
+  };
+  poll();
+  _notifPollTimer = setInterval(poll, 30_000);
+}
+
+function stopNotifPolling(): void {
+  if (_notifPollTimer !== null) {
+    clearInterval(_notifPollTimer);
+    _notifPollTimer = null;
+  }
+  updateNotifBadge(0);
+}
+
+notifBtn?.addEventListener("click", () => {
+  const role = state.currentUser?.role;
+  if (role === "vendor") { window.location.hash = "vendor"; setRoute("vendor"); }
+  else if (role === "admin") { window.location.hash = "admin"; setRoute("admin"); }
+  // Mark all as read via API (fire-and-forget)
+  getLiveNotifications().filter((n) => !n.readAt).forEach((n) => {
+    void markNotificationRead(n.id);
+  });
+  updateNotifBadge(0);
+});
+
+window.addEventListener("kanoMart:signed-in", () => {
+  const role = state.currentUser?.role;
+  if (role === "vendor" || role === "admin") startNotifPolling();
+});
+
+window.addEventListener("kanoMart:signed-out", () => {
+  stopNotifPolling();
+  stopOrderPolling();
+});
+
+// Start polling immediately if a vendor/admin session was restored on page load
+if (state.currentUser?.role === "vendor" || state.currentUser?.role === "admin") {
+  startNotifPolling();
 }
 
 // Pre-fetch categories from the live API for dynamic catalog support

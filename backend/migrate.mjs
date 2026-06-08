@@ -304,7 +304,19 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS products_name_en_trgm_idx        ON products USING GIN (name_en gin_trgm_ops)`,
   `CREATE INDEX IF NOT EXISTS products_name_ha_trgm_idx        ON products USING GIN (name_ha gin_trgm_ops)`,
 
-  // ── 005: Seed default categories ────────────────────────────────────────────
+  // ── 005: Safe column back-fills (idempotent for existing deployments) ────────
+  // These guard against databases created before the current CREATE TABLE
+  // definitions added these columns.  ADD COLUMN IF NOT EXISTS is a no-op when
+  // the column already exists, so running migrate.mjs twice is safe.
+
+  `ALTER TABLE products      ADD COLUMN IF NOT EXISTS vendor_name TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE orders        ADD COLUMN IF NOT EXISTS delivery_person TEXT`,
+  `ALTER TABLE orders        ADD COLUMN IF NOT EXISTS payment_id UUID`,
+  `ALTER TABLE reviews       ADD COLUMN IF NOT EXISTS reviewer_name TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE wallet_ledger ADD COLUMN IF NOT EXISTS payout_request_id UUID`,
+  `ALTER TABLE order_items   ADD COLUMN IF NOT EXISTS vendor_name TEXT NOT NULL DEFAULT ''`,
+
+  // ── 006: Seed default categories ────────────────────────────────────────────
 
   `INSERT INTO categories (key, name_en, name_ha, search_terms) VALUES
     ('food',       'Food',       'Abinci',             ARRAY['food','abinci','groceries','shinkafa']),

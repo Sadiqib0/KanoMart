@@ -197,7 +197,22 @@ body.is-admin .sidebar-context .role-pill{background:#eef0ee;color:var(--ink-2)}
 .sidebar-lang .language-option.is-active{background:var(--ink);color:#fff;border-color:var(--ink)}
 .sidebar-lang .language-option.is-active span{color:rgba(255,255,255,.6)}
 
-.sidebar-footer{padding-top:8px;border-top:1px solid var(--line)}
+.sidebar-footer{padding-top:8px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.sidebar-notif-btn{
+  position:relative;width:36px;height:36px;border-radius:var(--r-sm);
+  background:transparent;border:0;cursor:pointer;color:var(--text-2);
+  display:grid;place-items:center;transition:background .12s;
+}
+.sidebar-notif-btn:hover{background:var(--surface-2);color:var(--text)}
+.sidebar-notif-btn svg{width:18px;height:18px}
+.notif-badge{
+  position:absolute;top:4px;right:4px;
+  min-width:16px;height:16px;padding:0 4px;
+  background:var(--error,#d03d3d);color:#fff;
+  border-radius:99px;font-size:10px;font-weight:700;line-height:16px;
+  text-align:center;pointer-events:none;
+}
+body.sidebar-collapsed .sidebar-notif-btn{align-self:center}
 .sidebar-account{
   display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:center;
   width:100%;padding:8px 10px;border-radius:var(--r-sm);background:transparent;border:0;cursor:pointer;text-align:left;

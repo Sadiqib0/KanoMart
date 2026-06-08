@@ -17,6 +17,12 @@ import {
   type ApiCategory,
 } from "./api-client";
 
+let liveProducts: Product[] = [];
+
+export function getLiveProducts(): Product[] {
+  return liveProducts;
+}
+
 const categoryLabels: Record<string, Product["category"]> = {
   food: { en: "Food", ha: "Abinci" },
   fashion: { en: "Fashion", ha: "Kaya" },
@@ -81,6 +87,7 @@ function mapApiVendorApplication(application: ApiVendorApplication) {
 export async function refreshLiveProducts(params: { q?: string; category?: string } = {}): Promise<Product[]> {
   const response = await api.products(params);
   const products = response.products.map(mapApiProduct);
+  liveProducts = products;
   setLiveProducts(products);
   return products;
 }

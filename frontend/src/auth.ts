@@ -4,11 +4,9 @@ import { state, elements } from "./state";
 import { getCopy, escapeHtml, isValidEmail, isValidPhone } from "./utils";
 import { showToast } from "./toast";
 import {
-  createSessionForPhone,
   findUserProfileByEmail,
   findUserProfileByPhone,
   isAdminPhone,
-  requiresSignup,
   saveUserProfile,
   updateUserProfile,
   verifyPassword,
@@ -17,7 +15,6 @@ import { normalizePhone } from "../backend/phone";
 import { api, type ApiAuthResponse, clearApiToken, saveApiToken } from "./api-client";
 import { fetchLiveOrders, renderOrdersPanel } from "./orders";
 
-const MOCK_OTP = "123456";
 
 function sessionFromApi(response: ApiAuthResponse): UserSession {
   const user = response.user;
@@ -39,13 +36,9 @@ function sessionFromApi(response: ApiAuthResponse): UserSession {
 
 async function syncApiLogin(identifier: string, password: string): Promise<UserSession | null> {
   if (!password) return null;
-  try {
-    const response = await api.login(identifier, password);
-    saveApiToken(response.token);
-    return sessionFromApi(response);
-  } catch {
-    return null;
-  }
+  const response = await api.login(identifier, password);
+  saveApiToken(response.token, response.expiresAt);
+  return sessionFromApi(response);
 }
 
 async function syncApiRegistration(input: {
@@ -62,20 +55,14 @@ async function syncApiRegistration(input: {
   category?: string;
 }): Promise<UserSession | null> {
   if (input.password.length < 8) return null;
-  try {
-    const response = await api.register(input);
-    saveApiToken(response.token);
-    return sessionFromApi(response);
-  } catch (error) {
-    const existing = await syncApiLogin(input.phone, input.password);
-    if (existing) return existing;
-    throw error;
-  }
+  const response = await api.register(input);
+  saveApiToken(response.token, response.expiresAt);
+  return sessionFromApi(response);
 }
 
-export function saveSession(session: UserSession): void {
+export function saveSession(session: UserSession, expiresAt?: string): void {
   state.currentUser = session;
-  if (session.token) saveApiToken(session.token);
+  if (session.token) saveApiToken(session.token, expiresAt);
   state.adminAuthenticated = session.role === "admin";
   localStorage.setItem(storageKeys.session, JSON.stringify(session));
   if (session.role === "admin") {
@@ -127,25 +114,20 @@ function buildAuthModal(): HTMLElement {
         <button type="button" class="modal-close" aria-label="${getCopy("Close", "Rufe")}">×</button>
       </div>
       <div id="authPhasePhone" class="auth-phase">
-        <p class="muted">${getCopy("Enter your phone number to receive a one-time code.", "Shigar da lambar wayarka domin karban lambar shiga.")}</p>
+        <p class="muted">${getCopy("Enter your phone number or email address.", "Shigar da lambar wayarka ko adireshin email.")}</p>
         <form id="authPhoneForm" novalidate>
           <label>
             <span>${getCopy("Email or phone number", "Email ko lambar waya")}</span>
             <input type="text" id="authPhone" name="phone" placeholder="08012345678 or name@email.com"
               required autocomplete="username" />
           </label>
-          <button type="submit">${getCopy("Send code", "Aika lambar")}</button>
+          <button type="submit">${getCopy("Continue", "Ci gaba")}</button>
           <p class="form-message" id="authPhoneError" role="alert"></p>
         </form>
       </div>
       <div id="authPhaseOtp" class="auth-phase" hidden>
         <p class="muted" id="authOtpHint"></p>
         <form id="authOtpForm" novalidate>
-          <label>
-            <span>${getCopy("One-time code", "Lambar shiga")}</span>
-            <input type="text" id="authOtp" name="otp" maxlength="6" pattern="\\d{6}"
-              inputmode="numeric" autocomplete="one-time-code" required placeholder="${getCopy("6-digit code", "Lambar lamba 6")}" />
-          </label>
           <label id="authLoginPasswordWrap" hidden>
             <span>${getCopy("Password", "Kalmar sirri")}</span>
             <input type="password" id="authLoginPassword" name="loginPassword" autocomplete="current-password" />
@@ -207,7 +189,7 @@ function buildAuthModal(): HTMLElement {
               </label>
             </div>
           </div>
-          <button type="submit">${getCopy("Verify", "Tabbatar")}</button>
+          <button type="submit" id="authSubmitBtn">${getCopy("Sign in", "Shiga")}</button>
           <p class="form-message" id="authOtpError" role="alert"></p>
         </form>
         <button type="button" class="link-button" id="authBack">${getCopy("← Change number", "← Canza lambar")}</button>
@@ -272,16 +254,17 @@ function wireAuthModal(modal: HTMLElement): void {
   });
 
   const phoneForm = modal.querySelector<HTMLFormElement>("#authPhoneForm")!;
-  const otpForm = modal.querySelector<HTMLFormElement>("#authOtpForm")!;
+  const credForm = modal.querySelector<HTMLFormElement>("#authOtpForm")!;
   const phonePhase = modal.querySelector<HTMLElement>("#authPhasePhone")!;
-  const otpPhase = modal.querySelector<HTMLElement>("#authPhaseOtp")!;
-  const otpHint = modal.querySelector<HTMLElement>("#authOtpHint")!;
+  const credPhase = modal.querySelector<HTMLElement>("#authPhaseOtp")!;
+  const credHint = modal.querySelector<HTMLElement>("#authOtpHint")!;
   const phoneError = modal.querySelector<HTMLElement>("#authPhoneError")!;
-  const otpError = modal.querySelector<HTMLElement>("#authOtpError")!;
+  const credError = modal.querySelector<HTMLElement>("#authOtpError")!;
   const signupFields = modal.querySelector<HTMLElement>("#authSignupFields")!;
   const vendorFields = modal.querySelector<HTMLElement>("#authVendorFields")!;
   const accountType = modal.querySelector<HTMLSelectElement>("#authAccountType")!;
-  let pendingPhone = "";
+  const submitBtn = modal.querySelector<HTMLButtonElement>("#authSubmitBtn")!;
+  let pendingIdentifier = "";
   let needsSignup = false;
 
   function setSignupRequired(required: boolean): void {
@@ -291,6 +274,9 @@ function wireAuthModal(modal: HTMLElement): void {
     });
     accountType.required = required;
     setVendorRequired(required && accountType.value === "vendor");
+    submitBtn.textContent = required
+      ? getCopy("Create account", "Ƙirƙiri asusu")
+      : getCopy("Sign in", "Shiga");
   }
 
   function setVendorRequired(required: boolean): void {
@@ -322,110 +308,107 @@ function wireAuthModal(modal: HTMLElement): void {
       return;
     }
 
+    pendingIdentifier = identifier;
+    const normalised = identifier.includes("@") ? identifier : normalizePhone(identifier);
     const emailProfile = identifier.includes("@") ? findUserProfileByEmail(identifier) : null;
-    pendingPhone = emailProfile?.phone || normalizePhone(identifier);
-    needsSignup = requiresSignup(pendingPhone);
+    const phoneProfile = findUserProfileByPhone(normalised);
+    needsSignup = !emailProfile && !phoneProfile && !isAdminPhone(normalised);
+
     setSignupRequired(needsSignup);
+
     const loginPasswordWrap = modal.querySelector<HTMLElement>("#authLoginPasswordWrap");
-    if (loginPasswordWrap) loginPasswordWrap.hidden = needsSignup || (!findUserProfileByPhone(pendingPhone)?.passwordHash && !isAdminPhone(pendingPhone));
-    otpHint.textContent = getCopy(
-      isAdminPhone(pendingPhone)
-        ? `A demo code has been sent to ${pendingPhone}. Use: ${MOCK_OTP}. Enter an admin password of at least 8 characters.`
-        : needsSignup
-        ? `A demo code has been sent to ${pendingPhone}. Use: ${MOCK_OTP}. Complete the first-time profile after the code.`
-        : `A demo code has been sent to ${pendingPhone}. Use: ${MOCK_OTP}`,
-      isAdminPhone(pendingPhone)
-        ? `An aika lambar gwaji zuwa ${pendingPhone}. Yi amfani da: ${MOCK_OTP}. Shigar da kalmar admin akalla haruffa 8.`
-        : needsSignup
-        ? `An aika lambar gwaji zuwa ${pendingPhone}. Yi amfani da: ${MOCK_OTP}. Kammala bayanan farko bayan lambar.`
-        : `An aika lambar gwaji zuwa ${pendingPhone}. Yi amfani da: ${MOCK_OTP}`
-    );
+    if (loginPasswordWrap) loginPasswordWrap.hidden = needsSignup;
+
+    credHint.textContent = needsSignup
+      ? getCopy(
+          `Creating a new account for ${normalised}.`,
+          `Ana ƙirƙirar sabon asusu don ${normalised}.`
+        )
+      : getCopy(
+          `Welcome back. Enter your password to sign in.`,
+          `Barka da dawo. Shigar da kalmar sirri don shiga.`
+        );
+
     phonePhase.hidden = true;
-    otpPhase.hidden = false;
-    modal.querySelector<HTMLInputElement>("#authOtp")?.focus();
+    credPhase.hidden = false;
+    const focusTarget = needsSignup
+      ? modal.querySelector<HTMLInputElement>("#authFirstName")
+      : modal.querySelector<HTMLInputElement>("#authLoginPassword");
+    focusTarget?.focus();
   });
 
   accountType.addEventListener("change", () => {
     setVendorRequired(needsSignup && accountType.value === "vendor");
   });
 
-  otpForm.addEventListener("submit", (e) => {
-    void handleOtpSubmit(e);
+  credForm.addEventListener("submit", (e) => {
+    void handleCredSubmit(e);
   });
 
-  async function handleOtpSubmit(e: SubmitEvent): Promise<void> {
+  async function handleCredSubmit(e: SubmitEvent): Promise<void> {
     e.preventDefault();
-    const submitBtn = otpForm.querySelector<HTMLButtonElement>("button[type='submit']");
-    const otp = (modal.querySelector<HTMLInputElement>("#authOtp")?.value || "").trim();
-    if (otp !== MOCK_OTP) {
-      otpError.textContent = getCopy("Invalid code. Try: 123456", "Lambar ba daidai ba. Gwada: 123456");
-      return;
-    }
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = getCopy("Signing in…", "Ana shiga…"); }
-    let apiSession: UserSession | null = null;
-    if (needsSignup) {
-      const firstName = (modal.querySelector<HTMLInputElement>("#authFirstName")?.value || "").trim();
-      const lastName = (modal.querySelector<HTMLInputElement>("#authLastName")?.value || "").trim();
-      const email = (modal.querySelector<HTMLInputElement>("#authEmail")?.value || "").trim();
-      const password = (modal.querySelector<HTMLInputElement>("#authPassword")?.value || "").trim();
-      const deliveryAddress = (modal.querySelector<HTMLInputElement>("#authDeliveryAddress")?.value || "").trim();
-      const preferredLanguage =
-        modal.querySelector<HTMLSelectElement>("#authPreferredLanguage")?.value === "ha" ? "ha" : "en";
-      const selectedType = accountType.value === "vendor" ? "vendor" : "customer";
-      const businessName = (modal.querySelector<HTMLInputElement>("#authBusinessName")?.value || "").trim();
-      const area = (modal.querySelector<HTMLInputElement>("#authArea")?.value || "").trim();
-      const category = modal.querySelector<HTMLSelectElement>("#authCategory")?.value || "essentials";
-      if (!firstName || firstName.length < 2) {
-        otpError.textContent = getCopy("First name must be at least 2 characters.", "Sunan farko ya zama akalla haruffa 2.");
-        modal.querySelector<HTMLInputElement>("#authFirstName")?.focus();
-        return;
-      }
-      if (!lastName || lastName.length < 2) {
-        otpError.textContent = getCopy("Last name must be at least 2 characters.", "Sunan karshe ya zama akalla haruffa 2.");
-        modal.querySelector<HTMLInputElement>("#authLastName")?.focus();
-        return;
-      }
-      if (!email || !isValidEmail(email)) {
-        otpError.textContent = getCopy("Enter a valid email address.", "Shigar da adireshin email mai inganci.");
-        modal.querySelector<HTMLInputElement>("#authEmail")?.focus();
-        return;
-      }
-      if (!password || password.length < 8) {
-        otpError.textContent = getCopy("Password must be at least 8 characters.", "Kalmar sirri ta kasance akalla haruffa 8.");
-        modal.querySelector<HTMLInputElement>("#authPassword")?.focus();
-        return;
-      }
-      if (!deliveryAddress) {
-        otpError.textContent = getCopy("Delivery address is required.", "Ana buƙatar adireshin isarwa.");
-        modal.querySelector<HTMLInputElement>("#authDeliveryAddress")?.focus();
-        return;
-      }
-      if (selectedType === "vendor" && !businessName) {
-        otpError.textContent = getCopy("Business name is required.", "Ana buƙatar sunan kasuwanci.");
-        modal.querySelector<HTMLInputElement>("#authBusinessName")?.focus();
-        return;
-      }
-      if (selectedType === "vendor" && !area) {
-        otpError.textContent = getCopy("Business area is required.", "Ana buƙatar yankin kasuwanci.");
-        modal.querySelector<HTMLInputElement>("#authArea")?.focus();
-        return;
-      }
-      saveUserProfile({
-        phone: pendingPhone,
-        firstName,
-        lastName,
-        email,
-        password,
-        accountType: selectedType,
-        deliveryAddress,
-        preferredLanguage,
-        businessName,
-        area,
-        category,
-      });
-      try {
-        apiSession = await syncApiRegistration({
-          phone: pendingPhone,
+    credError.textContent = "";
+    submitBtn.disabled = true;
+    submitBtn.textContent = getCopy("Signing in…", "Ana shiga…");
+
+    const normalised = pendingIdentifier.includes("@")
+      ? pendingIdentifier
+      : normalizePhone(pendingIdentifier);
+
+    try {
+      let session: UserSession | null = null;
+
+      if (needsSignup) {
+        const firstName = (modal.querySelector<HTMLInputElement>("#authFirstName")?.value || "").trim();
+        const lastName = (modal.querySelector<HTMLInputElement>("#authLastName")?.value || "").trim();
+        const email = (modal.querySelector<HTMLInputElement>("#authEmail")?.value || "").trim();
+        const password = (modal.querySelector<HTMLInputElement>("#authPassword")?.value || "").trim();
+        const deliveryAddress = (modal.querySelector<HTMLInputElement>("#authDeliveryAddress")?.value || "").trim();
+        const preferredLanguage =
+          modal.querySelector<HTMLSelectElement>("#authPreferredLanguage")?.value === "ha" ? "ha" : "en";
+        const selectedType = accountType.value === "vendor" ? "vendor" : "customer";
+        const businessName = (modal.querySelector<HTMLInputElement>("#authBusinessName")?.value || "").trim();
+        const area = (modal.querySelector<HTMLInputElement>("#authArea")?.value || "").trim();
+        const category = modal.querySelector<HTMLSelectElement>("#authCategory")?.value || "essentials";
+
+        if (!firstName || firstName.length < 2) {
+          credError.textContent = getCopy("First name must be at least 2 characters.", "Sunan farko ya zama akalla haruffa 2.");
+          modal.querySelector<HTMLInputElement>("#authFirstName")?.focus();
+          return;
+        }
+        if (!lastName || lastName.length < 2) {
+          credError.textContent = getCopy("Last name must be at least 2 characters.", "Sunan karshe ya zama akalla haruffa 2.");
+          modal.querySelector<HTMLInputElement>("#authLastName")?.focus();
+          return;
+        }
+        if (!email || !isValidEmail(email)) {
+          credError.textContent = getCopy("Enter a valid email address.", "Shigar da adireshin email mai inganci.");
+          modal.querySelector<HTMLInputElement>("#authEmail")?.focus();
+          return;
+        }
+        if (!password || password.length < 8) {
+          credError.textContent = getCopy("Password must be at least 8 characters.", "Kalmar sirri ta kasance akalla haruffa 8.");
+          modal.querySelector<HTMLInputElement>("#authPassword")?.focus();
+          return;
+        }
+        if (!deliveryAddress) {
+          credError.textContent = getCopy("Delivery address is required.", "Ana buƙatar adireshin isarwa.");
+          modal.querySelector<HTMLInputElement>("#authDeliveryAddress")?.focus();
+          return;
+        }
+        if (selectedType === "vendor" && !businessName) {
+          credError.textContent = getCopy("Business name is required.", "Ana buƙatar sunan kasuwanci.");
+          modal.querySelector<HTMLInputElement>("#authBusinessName")?.focus();
+          return;
+        }
+        if (selectedType === "vendor" && !area) {
+          credError.textContent = getCopy("Business area is required.", "Ana buƙatar yankin kasuwanci.");
+          modal.querySelector<HTMLInputElement>("#authArea")?.focus();
+          return;
+        }
+
+        session = await syncApiRegistration({
+          phone: normalised,
           firstName,
           lastName,
           email,
@@ -437,89 +420,47 @@ function wireAuthModal(modal: HTMLElement): void {
           area,
           category,
         });
-      } catch {
-        showToast({
-          message: getCopy("Signed in locally. Live account sync needs backend storage.", "An shiga a gida. Ana bukatar ajiyar backend."),
-          type: "info",
-        });
-      }
-    } else {
-      const profile = findUserProfileByPhone(pendingPhone);
-      const password = (modal.querySelector<HTMLInputElement>("#authLoginPassword")?.value || "").trim();
-      const loginPasswordWrap = modal.querySelector<HTMLElement>("#authLoginPasswordWrap");
-      if (loginPasswordWrap && !loginPasswordWrap.hidden && !password) {
-        otpError.textContent = getCopy("Password is required to sign in.", "Ana buƙatar kalmar sirri don shiga.");
-        modal.querySelector<HTMLInputElement>("#authLoginPassword")?.focus();
-        return;
-      }
-      if (isAdminPhone(pendingPhone) && password.length < 8) {
-        otpError.textContent = getCopy("Enter an admin password of at least 8 characters.", "Shigar da kalmar admin akalla haruffa 8.");
-        return;
-      }
-      if (profile?.passwordHash && !verifyPassword(pendingPhone, password)) {
-        otpError.textContent = getCopy("Incorrect password.", "Kalmar sirri ba daidai ba.");
-        return;
-      }
-      apiSession = await syncApiLogin(pendingPhone, password);
-      if (!apiSession && isAdminPhone(pendingPhone)) {
-        try {
-          apiSession = await syncApiRegistration({
-            phone: pendingPhone,
-            firstName: "Admin",
-            lastName: "User",
-            password,
-            role: "customer",
-          });
-        } catch {
-          showToast({
-            message: getCopy("Signed in locally. Live admin sync is unavailable.", "An shiga a gida. Haɗin admin live bai samu ba."),
-            type: "info",
-          });
+        if (!session) throw new Error(getCopy("Registration failed. Please try again.", "Rajista ta kasa. Da fatan za a sake gwadawa."));
+      } else {
+        const password = (modal.querySelector<HTMLInputElement>("#authLoginPassword")?.value || "").trim();
+        if (!password) {
+          credError.textContent = getCopy("Password is required to sign in.", "Ana buƙatar kalmar sirri don shiga.");
+          modal.querySelector<HTMLInputElement>("#authLoginPassword")?.focus();
+          return;
         }
+        session = await syncApiLogin(pendingIdentifier, password);
+        if (!session) throw new Error(getCopy("Incorrect phone number or password.", "Lambar waya ko kalmar sirri ba daidai ba."));
       }
-      if (!apiSession && profile && password.length >= 8) {
-        try {
-          apiSession = await syncApiRegistration({
-            phone: pendingPhone,
-            firstName: profile.firstName,
-            lastName: profile.lastName,
-            email: profile.email,
-            password,
-            role: profile.role,
-            deliveryAddress: profile.deliveryAddress,
-            preferredLanguage: profile.preferredLanguage,
-          });
-        } catch {
-          showToast({
-            message: getCopy("Signed in locally. Live account sync is unavailable.", "An shiga a gida. Haɗin asusun live bai samu ba."),
-            type: "info",
-          });
-        }
-      }
+
+      saveSession(session);
+      closeAuthModal();
+      const roleCopy =
+        session.role === "admin"
+          ? getCopy("Admin signed in.", "Admin ya shiga.")
+          : session.role === "vendor"
+            ? getCopy("Vendor account signed in.", "Asusun dillali ya shiga.")
+            : getCopy("Signed in successfully!", "An shiga cikin nasara!");
+      showToast({ message: roleCopy });
+    } catch (err) {
+      credError.textContent = err instanceof Error
+        ? err.message
+        : getCopy("Sign in failed. Check your details and try again.", "Shiga ta kasa. Duba bayananku ku sake gwadawa.");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = needsSignup
+        ? getCopy("Create account", "Ƙirƙiri asusu")
+        : getCopy("Sign in", "Shiga");
     }
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Verify", "Tabbatar"); }
-    otpError.textContent = "";
-    const session = apiSession ?? createSessionForPhone(pendingPhone);
-    saveSession(session);
-    closeAuthModal();
-    const roleCopy =
-      session.role === "admin"
-        ? getCopy("Admin verified.", "An tabbatar da admin.")
-        : session.role === "vendor"
-          ? getCopy("Vendor account detected.", "An gano asusun dan kasuwa.")
-          : getCopy("Signed in successfully!", "An shiga cikin nasara!");
-    showToast({ message: roleCopy });
   }
 
   modal.querySelector("#authBack")?.addEventListener("click", () => {
     phonePhase.hidden = false;
-    otpPhase.hidden = true;
+    credPhase.hidden = true;
     setSignupRequired(false);
     phoneError.textContent = "";
-    otpError.textContent = "";
+    credError.textContent = "";
     modal.querySelector<HTMLInputElement>("#authPhone")?.focus();
   });
-
 }
 
 // — User panel (orders/account) —
@@ -641,7 +582,7 @@ export function openUserPanel(): void {
       lastName: lastName || state.currentUser!.lastName,
       email, deliveryAddress, preferredLanguage,
     });
-    if (updated && !state.currentUser?.token) saveSession(createSessionForPhone(updated.phone));
+    if (updated && !state.currentUser?.token) return; // must be signed in via API
 
     const message = panel.querySelector<HTMLElement>("#profileUpdateMessage");
     if (message) message.textContent = getCopy("Profile updated.", "An sabunta bayanai.");

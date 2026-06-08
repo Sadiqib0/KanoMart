@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createApp, createMemoryStore, createRemoteStoreApp, inject } from "../api/server.mjs";
+import { createApp, createMemoryStore, createRemoteStoreApp, inject } from "../backend/server.mjs";
 
 let app: ReturnType<typeof createApp>;
 let originalBodyLimit: string | undefined;

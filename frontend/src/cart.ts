@@ -5,6 +5,7 @@ import { state, elements } from "./state";
 import { escapeHtml, getCopy, parsePrice, formatPrice } from "./utils";
 import { showToast } from "./toast";
 import { getProductById } from "../backend/products";
+import { getLiveProducts } from "./live-api";
 import { api } from "./api-client";
 
 export function getCartItems(): CartItem[] {
@@ -12,7 +13,9 @@ export function getCartItems(): CartItem[] {
 }
 
 export function getCartProduct(productId: string): Product | undefined {
-  return getProductById(productId);
+  // Live API products (UUID-keyed) must be checked first; the legacy in-memory
+  // store only knows about seed/prototype products with different IDs.
+  return getLiveProducts().find((p) => p.id === productId) ?? getProductById(productId);
 }
 
 export function getCartCount(): number {

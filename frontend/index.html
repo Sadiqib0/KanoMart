@@ -75,7 +75,7 @@
           </a>
 
           <span class="sidebar-label" data-en="Business" data-ha="Kasuwanci">Business</span>
-          <a href="#vendor" data-route="vendor" data-roles="guest customer vendor" data-en="Vendor center" data-ha="Cibiyar dillali">
+          <a href="#vendor" data-route="vendor" data-roles="vendor" data-en="Vendor center" data-ha="Cibiyar dillali">
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false"><path d="M4 10h16l-1-5H5l-1 5Z"/><path d="M6 10v10h12V10"/><path d="M9 20v-5h6v5"/><path d="M4 10c0 1.4 1.1 2.5 2.5 2.5S9 11.4 9 10c0 1.4 1.1 2.5 2.5 2.5S14 11.4 14 10c0 1.4 1.1 2.5 2.5 2.5S19 11.4 19 10"/></svg>
             </span>
@@ -123,6 +123,16 @@
         </div>
 
         <div class="sidebar-footer">
+          <!-- Notification bell — visible to vendor and admin once signed in -->
+          <button class="sidebar-notif-btn icon-button" type="button" id="sidebarNotifBtn"
+            data-roles="vendor admin" aria-label="Notifications" hidden>
+            <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            <span class="notif-badge" id="sidebarNotifCount" hidden>0</span>
+          </button>
+
           <!-- Account button — only shown once logged in -->
           <button class="sidebar-account" type="button" id="sidebarAccountAction"
             data-roles="customer vendor admin">
@@ -870,7 +880,9 @@
                 </label>
                 <label>
                   <span data-en="Product picture" data-ha="Hoton kaya">Product picture</span>
-                  <input type="file" name="productImage" accept="image/png,image/jpeg,image/webp" required />
+                  <input type="file" name="productImage" id="productImageInput" accept="image/png,image/jpeg,image/webp" required />
+                  <img id="productImagePreview" src="" alt="Product preview"
+                    style="display:none;margin-top:8px;max-width:180px;max-height:140px;border-radius:8px;object-fit:cover;border:1px solid var(--line)" />
                 </label>
                 <button type="submit" data-en="Add product" data-ha="Saka kaya">Add product</button>
                 <p class="form-message" id="vendorProductMessage" role="status" aria-live="polite"></p>
