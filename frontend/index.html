@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#176b4d" />
+    <script>
+      (function() {
+        try {
+          var savedTheme = localStorage.getItem('kanoMart.theme');
+          var theme = savedTheme === 'dark' || savedTheme === 'light'
+            ? savedTheme
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch (error) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
     <title>Kano Mart | Local Marketplace for Kano</title>
     <meta
       name="description"
@@ -53,25 +67,25 @@
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false"><path d="M3 10.8 12 3l9 7.8"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
             </span>
-            <span class="sidebar-text"><span class="sidebar-title">Home</span><small>Marketplace overview</small></span>
+            <span class="sidebar-text"><span class="sidebar-title">Home</span><small data-en="Marketplace overview" data-ha="Takaitaccen kasuwa">Marketplace overview</small></span>
           </a>
           <a href="#customer" data-route="customer" data-roles="customer" data-en="Customer dashboard" data-ha="Allon kwastoma">
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-4 3.4-6 7-6s6.2 2 7 6"/></svg>
             </span>
-            <span class="sidebar-text"><span class="sidebar-title">Customer dashboard</span><small>Orders, cart, wishlist</small></span>
+            <span class="sidebar-text"><span class="sidebar-title">Customer dashboard</span><small data-en="Orders, cart, wishlist" data-ha="Ododi, kwando, jerin so">Orders, cart, wishlist</small></span>
           </a>
           <a href="#catalog" data-route="catalog" data-roles="guest customer vendor admin" data-en="Catalog" data-ha="Kaya">
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false"><path d="M6 7h14l-1.4 10.2a2 2 0 0 1-2 1.8H8.4a2 2 0 0 1-2-1.8L5 4H3"/><path d="M9 10h8"/><circle cx="9" cy="21" r="1"/><circle cx="17" cy="21" r="1"/></svg>
             </span>
-            <span class="sidebar-text"><span class="sidebar-title">Catalog</span><small>Search and product discovery</small></span>
+            <span class="sidebar-text"><span class="sidebar-title">Catalog</span><small data-en="Search and product discovery" data-ha="Bincike da gano kaya">Search and product discovery</small></span>
           </a>
           <a href="#orders" data-route="orders" data-roles="customer" data-en="Orders" data-ha="Ododi">
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false"><path d="M7 3h10l2 3v15H5V6l2-3Z"/><path d="M8 10h8"/><path d="M8 14h5"/><path d="m14 18 1.5 1.5L19 16"/></svg>
             </span>
-            <span class="sidebar-text"><span class="sidebar-title">Orders</span><small>Tracking and receipts</small></span>
+            <span class="sidebar-text"><span class="sidebar-title">Orders</span><small data-en="Tracking and receipts" data-ha="Bibiya da rasit">Tracking and receipts</small></span>
           </a>
 
           <span class="sidebar-label" data-roles="vendor admin" data-en="Business" data-ha="Kasuwanci">Business</span>
@@ -79,13 +93,13 @@
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false"><path d="M4 10h16l-1-5H5l-1 5Z"/><path d="M6 10v10h12V10"/><path d="M9 20v-5h6v5"/><path d="M4 10c0 1.4 1.1 2.5 2.5 2.5S9 11.4 9 10c0 1.4 1.1 2.5 2.5 2.5S14 11.4 14 10c0 1.4 1.1 2.5 2.5 2.5S19 11.4 19 10"/></svg>
             </span>
-            <span class="sidebar-text"><span class="sidebar-title">Vendor center</span><small>Store, products, wallet</small></span>
+            <span class="sidebar-text"><span class="sidebar-title">Vendor center</span><small data-en="Store, products, wallet" data-ha="Shago, kaya, wallet">Store, products, wallet</small></span>
           </a>
           <a href="#admin" data-route="admin" data-roles="admin" data-en="Admin operations" data-ha="Aikin admin" hidden>
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 20 7v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7l8-4Z"/><path d="m9 12 2 2 4-4"/></svg>
             </span>
-            <span class="sidebar-text"><span class="sidebar-title">Admin operations</span><small>Approvals, risk, finance</small></span>
+            <span class="sidebar-text"><span class="sidebar-title">Admin operations</span><small data-en="Approvals, risk, finance" data-ha="Amincewa, hadari, kudi">Approvals, risk, finance</small></span>
           </a>
 
           <!-- Guest-only: Sign in / Sign up links -->
@@ -94,13 +108,13 @@
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
             </span>
-            <span class="sidebar-text"><span class="sidebar-title">Sign in</span><small>Access your account</small></span>
+            <span class="sidebar-text"><span class="sidebar-title">Sign in</span><small data-en="Access your account" data-ha="Bude asusunka">Access your account</small></span>
           </a>
           <a href="#signup" data-route="signup" data-roles="guest" data-en="Create account" data-ha="Ƙirƙiri asusu">
             <span class="nav-glyph" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
             </span>
-            <span class="sidebar-text"><span class="sidebar-title">Create account</span><small>Customer or vendor</small></span>
+            <span class="sidebar-text"><span class="sidebar-title">Create account</span><small data-en="Customer or vendor" data-ha="Kwastoma ko dillali">Customer or vendor</small></span>
           </a>
         </nav>
 
@@ -165,6 +179,15 @@
                 <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">EN</button>
                 <button class="language-option" type="button" data-language="ha" aria-pressed="false">HA</button>
               </div>
+              <button class="theme-toggle icon-button" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Switch to dark mode">
+                <svg class="theme-icon theme-icon-moon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                  <path d="M20 15.2A7.6 7.6 0 0 1 8.8 4a7.8 7.8 0 1 0 11.2 11.2Z"/>
+                </svg>
+                <svg class="theme-icon theme-icon-sun" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                  <circle cx="12" cy="12" r="4"/>
+                  <path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/>
+                </svg>
+              </button>
               <a href="#login" data-route="login" class="mk-nav-signin" data-en="Sign in" data-ha="Shiga">Sign in</a>
               <a href="#signup" data-route="signup" class="mk-nav-create" data-en="Create account" data-ha="Ƙirƙiri asusu">Create account</a>
             </div>
@@ -197,6 +220,16 @@
             <button class="language-option is-active" type="button" data-language="en" aria-pressed="true">EN</button>
             <button class="language-option" type="button" data-language="ha" aria-pressed="false">HA</button>
           </div>
+
+          <button class="theme-toggle icon-button" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Switch to dark mode">
+            <svg class="theme-icon theme-icon-moon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+              <path d="M20 15.2A7.6 7.6 0 0 1 8.8 4a7.8 7.8 0 1 0 11.2 11.2Z"/>
+            </svg>
+            <svg class="theme-icon theme-icon-sun" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/>
+            </svg>
+          </button>
 
           <!-- Hidden JS anchors — required by state.ts, not visible to users -->
           <span hidden aria-hidden="true" data-wishlist-count>0</span>

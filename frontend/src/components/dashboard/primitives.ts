@@ -1,4 +1,4 @@
-import { escapeHtml, formatPrice } from "../../utils";
+import { escapeHtml, formatPrice, localizeStatus } from "../../utils";
 
 export type StatCardInput = {
   label: string;
@@ -17,7 +17,8 @@ export type ActionInput = {
 
 export function renderStatusBadge(status: string, label = status): string {
   const normalized = String(status || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_");
-  return `<span class="dash-status dash-status-${escapeHtml(normalized)}">${escapeHtml(label.replace(/_/g, " "))}</span>`;
+  const text = label === status ? localizeStatus(status) : label;
+  return `<span class="dash-status dash-status-${escapeHtml(normalized)}">${escapeHtml(text)}</span>`;
 }
 
 export function renderStatCard(stat: StatCardInput): string {

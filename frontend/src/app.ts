@@ -1,7 +1,7 @@
 import type { Language } from "../backend/types";
 import { storageKeys } from "../backend/data";
 import { state, elements } from "./state";
-import { escapeHtml, formatDate, formatPrice, getCopy, sanitizePlainText, setActiveLanguageButtons } from "./utils";
+import { escapeHtml, formatDate, formatPrice, getCopy, localizeStatus, sanitizePlainText, setActiveLanguageButtons } from "./utils";
 import { getSearchResults, saveSearch } from "./search";
 import { renderProductCard, updateResultCopy, renderAdminDashboard } from "./render";
 import { exportSearchHistory, clearPrototypeData } from "./admin";
@@ -18,9 +18,9 @@ import {
   removeFromCart,
 } from "./cart";
 import { openCheckoutModal } from "./checkout";
-import { openProductModal } from "./product-modal";
+import { openProductModal, refreshActiveProductModal } from "./product-modal";
 import { openWishlistPanel, toggleWishlist, syncWishlistCount, syncAllWishlistButtons } from "./wishlist";
-import { openAuthModal, openUserPanel, saveSession, signOut, syncUserButton } from "./auth";
+import { openAuthModal, openUserPanel, refreshUserPanelLanguage, saveSession, signOut, syncUserButton } from "./auth";
 import { renderAdminGate } from "./admin-gate";
 import { reviewVendorRequest, saveVendorRequest as persistVendorRequest } from "../backend/vendors";
 import { showToast } from "./toast";
@@ -59,7 +59,7 @@ import {
   refreshSession,
 } from "./live-api";
 import { api } from "./api-client";
-import { initLoginPage, initSignupPage } from "./auth-pages";
+import { initLoginPage, initSignupPage, syncAuthPagesLanguage } from "./auth-pages";
 
 const routes = new Set([
   // Public
@@ -75,6 +75,8 @@ const routes = new Set([
 ]);
 const AUTH_ROUTES = new Set(["login", "signup"]);
 const SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
+const THEME_STORAGE_KEY = "kanoMart.theme";
+type ThemeMode = "light" | "dark";
 
 function getCurrentRoute(): string {
   const raw = window.location.hash.replace("#", "") || "home";
@@ -206,38 +208,38 @@ function syncRoleNavigation(): void {
   const sidebarWishlistCount = document.querySelector<HTMLElement>("#sidebarWishlistCount");
   const profile = {
     guest: {
-      label: "Guest",
-      title: "Marketplace",
-      hint: "Sign in to unlock your dashboard.",
-      meta: "Sign in with mobile number",
+      label: getCopy("Guest", "Bako"),
+      title: getCopy("Marketplace", "Kasuwa"),
+      hint: getCopy("Sign in to unlock your dashboard.", "Shiga don bude allon aikinka."),
+      meta: getCopy("Sign in with mobile number", "Shiga da lambar waya"),
       avatar: "?",
     },
     customer: {
-      label: "Customer",
-      title: "Customer workspace",
-      hint: "Orders, cart, wishlist, and checkout.",
-      meta: user?.phone ?? "Customer account",
+      label: getCopy("Customer", "Kwastoma"),
+      title: getCopy("Customer workspace", "Wurin aiki na kwastoma"),
+      hint: getCopy("Orders, cart, wishlist, and checkout.", "Ododi, kwando, jerin so, da biyan kudi."),
+      meta: user?.phone ?? getCopy("Customer account", "Asusun kwastoma"),
       avatar: user?.name?.slice(0, 1).toUpperCase() || "C",
     },
     vendor: {
-      label: "Vendor",
-      title: "Seller workspace",
-      hint: user?.vendorStatus === "approved" ? "Store approved and ready." : "Approval status is pending.",
-      meta: user?.vendorStatus ? `Vendor: ${user.vendorStatus}` : "Vendor account",
+      label: getCopy("Vendor", "Dillali"),
+      title: getCopy("Seller workspace", "Wurin aiki na mai sayarwa"),
+      hint: user?.vendorStatus === "approved" ? getCopy("Store approved and ready.", "An amince da shago kuma ya shirya.") : getCopy("Approval status is pending.", "Matsayin amincewa yana jira."),
+      meta: user?.vendorStatus ? `${getCopy("Vendor", "Dillali")}: ${localizeStatus(user.vendorStatus)}` : getCopy("Vendor account", "Asusun dillali"),
       avatar: user?.name?.slice(0, 1).toUpperCase() || "V",
     },
     admin: {
-      label: "Admin",
-      title: "Operations control",
-      hint: "Approvals, finance, orders, and risk.",
-      meta: "Verified admin number",
+      label: getCopy("Admin", "Admin"),
+      title: getCopy("Operations control", "Sarrafa ayyuka"),
+      hint: getCopy("Approvals, finance, orders, and risk.", "Amincewa, kudi, ododi, da hadari."),
+      meta: getCopy("Verified admin number", "Lambar admin da aka tabbatar"),
       avatar: "A",
     },
   }[role] ?? {
-    label: "Guest",
-    title: "Marketplace",
-    hint: "Sign in to unlock your dashboard.",
-    meta: "Sign in with mobile number",
+    label: getCopy("Guest", "Bako"),
+    title: getCopy("Marketplace", "Kasuwa"),
+    hint: getCopy("Sign in to unlock your dashboard.", "Shiga don bude allon aikinka."),
+    meta: getCopy("Sign in with mobile number", "Shiga da lambar waya"),
     avatar: "?",
   };
 
@@ -265,6 +267,42 @@ function syncRoleNavigation(): void {
   if (!canAccessRoute(getCurrentRoute())) {
     setRoute(getDefaultRouteForRole(role));
   }
+}
+
+function getPreferredTheme(): ThemeMode {
+  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  if (savedTheme === "dark" || savedTheme === "light") return savedTheme;
+  const activeTheme = document.documentElement.dataset.theme;
+  if (activeTheme === "dark" || activeTheme === "light") return activeTheme;
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function getCurrentTheme(): ThemeMode {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function syncThemeToggles(theme = getCurrentTheme()): void {
+  const isDark = theme === "dark";
+  const label = isDark
+    ? getCopy("Switch to normal mode", "Canza zuwa yanayin haske")
+    : getCopy("Switch to dark mode", "Canza zuwa yanayin duhu");
+
+  document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(isDark));
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+  });
+}
+
+function setTheme(theme: ThemeMode): void {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.setProperty("color-scheme", theme);
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute(
+    "content",
+    theme === "dark" ? "#0c1f18" : "#176b4d"
+  );
+  localStorage.setItem(THEME_STORAGE_KEY, theme);
+  syncThemeToggles(theme);
 }
 
 function openSidebar(): void {
@@ -440,14 +478,21 @@ function renderOrdersPage(): void {
 }
 
 function renderLanguageSensitiveViews(): void {
+  const currentRoute = getCurrentRoute();
   syncUserButton();
   syncRoleNavigation();
+  syncAuthPagesLanguage();
+  renderDashboardPage(currentRoute);
   renderCustomerDashboard();
   renderOrdersPage();
   renderCartPanel();
   renderVendorProducts();
   renderVendorCommerce();
+  renderAdminGate();
   renderAdminDashboard();
+  syncAllWishlistButtons();
+  refreshUserPanelLanguage();
+  refreshActiveProductModal();
 
   const userOrdersList = document.querySelector<HTMLElement>("#userOrdersList");
   if (userOrdersList) userOrdersList.innerHTML = renderOrdersPanel();
@@ -808,6 +853,7 @@ function setLanguage(language: Language): void {
 
   setActiveLanguageButtons(language);
   syncSidebarLabels();
+  syncThemeToggles();
 
   if (state.lastQuery) {
     state.lastResults = getSearchResults(state.lastQuery);
@@ -1323,6 +1369,10 @@ elements.languageButtons.forEach((button) => {
   button.addEventListener("click", () => setLanguage(button.dataset.language === "ha" ? "ha" : "en"));
 });
 
+document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
+  button.addEventListener("click", () => setTheme(getCurrentTheme() === "dark" ? "light" : "dark"));
+});
+
 // Vendor public registration form (marketing page, not the dashboard product form)
 elements.vendorForm.addEventListener("submit", handleVendorRequestSubmit);
 // NOTE: #vendorProductForm is wired via wireDashboardEvents when the vendor dashboard is injected.
@@ -1648,7 +1698,7 @@ document.querySelector(".vendor-dashboard")?.addEventListener("click", (e) => {
 // — Init: clear all demo/legacy data when app version changes —
 const APP_DATA_VERSION = "v2-postgres";
 if (localStorage.getItem("kanoMart.dataVersion") !== APP_DATA_VERSION) {
-  const keysToPreserve = new Set(["kanoMart.dataVersion", "kanoMart.language", SIDEBAR_COLLAPSED_KEY]);
+  const keysToPreserve = new Set(["kanoMart.dataVersion", "kanoMart.language", SIDEBAR_COLLAPSED_KEY, THEME_STORAGE_KEY]);
   Object.keys(localStorage)
     .filter((k) => !keysToPreserve.has(k))
     .forEach((k) => localStorage.removeItem(k));
@@ -1658,6 +1708,7 @@ if (localStorage.getItem("kanoMart.dataVersion") !== APP_DATA_VERSION) {
 // — Init —
 // Demo seed products are for local development only; in production the catalog
 // is exclusively what the API returns.
+setTheme(getPreferredTheme());
 setSeedCatalogEnabled(["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname));
 syncCart();
 syncWishlistCount();

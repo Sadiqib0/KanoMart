@@ -4,39 +4,39 @@ export type DashboardRoute = {
   path: string;
   page: string;
   label: string;
+  labelHa: string;
   description: string;
+  descriptionHa: string;
   role: DashboardRole;
 };
 
 export const dashboardRoutes: DashboardRoute[] = [
-  { role: "customer", path: "customer/overview", page: "customer", label: "Overview", description: "Orders, saved products, cart, support" },
-  { role: "customer", path: "customer/orders", page: "orders", label: "Orders", description: "Track purchases and receipts" },
-  { role: "customer", path: "customer/wishlist", page: "customer", label: "Wishlist", description: "Saved products and reorder ideas" },
-  { role: "customer", path: "customer/cart", page: "customer", label: "Cart", description: "Checkout-ready basket" },
-  { role: "customer", path: "customer/profile", page: "customer", label: "Profile", description: "Delivery, language, account" },
-  { role: "customer", path: "customer/notifications", page: "customer", label: "Notifications", description: "Order and support updates" },
+  { role: "customer", path: "customer/overview", page: "customer", label: "Overview", labelHa: "Takaitawa", description: "Orders, saved products, cart, support", descriptionHa: "Ododi, kayan ajiya, kwando, tallafi" },
+  { role: "customer", path: "customer/orders", page: "orders", label: "Orders", labelHa: "Ododi", description: "Track purchases and receipts", descriptionHa: "Bi sayayya da rasit" },
+  { role: "customer", path: "customer/wishlist", page: "customer", label: "Wishlist", labelHa: "Jerin so", description: "Saved products and reorder ideas", descriptionHa: "Kayan ajiya da sake oda" },
+  { role: "customer", path: "customer/cart", page: "customer", label: "Cart", labelHa: "Kwando", description: "Checkout-ready basket", descriptionHa: "Kwandon da ya shirya biya" },
+  { role: "customer", path: "customer/profile", page: "customer", label: "Profile", labelHa: "Bayanan sirri", description: "Delivery, language, account", descriptionHa: "Isarwa, yare, asusu" },
+  { role: "customer", path: "customer/notifications", page: "customer", label: "Notifications", labelHa: "Sanarwa", description: "Order and support updates", descriptionHa: "Sabuntawar oda da tallafi" },
 
-  { role: "vendor", path: "vendor/overview", page: "vendor", label: "Overview", description: "Sales, orders, inventory, payouts" },
-  { role: "vendor", path: "vendor/products", page: "vendor", label: "Products", description: "Catalog and moderation state" },
-  { role: "vendor", path: "vendor/inventory", page: "vendor", label: "Inventory", description: "Stock health and alerts" },
-  { role: "vendor", path: "vendor/orders", page: "vendor", label: "Orders", description: "Fulfillment queue" },
-  { role: "vendor", path: "vendor/revenue", page: "vendor", label: "Revenue", description: "Sales and payout performance" },
-  { role: "vendor", path: "vendor/payouts", page: "vendor", label: "Payouts", description: "Wallet and settlement requests" },
-  { role: "vendor", path: "vendor/reviews", page: "vendor", label: "Reviews", description: "Customer feedback" },
-  { role: "vendor", path: "vendor/analytics", page: "vendor", label: "Analytics", description: "Views and top products" },
-  { role: "vendor", path: "vendor/store", page: "vendor", label: "Store", description: "Profile and approval state" },
+  { role: "vendor", path: "vendor/overview", page: "vendor", label: "Overview", labelHa: "Takaitawa", description: "Sales, orders, inventory, payouts", descriptionHa: "Siyarwa, ododi, ajiya, biya" },
+  { role: "vendor", path: "vendor/products", page: "vendor", label: "Products", labelHa: "Kaya", description: "Catalog and moderation state", descriptionHa: "Jeri da matsayin duba kaya" },
+  { role: "vendor", path: "vendor/inventory", page: "vendor", label: "Inventory", labelHa: "Ajiya", description: "Stock health and alerts", descriptionHa: "Lafiyar kaya da gargadi" },
+  { role: "vendor", path: "vendor/orders", page: "vendor", label: "Orders", labelHa: "Ododi", description: "Fulfillment queue", descriptionHa: "Layin cika oda" },
+  { role: "vendor", path: "vendor/revenue", page: "vendor", label: "Revenue", labelHa: "Kudin shiga", description: "Sales and payout performance", descriptionHa: "Siyarwa da aikin biya" },
+  { role: "vendor", path: "vendor/payouts", page: "vendor", label: "Payouts", labelHa: "Biyan kudi", description: "Wallet and settlement requests", descriptionHa: "Wallet da bukatun biya" },
+  { role: "vendor", path: "vendor/reviews", page: "vendor", label: "Reviews", labelHa: "Ra'ayoyi", description: "Customer feedback", descriptionHa: "Ra'ayin kwastomomi" },
 
-  { role: "admin", path: "admin/overview", page: "admin", label: "Overview", description: "Platform control room" },
-  { role: "admin", path: "admin/users", page: "admin", label: "Users", description: "Customers, vendors, admins" },
-  { role: "admin", path: "admin/vendors", page: "admin", label: "Vendors", description: "Applications and seller health" },
-  { role: "admin", path: "admin/products", page: "admin", label: "Products", description: "Catalog and moderation" },
-  { role: "admin", path: "admin/orders", page: "admin", label: "Orders", description: "Fulfillment operations" },
-  { role: "admin", path: "admin/payments", page: "admin", label: "Payments", description: "Payment exceptions and refunds" },
-  { role: "admin", path: "admin/payouts", page: "admin", label: "Payouts", description: "Vendor settlements" },
-  { role: "admin", path: "admin/categories", page: "admin", label: "Categories", description: "Catalog taxonomy" },
-  { role: "admin", path: "admin/reports", page: "admin", label: "Reports", description: "Growth and revenue analysis" },
-  { role: "admin", path: "admin/audit-logs", page: "admin", label: "Audit logs", description: "Admin activity trail" },
-  { role: "admin", path: "admin/system-health", page: "admin", label: "System health", description: "API, DB, storage, email" },
+  { role: "admin", path: "admin/overview", page: "admin", label: "Overview", labelHa: "Takaitawa", description: "Platform control room", descriptionHa: "Dakin sarrafa dandali" },
+  { role: "admin", path: "admin/users", page: "admin", label: "Users", labelHa: "Masu amfani", description: "Customers, vendors, admins", descriptionHa: "Kwastomomi, dillalai, admin" },
+  { role: "admin", path: "admin/vendors", page: "admin", label: "Vendors", labelHa: "Dillalai", description: "Applications and seller health", descriptionHa: "Bukatu da lafiyar masu sayarwa" },
+  { role: "admin", path: "admin/products", page: "admin", label: "Products", labelHa: "Kaya", description: "Catalog and moderation", descriptionHa: "Jeri da duba kaya" },
+  { role: "admin", path: "admin/orders", page: "admin", label: "Orders", labelHa: "Ododi", description: "Fulfillment operations", descriptionHa: "Ayyukan cika oda" },
+  { role: "admin", path: "admin/payments", page: "admin", label: "Payments", labelHa: "Biyan kudi", description: "Payment exceptions and refunds", descriptionHa: "Matsalolin biya da mayarwa" },
+  { role: "admin", path: "admin/payouts", page: "admin", label: "Payouts", labelHa: "Biyan dillalai", description: "Vendor settlements", descriptionHa: "Tantance kudin dillalai" },
+  { role: "admin", path: "admin/reviews", page: "admin", label: "Reviews", labelHa: "Ra'ayoyi", description: "Review moderation", descriptionHa: "Duba ra'ayoyi" },
+  { role: "admin", path: "admin/promotions", page: "admin", label: "Promotions", labelHa: "Tallace-tallace", description: "Campaigns and discounts", descriptionHa: "Kamfen da rangwame" },
+  { role: "admin", path: "admin/reports", page: "admin", label: "Reports", labelHa: "Rahotanni", description: "Growth and revenue analysis", descriptionHa: "Nazarin girma da kudin shiga" },
+  { role: "admin", path: "admin/system-health", page: "admin", label: "System health", labelHa: "Lafiyar tsarin", description: "API, DB, storage, email", descriptionHa: "API, bayanai, ajiya, imel" },
 ];
 
 export function getDashboardRoute(path: string): DashboardRoute | undefined {

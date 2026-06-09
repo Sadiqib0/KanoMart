@@ -595,3 +595,10 @@ export function closeUserPanel(): void {
   panel.classList.remove("modal-visible");
   panel.addEventListener("transitionend", () => panel.remove(), { once: true });
 }
+
+export function refreshUserPanelLanguage(): void {
+  const panel = document.getElementById("userPanel");
+  if (!panel || !state.currentUser) return;
+  panel.remove();
+  openUserPanel();
+}

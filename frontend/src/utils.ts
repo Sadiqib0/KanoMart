@@ -48,6 +48,40 @@ export function localizeCategory(category: string): string {
   return categoryLabels[key]?.[state.language] ?? category;
 }
 
+export function localizeStatus(status: string): string {
+  const key = String(status || "unknown").toLowerCase().replace(/[\s-]+/g, "_");
+  const labels: Record<string, { en: string; ha: string }> = {
+    active: { en: "Active", ha: "Yana aiki" },
+    approved: { en: "Approved", ha: "An amince" },
+    available: { en: "Available", ha: "Akwai" },
+    cancelled: { en: "Cancelled", ha: "An soke" },
+    completed: { en: "Completed", ha: "An kammala" },
+    confirmed: { en: "Confirmed", ha: "An tabbatar" },
+    delivered: { en: "Delivered", ha: "An kai" },
+    failed: { en: "Failed", ha: "Ya gaza" },
+    hidden: { en: "Hidden", ha: "An boye" },
+    inactive: { en: "Inactive", ha: "Ba ya aiki" },
+    low_stock: { en: "Low stock", ha: "Kaya kadan" },
+    out_of_stock: { en: "Out of stock", ha: "Ya kare" },
+    paid: { en: "Paid", ha: "An biya" },
+    pending: { en: "Pending", ha: "Ana jira" },
+    pending_payment: { en: "Pending payment", ha: "Jiran biya" },
+    pending_review: { en: "Pending review", ha: "Ana duba" },
+    processing: { en: "Processing", ha: "Ana aiki" },
+    read: { en: "Read", ha: "An karanta" },
+    ready: { en: "Ready", ha: "A shirye" },
+    ready_for_pickup: { en: "Ready for pickup", ha: "A shirye don dauka" },
+    refunded: { en: "Refunded", ha: "An mayar" },
+    rejected: { en: "Rejected", ha: "An ki" },
+    shipped: { en: "Shipped", ha: "An tura" },
+    taken_down: { en: "Taken down", ha: "An sauke" },
+    unread: { en: "Unread", ha: "Ba a karanta ba" },
+    unknown: { en: "Unknown", ha: "Ba a sani ba" },
+  };
+  const label = labels[key];
+  return label ? getCopy(label.en, label.ha) : status.replace(/_/g, " ");
+}
+
 export function formatDate(value: string): string {
   return new Intl.DateTimeFormat(state.language === "ha" ? "ha-NG" : "en-NG", {
     month: "short",

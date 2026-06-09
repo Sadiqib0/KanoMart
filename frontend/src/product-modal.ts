@@ -229,6 +229,15 @@ export function closeProductModal(): void {
   activeProductId = null;
 }
 
+export function refreshActiveProductModal(): void {
+  if (!activeProductId || !document.getElementById("productModal")) return;
+  const productId = activeProductId;
+  document.getElementById("productModal")?.remove();
+  document.removeEventListener("keydown", handleModalKeydown);
+  activeProductId = null;
+  openProductModal(productId);
+}
+
 function handleModalKeydown(e: KeyboardEvent): void {
   if (e.key === "Escape") closeProductModal();
 }

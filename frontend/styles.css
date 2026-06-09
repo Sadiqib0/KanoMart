@@ -52,6 +52,38 @@
   --f-mono:'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#07130f;
+  --surface:#0d1b16;
+  --surface-2:#13231d;
+  --surface-3:#1a2b24;
+  --ink:#f5f1e8;
+  --ink-2:#c7d1ca;
+  --muted:#8f9f96;
+  --line:#20352c;
+  --line-2:#2b463a;
+  --brand:#54c991;
+  --brand-2:#91e7b9;
+  --brand-soft:rgba(84,201,145,.14);
+  --accent:#e2ac62;
+  --accent-soft:rgba(226,172,98,.16);
+  --success:#75dca3;
+  --success-soft:rgba(117,220,163,.14);
+  --warn:#f0b35d;
+  --warn-soft:rgba(240,179,93,.15);
+  --danger:#ff8b82;
+  --danger-soft:rgba(255,139,130,.14);
+  --info:#8fb8ff;
+  --info-soft:rgba(143,184,255,.14);
+  --green:#54c991;
+  --green-2:#91e7b9;
+  --soft:#07130f;
+  --sh-card:0 1px 2px rgba(0,0,0,.28), 0 14px 30px -18px rgba(0,0,0,.62);
+  --sh-pop:0 24px 56px -16px rgba(0,0,0,.62), 0 4px 12px -4px rgba(0,0,0,.44);
+  --sh-soft:0 1px 0 rgba(255,255,255,.04);
+}
+
 /* ════════════════════ 2 · BASE / RESET ════════════════════ */
 *,*::before,*::after{box-sizing:border-box}
 [hidden]{display:none !important}
@@ -257,6 +289,7 @@ body.sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
   background:rgba(255,255,255,.94);backdrop-filter:blur(12px);
   border-bottom:1px solid var(--line);
 }
+:root[data-theme="dark"] .site-header{background:rgba(13,27,22,.94)}
 /* !important required — overrides the .icon-button group selector that comes after this line */
 .sidebar-open{display:none !important}
 .mobile-brand{display:none;align-items:center;gap:10px}
@@ -284,6 +317,12 @@ body.sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
 }
 .icon-button:hover,.cart-close:hover{background:var(--surface-2);border-color:var(--line-2)}
 .icon-button svg,.cart-close svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.theme-toggle{position:relative;flex-shrink:0}
+.theme-toggle .theme-icon{grid-area:1 / 1;transition:transform .16s ease,opacity .16s ease}
+.theme-toggle .theme-icon-sun{display:none}
+:root[data-theme="dark"] .theme-toggle .theme-icon-moon{display:none}
+:root[data-theme="dark"] .theme-toggle .theme-icon-sun{display:block}
+:root[data-theme="dark"] .theme-toggle{background:var(--brand-soft);border-color:rgba(84,201,145,.24);color:var(--brand-2)}
 
 /* The shared button look (uses ALL the legacy submit selectors at once) */
 .search-form button[type="submit"],
@@ -372,10 +411,14 @@ section.app-page.auth-page.is-active-page{padding:0;max-width:none}
   opacity:.82;mask-image:linear-gradient(90deg,transparent 0%,#000 25%);
   -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 25%);
 }
+:root[data-theme="dark"] .hero-image{opacity:.46;filter:saturate(.85) brightness(.75)}
 .hero-shade{
   position:absolute;inset:0;
   background:linear-gradient(90deg,var(--surface) 0%,var(--surface) 38%,rgba(255,255,255,.55) 55%,transparent 78%);
   pointer-events:none;
+}
+:root[data-theme="dark"] .hero-shade{
+  background:linear-gradient(90deg,var(--surface) 0%,var(--surface) 38%,rgba(13,27,22,.72) 55%,transparent 78%);
 }
 .hero-content{position:relative;z-index:2;max-width:580px}
 .hero-content .eyebrow{
@@ -1027,6 +1070,8 @@ body.cart-open .cart-panel{transform:translateX(0)}
   .hero-content{max-width:100%}
   .hero-image{width:100%;opacity:.15}
   .hero-shade{background:linear-gradient(180deg,rgba(255,255,255,.92) 0%,rgba(255,255,255,.75) 60%,transparent 100%)}
+  :root[data-theme="dark"] .hero-image{opacity:.22}
+  :root[data-theme="dark"] .hero-shade{background:linear-gradient(180deg,rgba(13,27,22,.94) 0%,rgba(13,27,22,.78) 60%,transparent 100%)}
   .hero-search-form{max-width:100%}
   .home-cat-grid{grid-template-columns:repeat(2,1fr)}
   .why-grid{grid-template-columns:repeat(2,1fr)}
@@ -1104,6 +1149,7 @@ body.cart-open .cart-panel{transform:translateX(0)}
   background:rgba(255,255,255,.97);backdrop-filter:blur(12px);
   border-bottom:1px solid var(--line);
 }
+:root[data-theme="dark"] .marketing-nav{background:rgba(13,27,22,.96)}
 body.is-guest .marketing-nav{display:flex}
 body.is-guest .site-header{display:none}
 
@@ -1143,6 +1189,10 @@ body.is-guest .site-header{display:none}
   .mk-nav-signin{display:none}
   .mk-nav-create{font-size:13px;padding:0 14px;height:36px}
   .mk-nav-inner{padding:0 16px;gap:12px}
+}
+
+@media (max-width:420px){
+  .mk-nav-brand strong{display:none}
 }
 
 /* ════════════════════ 29 · HERO SEARCH FORM ════════════════════ */
