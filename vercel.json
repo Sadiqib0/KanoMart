@@ -29,7 +29,16 @@
       ]
     }
   ],
+  "functions": {
+    "api/index.mjs": { "maxDuration": 30 },
+    "api/cron/maintenance.mjs": { "maxDuration": 60 }
+  },
   "rewrites": [
+    { "source": "/api/cron/maintenance", "destination": "/api/cron/maintenance.mjs" },
+    { "source": "/api/:path*", "destination": "/api/index.mjs" },
     { "source": "/((?!dist|assets|styles\\.css).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/api/cron/maintenance", "schedule": "0 3 * * *" }
   ]
 }
