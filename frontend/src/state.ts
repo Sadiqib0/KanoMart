@@ -8,7 +8,13 @@ const savedAdminSession = localStorage.getItem(storageKeys.adminSession);
 
 function loadSession(): UserSession | null {
   try {
-    return savedSession ? migrateSession(JSON.parse(savedSession) as Partial<UserSession>) : null;
+    const parsed = savedSession ? (JSON.parse(savedSession) as Partial<UserSession>) : null;
+    if (!parsed?.phone) return null;
+    // API-issued sessions carry a token and role — restore them verbatim.
+    // migrateSession() re-derives the role from legacy localStorage profiles,
+    // which demotes API vendors/admins to "customer" and drops the token.
+    if (parsed.token && parsed.role) return parsed as UserSession;
+    return migrateSession(parsed);
   } catch {
     return null;
   }

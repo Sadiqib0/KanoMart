@@ -258,6 +258,10 @@ function syncRoleNavigation(): void {
     const allowed = (node.dataset.roles || "").split(/\s+/).filter(Boolean);
     node.hidden = !allowed.includes(role);
   });
+  // Guests browse a clean public storefront — the dashboard sidebar only
+  // exists for signed-in users (every role, on every page).
+  document.body.classList.toggle("is-guest", role === "guest");
+  if (role === "guest") closeSidebar();
   if (!canAccessRoute(getCurrentRoute())) {
     setRoute(getDefaultRouteForRole(role));
   }
@@ -1586,6 +1590,12 @@ window.addEventListener("kanoMart:signed-in", () => {
   void refreshLiveAdminDashboard();
   void refreshLiveVendorDashboard();
   void fetchLiveNotifications();
+  if (state.currentUser?.role === "customer") {
+    void fetchLiveOrders().then(() => {
+      renderCustomerDashboard();
+      renderDashboardPage(getCurrentRoute());
+    }).catch(() => undefined);
+  }
   const nextRoute = getDefaultRouteForRole();
   window.history.replaceState(null, "", `#${nextRoute}`);
   setRoute(nextRoute);
@@ -1675,6 +1685,32 @@ if (state.currentUser?.token) {
       // Token is no longer valid AND the sessionExpired handler hasn't already cleared it.
       signOut();
       showToast({ message: getCopy("Your session expired. Please sign in again.", "Zaman ku ya ƙare. Da fatan za a sake shiga."), type: "info" });
+      return;
+    }
+    if (user && state.currentUser) {
+      // Reconcile with the server: role/vendorStatus may have changed since the
+      // session was stored (e.g. vendor approved, role corrected).
+      state.currentUser = {
+        ...state.currentUser,
+        id: user.id,
+        role: user.role,
+        vendorStatus: user.vendorStatus,
+        name: user.name || state.currentUser.name,
+        email: user.email ?? state.currentUser.email,
+      };
+      localStorage.setItem(storageKeys.session, JSON.stringify(state.currentUser));
+      state.adminAuthenticated = user.role === "admin";
+      syncUserButton();
+      syncRoleNavigation();
+      renderAdminGate();
+      setRoute();
+      if (user.role === "customer") {
+        void fetchLiveOrders().then(() => {
+          renderCustomerDashboard();
+          renderDashboardPage(getCurrentRoute());
+        }).catch(() => undefined);
+      }
+      renderDashboardPage(getCurrentRoute());
     }
   }).catch(() => undefined);
 }
