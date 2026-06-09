@@ -1,7 +1,6 @@
 import { state } from "./state";
 import { getCopy, escapeHtml, formatPrice, isValidPhone } from "./utils";
 import { getCartItems, getCartProduct, getCartSubtotal, clearCart } from "./cart";
-import { placeOrder } from "./orders";
 import { showToast } from "./toast";
 import { api } from "./api-client";
 
@@ -102,6 +101,14 @@ function buildCheckoutModal(): HTMLElement {
 }
 
 export function openCheckoutModal(): void {
+  // Orders only exist on the server — a guest "order" would be a success screen
+  // for something no vendor ever sees. Require sign-in before checkout.
+  if (!state.currentUser?.token) {
+    showToast({ message: getCopy("Sign in to place your order. Your cart is saved.", "Shiga don sanya odarka. An adana kwandonka.") });
+    window.location.hash = "login";
+    return;
+  }
+
   const existing = document.getElementById("checkoutModal");
   if (existing) existing.remove();
 
@@ -179,48 +186,39 @@ export function openCheckoutModal(): void {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getCopy("Place order", "Sanya oda"); }
     }
 
-    // Authenticated path — API only, no local fallback.
-    // A failed API call must NEVER silently create a duplicate local order.
-    if (state.currentUser?.token) {
-      try {
-        const result = await api.checkout({
-          customerName,
-          customerPhone,
-          deliveryOption,
-          deliveryAddress,
-          deliveryArea,
-          paymentMethod,
-        });
-        resetSubmit();
-        showSuccess(result.order.id, result.order.paymentStatus ?? "pending");
-      } catch (error) {
-        errorEl.textContent = error instanceof Error
-          ? error.message
-          : getCopy("Checkout failed. Please try again.", "Biyan kudi ya kasa. Da fatan za a sake gwadawa.");
-        resetSubmit();
+    // API only — orders never exist client-side, and a failed API call must
+    // NEVER silently create a local order.
+    if (!state.currentUser?.token) {
+      errorEl.textContent = getCopy("Sign in to place your order.", "Shiga don sanya odarka.");
+      resetSubmit();
+      return;
+    }
+    try {
+      const result = await api.checkout({
+        customerName,
+        customerPhone,
+        deliveryOption,
+        deliveryAddress,
+        deliveryArea,
+        paymentMethod,
+      });
+      // Hosted gateway (Paystack): hand the customer to the secure payment page.
+      // The order is already placed; the webhook settles the payment.
+      const authorizationUrl = result.payment?.authorizationUrl;
+      if (authorizationUrl) {
+        clearCart();
+        if (submitBtn) submitBtn.textContent = getCopy("Redirecting to secure payment…", "Ana tura zuwa biyan kuɗi mai tsaro…");
+        window.location.assign(authorizationUrl);
+        return;
       }
-      return;
+      resetSubmit();
+      showSuccess(result.order.id, result.order.paymentStatus ?? "pending");
+    } catch (error) {
+      errorEl.textContent = error instanceof Error
+        ? error.message
+        : getCopy("Checkout failed. Please try again.", "Biyan kudi ya kasa. Da fatan za a sake gwadawa.");
+      resetSubmit();
     }
-
-    // Guest path — local order (demo / offline fallback).
-    const order = placeOrder(
-      customerName,
-      customerPhone,
-      deliveryArea,
-      paymentMethod,
-      deliveryOption,
-      deliveryAddress,
-      deliveryOption === "pickup" ? 0 : DEFAULT_DELIVERY_FEE
-    );
-
-    resetSubmit();
-
-    if (!order) {
-      errorEl.textContent = getCopy("Cart is empty.", "Kwandona a fanko.");
-      return;
-    }
-
-    showSuccess(order.id, order.paymentStatus);
   }
 
   modal.querySelector(".checkout-done")?.addEventListener("click", () => closeCheckoutModal());

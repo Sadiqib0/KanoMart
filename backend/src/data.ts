@@ -26,7 +26,8 @@ export const storageKeys = {
   language: "kanoMart.language",
 } as const;
 
-export const ADMIN_PIN = "0000";
+// Client-side UX hint only (skips the signup prompt for this number) — the
+// admin ROLE is always asserted by the server session, never by this constant.
 export const ADMIN_MOBILE_NUMBER = "07015070004";
 
 // All keys lowercase — use localizeCategory() for display

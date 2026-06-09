@@ -58,9 +58,19 @@ export function setLiveVendorProducts(nextProducts: Product[]): void {
   setStoredList(storageKeys.vendorProducts, nextProducts);
 }
 
+// Seed/demo products are a local-dev and test convenience. Production must show
+// only real vendor products from the API — app.ts disables the seed catalog
+// when the app is not running on localhost.
+let seedCatalogEnabled = true;
+
+export function setSeedCatalogEnabled(enabled: boolean): void {
+  seedCatalogEnabled = enabled;
+}
+
 export function getAllProducts(): Product[] {
   const seen = new Set<string>();
-  return [...products, ...getLiveProducts(), ...getVendorProducts()].filter((product) => {
+  const seedProducts = seedCatalogEnabled ? products : [];
+  return [...seedProducts, ...getLiveProducts(), ...getVendorProducts()].filter((product) => {
     if (seen.has(product.id)) return false;
     seen.add(product.id);
     return true;

@@ -29,6 +29,7 @@ import {
   getProductsForVendor,
   moderateProduct,
   saveVendorProduct,
+  setSeedCatalogEnabled,
   setVendorProductListingStatus,
 } from "../backend/products";
 import { getCachedSearchResults, paginateProducts, PRODUCT_PAGE_SIZE, renderProductSkeletons } from "./frontend-data";
@@ -1645,6 +1646,9 @@ if (localStorage.getItem("kanoMart.dataVersion") !== APP_DATA_VERSION) {
 }
 
 // — Init —
+// Demo seed products are for local development only; in production the catalog
+// is exclusively what the API returns.
+setSeedCatalogEnabled(["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname));
 syncCart();
 syncWishlistCount();
 setLanguage(state.language);

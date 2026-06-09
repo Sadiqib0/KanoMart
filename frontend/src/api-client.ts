@@ -222,7 +222,16 @@ export type ApiAnalytics = {
   bestSellingProducts: Array<{ productId: string; quantity: number; sales: number }>;
 };
 
+function isLocalDevHost(): boolean {
+  const host = globalThis.location?.hostname ?? "";
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+}
+
 function getApiBaseUrl(): string {
+  // The localStorage override is a dev convenience for pointing the static dev
+  // server at a separately-running API. Honouring it in production would let
+  // any script with storage access redirect API calls (and the bearer token).
+  if (!isLocalDevHost()) return DEFAULT_API_BASE_URL;
   const configured = globalThis.localStorage?.getItem("kanoMart.apiBaseUrl")?.trim();
   return configured || DEFAULT_API_BASE_URL;
 }
@@ -384,7 +393,8 @@ export const api = {
     apiRequest<{ cart: ApiCart }>(`/cart/items/${encodeURIComponent(productId)}`, { method: "DELETE" }),
 
   // Checkout & Orders
-  checkout: (body: unknown) => apiRequest<{ order: ApiOrder; cart: ApiCart }>("/checkout", { body }),
+  checkout: (body: unknown) =>
+    apiRequest<{ order: ApiOrder; cart: ApiCart; payment?: { authorizationUrl?: string } }>("/checkout", { body }),
   orders: () => apiRequest<{ orders: ApiOrder[] }>("/orders"),
 
   // Reviews
