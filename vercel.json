@@ -30,8 +30,8 @@
     }
   ],
   "functions": {
-    "backend/server.mjs": {},
-    "backend/cron.mjs": {}
+    "backend/server.mjs": { "maxDuration": 30 },
+    "backend/cron.mjs": { "maxDuration": 60 }
   },
   "rewrites": [
     {
