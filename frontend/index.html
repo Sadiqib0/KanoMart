@@ -460,8 +460,11 @@
       <!-- ═══ CUSTOMER DASHBOARD ═══ -->
       <section class="customer-section app-page" id="customer" data-page="customer" aria-labelledby="customer-title">
 
-        <!-- Welcome bar (populated by JS) -->
-        <div class="role-dashboard-header">
+        <!-- Rich dashboard injected by JS (renderCustomerOverview) -->
+        <div id="customerDashView" class="role-dash-view" aria-live="polite"></div>
+
+        <!-- Legacy welcome bar (populated by JS, visible if new view is empty) -->
+        <div class="role-dashboard-header role-legacy-content">
           <div>
             <p class="eyebrow" data-en="Customer workspace" data-ha="Wurin kwastoma">Customer workspace</p>
             <h2 id="customer-title" data-en="Welcome back!" data-ha="Barka da dawo!">Welcome back!</h2>
@@ -787,8 +790,11 @@
         <!-- ── VENDOR DASHBOARD (authenticated vendors) ── -->
         <div class="vendor-dashboard" data-roles="vendor" hidden>
 
-          <!-- Vendor page header -->
-          <div class="vendor-dash-header">
+          <!-- Rich dashboard injected by JS (renderVendorOverview) -->
+          <div id="vendorDashView" class="role-dash-view" aria-live="polite"></div>
+
+          <!-- Legacy vendor header (visible when new view is not injected) -->
+          <div class="vendor-dash-header role-legacy-content">
             <div class="vendor-dash-title">
               <p class="eyebrow" data-en="Vendor workspace" data-ha="Wurin dillali">Vendor workspace</p>
               <h2 id="vendorDashBusinessName" data-en="My Store" data-ha="Shagona">My Store</h2>
@@ -931,6 +937,9 @@
 
       <!-- Admin -->
       <section class="admin-section app-page" id="admin" data-page="admin" aria-labelledby="admin-title">
+
+        <!-- Rich dashboard injected by JS (renderAdminOverview) -->
+        <div id="adminDashView" class="role-dash-view" data-roles="admin" aria-live="polite"></div>
 
         <div id="adminGate" class="admin-pin-gate" hidden>
           <p data-en="Admin access is available only from the authorized mobile number." data-ha="Ana samun admin ne kawai daga lambar wayar da aka amince da ita.">Admin access is available only from the authorized mobile number.</p>

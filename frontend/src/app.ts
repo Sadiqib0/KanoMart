@@ -5,6 +5,9 @@ import { escapeHtml, formatDate, formatPrice, getCopy, sanitizePlainText, setAct
 import { getSearchResults, saveSearch } from "./search";
 import { renderProductCard, updateResultCopy, renderAdminDashboard } from "./render";
 import { exportSearchHistory, clearPrototypeData } from "./admin";
+import { renderCustomerOverview } from "./pages/customer/overview";
+import { renderVendorOverview } from "./pages/vendor/overview";
+import { renderAdminOverview } from "./pages/admin/overview";
 import {
   addToCart,
   openCart,
@@ -57,7 +60,18 @@ import {
 import { api } from "./api-client";
 import { initLoginPage, initSignupPage } from "./auth-pages";
 
-const routes = new Set(["home", "customer", "catalog", "payments", "vendor", "orders", "admin", "login", "signup"]);
+const routes = new Set([
+  // Public
+  "home", "catalog", "payments", "login", "signup",
+  // Customer sub-routes
+  "customer", "customer/overview", "customer/orders", "customer/profile", "customer/cart", "customer/wishlist", "customer/notifications",
+  // Vendor sub-routes (top-level #vendor is semi-public marketing; sub-routes require vendor auth)
+  "vendor", "vendor/overview", "vendor/products", "vendor/inventory", "vendor/orders", "vendor/revenue", "vendor/payouts", "vendor/reviews",
+  // Admin sub-routes
+  "admin", "admin/overview", "admin/users", "admin/vendors", "admin/products", "admin/orders", "admin/payments", "admin/reviews", "admin/promotions", "admin/payouts", "admin/reports", "admin/system-health",
+  // Legacy alias
+  "orders",
+]);
 const AUTH_ROUTES = new Set(["login", "signup"]);
 const SIDEBAR_COLLAPSED_KEY = "kanoMart.sidebarCollapsed";
 
@@ -65,7 +79,14 @@ function getCurrentRoute(): string {
   const raw = window.location.hash.replace("#", "") || "home";
   if (raw === "results" || raw === "categories") return "catalog";
   if (raw === "my-orders") return "orders";
-  return routes.has(raw) ? raw : "home";
+  if (routes.has(raw)) return raw;
+  // Attempt partial sub-route match (e.g. "vendor/products/new" → "vendor/products")
+  const parts = raw.split("/");
+  if (parts.length >= 2) {
+    const sub = `${parts[0]}/${parts[1]}`;
+    if (routes.has(sub)) return sub;
+  }
+  return "home";
 }
 
 function getVisitorRole(): string {
@@ -81,10 +102,14 @@ function getDefaultRouteForRole(role = getVisitorRole()): string {
 
 function canAccessRoute(route: string): boolean {
   const role = getVisitorRole();
-  if (route === "admin") return role === "admin";
-  if (route === "customer") return role === "customer";
-  if (route === "orders") return role === "customer";
-  // Authenticated users should not land on login/signup — redirect to their dashboard
+  const base = route.split("/")[0];
+  // Admin: all admin routes require admin role
+  if (base === "admin") return role === "admin";
+  // Customer: all customer routes + legacy orders require customer role
+  if (base === "customer" || route === "orders") return role === "customer";
+  // Vendor: sub-routes require vendor role; top-level #vendor is public marketing page
+  if (route !== "vendor" && base === "vendor") return role === "vendor";
+  // Auth pages: only for guests — redirect authenticated users to their dashboard
   if (AUTH_ROUTES.has(route)) return role === "guest";
   return true;
 }
@@ -122,13 +147,20 @@ function setRoute(route = getCurrentRoute()): void {
       window.history.replaceState(null, "", `#${nextRoute}`);
     }
   }
+
+  // For sub-routes (e.g. "vendor/products"), show the base section
+  const baseRoute = nextRoute.split("/")[0];
+  const pageSectionKey = baseRoute === "orders" ? "orders" : baseRoute;
+
   document.querySelectorAll<HTMLElement>("[data-page]").forEach((section) => {
-    const isActive = section.dataset.page === nextRoute;
+    const isActive = section.dataset.page === pageSectionKey;
     section.hidden = !isActive;
     section.classList.toggle("is-active-page", isActive);
   });
   document.querySelectorAll<HTMLElement>("[data-route]").forEach((link) => {
-    const isActive = link.dataset.route === nextRoute;
+    // Highlight exact match OR parent base match for sub-routes
+    const linkRoute = link.dataset.route ?? "";
+    const isActive = linkRoute === nextRoute || (nextRoute.startsWith(linkRoute + "/") && linkRoute !== "home");
     link.classList.toggle("is-active-route", isActive);
     if (link.matches(".primary-nav a")) {
       link.setAttribute("aria-current", isActive ? "page" : "false");
@@ -142,15 +174,21 @@ function setRoute(route = getCurrentRoute()): void {
   closeSidebar();
 
   // Start/stop order polling based on active route
-  if (nextRoute === "orders" && state.currentUser?.role === "customer") {
+  if ((nextRoute === "orders" || nextRoute === "customer/orders") && state.currentUser?.role === "customer") {
     startOrderPolling();
   } else {
     stopOrderPolling();
   }
 
-  // Refresh vendor dashboard data every time the vendor navigates to it
-  if (nextRoute === "vendor" && state.currentUser?.role === "vendor") {
+  // Inject new dashboard content for role-specific routes
+  renderDashboardPage(nextRoute);
+
+  // Refresh live data when navigating to role dashboards
+  if (baseRoute === "vendor" && state.currentUser?.role === "vendor") {
     void refreshLiveVendorDashboard();
+  }
+  if (baseRoute === "admin" && state.currentUser?.role === "admin") {
+    void refreshLiveAdminDashboard();
   }
 }
 
@@ -421,8 +459,284 @@ async function refreshLiveVendorDashboard(): Promise<void> {
     ]);
     renderVendorProducts();
     renderVendorCommerce();
+    // Re-render the new dashboard view with fresh data
+    const currentRoute = getCurrentRoute();
+    if (currentRoute.startsWith("vendor")) renderDashboardPage(currentRoute);
   } catch {
     // Local vendor dashboard remains usable if live sync is unavailable.
+  }
+}
+
+// ── Dashboard page injection ────────────────────────────────────────────────
+// Renders the appropriate HTML into role-specific dash containers.
+// For the customer, vendor, and admin sections, each has a <div id="*DashView">
+// that receives the rich dashboard HTML generated by the page renderers.
+
+function wireDashboardEvents(container: HTMLElement, routeForRefresh: string): void {
+  // ── Customer quick actions ──────────────────────────────────────────────────
+  container.querySelector<HTMLButtonElement>("#customerCartBtn")?.addEventListener("click", () => { renderCartPanel(); openCart(); });
+  container.querySelector<HTMLButtonElement>("#customerCartBtnSecondary")?.addEventListener("click", () => { renderCartPanel(); openCart(); });
+  container.querySelector<HTMLButtonElement>("#customerWishlistBtn")?.addEventListener("click", openWishlistPanel);
+
+  // Customer: proceed to checkout from cart sub-page
+  container.querySelector<HTMLButtonElement>("#checkoutFromCartBtn")?.addEventListener("click", () => { openCheckoutModal(); });
+
+  // Customer: cart quantity and remove actions (cart sub-page)
+  container.addEventListener("click", (event) => {
+    const target = event.target as Element | null;
+    const incBtn = target?.closest<HTMLButtonElement>(".cart-qty-inc");
+    const decBtn = target?.closest<HTMLButtonElement>(".cart-qty-dec");
+    const remBtn = target?.closest<HTMLButtonElement>(".cart-remove");
+    if (incBtn?.dataset.productId) {
+      updateQuantity(incBtn.dataset.productId, 1);
+      renderDashboardPage(routeForRefresh);
+    } else if (decBtn?.dataset.productId) {
+      updateQuantity(decBtn.dataset.productId, -1);
+      renderDashboardPage(routeForRefresh);
+    } else if (remBtn?.dataset.productId) {
+      removeFromCart(remBtn.dataset.productId);
+      renderDashboardPage(routeForRefresh);
+      showToast({ message: getCopy("Item removed from cart.", "An cire kaya daga kwandon saya."), type: "info" });
+    }
+  });
+
+  // Customer: profile update form
+  const profileForm = container.querySelector<HTMLFormElement>("#profileUpdateForm");
+  if (profileForm) {
+    profileForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const fd = new FormData(profileForm);
+      const statusEl = profileForm.querySelector<HTMLElement>("#profileUpdateStatus");
+      const submit = profileForm.querySelector<HTMLButtonElement>("button[type=submit]");
+      if (submit) submit.disabled = true;
+      if (statusEl) statusEl.textContent = getCopy("Saving…", "Ana ajiyewa…");
+
+      const nameVal = String(fd.get("name") || "").trim();
+      const emailVal = String(fd.get("email") || "").trim();
+      const addrVal = String(fd.get("deliveryAddress") || "").trim();
+      const langVal = (String(fd.get("preferredLanguage") || "en")) as "en" | "ha";
+
+      const apiBody: { name?: string; email?: string; deliveryAddress?: string; preferredLanguage?: "en" | "ha" } = {
+        ...(nameVal ? { name: nameVal } : {}),
+        ...(emailVal ? { email: emailVal } : {}),
+        ...(addrVal ? { deliveryAddress: addrVal } : {}),
+        preferredLanguage: langVal,
+      };
+
+      if (state.currentUser?.token) {
+        api.updateMe(apiBody)
+          .then((res) => {
+            if (state.currentUser) {
+              state.currentUser = { ...state.currentUser, ...res.user };
+              if (state.currentUser) saveSession(state.currentUser);
+            }
+            if (statusEl) { statusEl.textContent = getCopy("Profile saved!", "An ajiye bayanan sirri!"); statusEl.className = "dash-form-status dash-form-status--success"; }
+          })
+          .catch((err: Error) => {
+            if (statusEl) { statusEl.textContent = err.message || getCopy("Could not save profile.", "Ba a iya ajiye bayanan sirri ba."); statusEl.className = "dash-form-status dash-form-status--error"; }
+          })
+          .finally(() => { if (submit) submit.disabled = false; });
+      } else {
+        // Persist locally if no API token
+        if (state.currentUser) {
+          state.currentUser = { ...state.currentUser, ...apiBody, name: nameVal || state.currentUser.name };
+          saveSession(state.currentUser);
+        }
+        if (statusEl) { statusEl.textContent = getCopy("Profile saved locally.", "An ajiye bayanan sirri a na'ura."); statusEl.className = "dash-form-status dash-form-status--success"; }
+        if (submit) submit.disabled = false;
+      }
+    });
+  }
+
+  // ── Vendor product form ─────────────────────────────────────────────────────
+  const vendorProductForm = container.querySelector<HTMLFormElement>("#vendorProductForm");
+  if (vendorProductForm) {
+    vendorProductForm.addEventListener("submit", (event) => void handleVendorProductSubmit(event as SubmitEvent));
+  }
+
+  // Vendor: inline product status select (vendor/products sub-page)
+  container.addEventListener("change", (event) => {
+    const select = (event.target as Element | null)?.closest<HTMLSelectElement>(".vendor-status-select");
+    const productId = select?.dataset.productId;
+    const value = select?.value as "active" | "out_of_stock" | "taken_down" | undefined;
+    if (!productId || !value) return;
+    setVendorProductListingStatus(productId, value);
+    showToast({ message: getCopy("Product status updated.", "An sabunta yanayin kaya."), type: "success" });
+    if (state.currentUser?.token) api.updateVendorProduct(productId, value).catch(() => undefined);
+  });
+
+  // Vendor product list action delegation
+  container.querySelector<HTMLElement>("#vendorProductsList")?.addEventListener("click", (event) => {
+    const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-product-action]");
+    const productId = button?.dataset.vendorProductId;
+    const action = button?.dataset.vendorProductAction;
+    if (!productId || (action !== "active" && action !== "out_of_stock" && action !== "taken_down")) return;
+    setVendorProductListingStatus(productId, action);
+    renderVendorProducts();
+    renderDashboardPage(routeForRefresh);
+    showToast({ message: action === "active" ? getCopy("Product restored to catalog.", "An mayar da kaya kasuwa.") : getCopy("Product removed from catalog.", "An cire kaya daga kasuwa."), type: action === "active" ? "success" : "info" });
+    if (state.currentUser?.token) api.updateVendorProduct(productId, action).catch(() => undefined);
+  });
+
+  // Vendor commerce order delegation
+  container.querySelector<HTMLElement>("#vendorCommerceList")?.addEventListener("click", (event) => {
+    const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-order-ready]");
+    const orderId = button?.dataset.vendorOrderReady;
+    if (!orderId) return;
+    advanceOrderStatus(orderId);
+    renderDashboardPage(routeForRefresh);
+    showToast({ message: getCopy("Order marked ready for pickup or delivery.", "An nuna oda a shirye domin dauka ko kaiwa."), type: "success" });
+  });
+
+  // Vendor: payout request form
+  const payoutForm = container.querySelector<HTMLFormElement>("#payoutRequestForm");
+  if (payoutForm) {
+    payoutForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const fd = new FormData(payoutForm);
+      const statusEl = payoutForm.querySelector<HTMLElement>("#payoutRequestStatus");
+      const submit = payoutForm.querySelector<HTMLButtonElement>("button[type=submit]");
+      const amount = Number(fd.get("amount") || 0);
+      const bankName = String(fd.get("bankName") || "").trim();
+      const accountNumber = String(fd.get("accountNumber") || "").trim();
+      const accountName = String(fd.get("accountName") || "").trim();
+
+      if (amount < 1 || !bankName || accountNumber.length < 10 || !accountName) {
+        if (statusEl) { statusEl.textContent = getCopy("Fill in all payout fields correctly.", "Cika dukkan filayen biya yadda ya kamata."); statusEl.className = "dash-form-status dash-form-status--error"; }
+        return;
+      }
+      if (submit) submit.disabled = true;
+      if (statusEl) statusEl.textContent = getCopy("Submitting…", "Ana aika…");
+
+      if (state.currentUser?.token) {
+        api.requestPayout({ amount, bankName, accountNumber, accountName })
+          .then(() => {
+            if (statusEl) { statusEl.textContent = getCopy("Payout request submitted!", "An aika buƙatar biya!"); statusEl.className = "dash-form-status dash-form-status--success"; }
+            payoutForm.reset();
+            showToast({ message: getCopy("Payout request submitted.", "An aika buƙatar biya."), type: "success" });
+          })
+          .catch((err: Error) => {
+            if (statusEl) { statusEl.textContent = err.message || getCopy("Could not submit payout.", "Ba a iya aika buƙatar biya ba."); statusEl.className = "dash-form-status dash-form-status--error"; }
+          })
+          .finally(() => { if (submit) submit.disabled = false; });
+      } else {
+        requestWithdrawal(state.currentUser?.name ?? "", amount);
+        if (statusEl) { statusEl.textContent = getCopy("Request saved locally.", "An ajiye buƙata a na'ura."); statusEl.className = "dash-form-status dash-form-status--success"; }
+        payoutForm.reset();
+        if (submit) submit.disabled = false;
+        renderDashboardPage(routeForRefresh);
+      }
+    });
+  }
+
+  // ── Admin actions ───────────────────────────────────────────────────────────
+  container.addEventListener("click", (event) => {
+    const target = event.target as Element | null;
+
+    // Admin: approve vendor
+    const approveVendorBtn = target?.closest<HTMLButtonElement>(".admin-approve-vendor");
+    if (approveVendorBtn?.dataset.vendorId) {
+      const id = approveVendorBtn.dataset.vendorId;
+      approveVendorBtn.disabled = true;
+      (state.currentUser?.token
+        ? api.updateVendorApplication(id, { status: "approved" })
+        : Promise.resolve(reviewVendorRequest(id, "approved", "Admin approved"))
+      ).then(() => {
+        showToast({ message: getCopy("Vendor approved.", "An amince da dillali."), type: "success" });
+        renderDashboardPage(routeForRefresh);
+      }).catch(() => { showToast({ message: getCopy("Could not approve vendor.", "Ba a iya amincewa ba."), type: "error" }); approveVendorBtn.disabled = false; });
+      return;
+    }
+
+    // Admin: reject vendor
+    const rejectVendorBtn = target?.closest<HTMLButtonElement>(".admin-reject-vendor");
+    if (rejectVendorBtn?.dataset.vendorId) {
+      const id = rejectVendorBtn.dataset.vendorId;
+      rejectVendorBtn.disabled = true;
+      (state.currentUser?.token
+        ? api.updateVendorApplication(id, { status: "rejected" })
+        : Promise.resolve(reviewVendorRequest(id, "rejected", "Admin rejected"))
+      ).then(() => {
+        showToast({ message: getCopy("Vendor rejected.", "An ƙi dillali."), type: "info" });
+        renderDashboardPage(routeForRefresh);
+      }).catch(() => { showToast({ message: getCopy("Could not reject vendor.", "Ba a iya ƙi ba."), type: "error" }); rejectVendorBtn.disabled = false; });
+      return;
+    }
+
+    // Admin: approve payout
+    const approvePayoutBtn = target?.closest<HTMLButtonElement>(".admin-approve-payout");
+    if (approvePayoutBtn?.dataset.payoutId) {
+      const id = approvePayoutBtn.dataset.payoutId;
+      approvePayoutBtn.disabled = true;
+      (state.currentUser?.token
+        ? api.updateAdminPayout(id, { status: "approved" })
+        : Promise.resolve(approveWithdrawal(id))
+      ).then(() => {
+        showToast({ message: getCopy("Payout approved.", "An amince da biya."), type: "success" });
+        renderDashboardPage(routeForRefresh);
+      }).catch(() => { showToast({ message: getCopy("Could not approve payout.", "Ba a iya amincewa da biya ba."), type: "error" }); approvePayoutBtn.disabled = false; });
+      return;
+    }
+
+    // Admin: reject payout
+    const rejectPayoutBtn = target?.closest<HTMLButtonElement>(".admin-reject-payout");
+    if (rejectPayoutBtn?.dataset.payoutId) {
+      const id = rejectPayoutBtn.dataset.payoutId;
+      rejectPayoutBtn.disabled = true;
+      (state.currentUser?.token
+        ? api.updateAdminPayout(id, { status: "rejected" })
+        : Promise.resolve(rejectWithdrawal(id))
+      ).then(() => {
+        showToast({ message: getCopy("Payout rejected.", "An ƙi biya."), type: "info" });
+        renderDashboardPage(routeForRefresh);
+      }).catch(() => { showToast({ message: getCopy("Could not reject payout.", "Ba a iya ƙi biya ba."), type: "error" }); rejectPayoutBtn.disabled = false; });
+      return;
+    }
+
+    // Admin: toggle review visibility
+    const toggleReviewBtn = target?.closest<HTMLButtonElement>(".admin-toggle-review");
+    if (toggleReviewBtn?.dataset.reviewId) {
+      const id = toggleReviewBtn.dataset.reviewId;
+      const hidden = toggleReviewBtn.dataset.hidden === "true";
+      toggleReviewBtn.disabled = true;
+      (state.currentUser?.token
+        ? api.updateAdminReview(id, { hidden: !hidden })
+        : Promise.resolve(hideReview(id))
+      ).then(() => {
+        showToast({ message: getCopy(hidden ? "Review restored." : "Review hidden.", hidden ? "An maido da ra'ayi." : "An ɓoye ra'ayi."), type: "info" });
+        renderDashboardPage(routeForRefresh);
+      }).catch(() => { showToast({ message: getCopy("Could not update review.", "Ba a iya sabunta ra'ayi ba."), type: "error" }); toggleReviewBtn.disabled = false; });
+      return;
+    }
+  });
+}
+
+function renderDashboardPage(route: string): void {
+  const user = state.currentUser;
+  const base = route.split("/")[0];
+
+  if (base === "customer" && user?.role === "customer") {
+    const container = document.getElementById("customerDashView");
+    if (!container) return;
+    const dashPath = route === "customer" ? "customer/overview" : route;
+    container.innerHTML = renderCustomerOverview(user, dashPath);
+    wireDashboardEvents(container, route);
+  }
+
+  if (base === "vendor" && user?.role === "vendor") {
+    const container = document.getElementById("vendorDashView");
+    if (!container) return;
+    const dashPath = route === "vendor" ? "vendor/overview" : route;
+    container.innerHTML = renderVendorOverview(user, dashPath);
+    wireDashboardEvents(container, route);
+  }
+
+  if (base === "admin" && user?.role === "admin") {
+    const container = document.getElementById("adminDashView");
+    if (!container) return;
+    const dashPath = route === "admin" ? "admin/overview" : route;
+    container.innerHTML = renderAdminOverview(dashPath);
+    wireDashboardEvents(container, route);
   }
 }
 
@@ -1004,11 +1318,9 @@ elements.languageButtons.forEach((button) => {
   button.addEventListener("click", () => setLanguage(button.dataset.language === "ha" ? "ha" : "en"));
 });
 
-// Vendor form
+// Vendor public registration form (marketing page, not the dashboard product form)
 elements.vendorForm.addEventListener("submit", handleVendorRequestSubmit);
-document.querySelector<HTMLFormElement>("#vendorProductForm")?.addEventListener("submit", (event) => {
-  void handleVendorProductSubmit(event);
-});
+// NOTE: #vendorProductForm is wired via wireDashboardEvents when the vendor dashboard is injected.
 
 // Vendor product image preview
 document.getElementById("productImageInput")?.addEventListener("change", (event) => {
@@ -1026,40 +1338,7 @@ document.getElementById("productImageInput")?.addEventListener("change", (event)
     preview.style.display = "none";
   }
 });
-document.querySelector<HTMLElement>("#vendorProductsList")?.addEventListener("click", (event) => {
-  const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-product-action]");
-  const productId = button?.dataset.vendorProductId;
-  const action = button?.dataset.vendorProductAction;
-  if (!productId || (action !== "active" && action !== "out_of_stock" && action !== "taken_down")) return;
-  setVendorProductListingStatus(productId, action);
-  renderVendorProducts();
-  renderVendorCommerce();
-  renderCatalogPreview(false);
-  renderAdminDashboard();
-  showToast({
-    message:
-      action === "active"
-        ? getCopy("Product restored to catalog.", "An mayar da kaya kasuwa.")
-        : getCopy("Product removed from active catalog.", "An cire kaya daga kasuwa."),
-    type: action === "active" ? "success" : "info",
-  });
-
-  if (state.currentUser?.token) {
-    api.updateVendorProduct(productId, action).catch(() => undefined);
-  }
-});
-document.querySelector<HTMLElement>("#vendorCommerceList")?.addEventListener("click", (event) => {
-  const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-vendor-order-ready]");
-  const orderId = button?.dataset.vendorOrderReady;
-  if (!orderId) return;
-  const order = advanceOrderStatus(orderId);
-  renderVendorCommerce();
-  renderAdminDashboard();
-  showToast({
-    message: getCopy("Order marked ready for pickup or delivery.", "An nuna oda a shirye domin dauka ko kaiwa."),
-    type: "success",
-  });
-});
+// NOTE: #vendorProductsList and #vendorCommerceList are wired via wireDashboardEvents when the vendor dashboard is injected.
 
 // Admin
 elements.exportSearches.addEventListener("click", exportSearchHistory);
@@ -1309,6 +1588,8 @@ window.addEventListener("kanoMart:signed-in", () => {
   const nextRoute = getDefaultRouteForRole();
   window.history.replaceState(null, "", `#${nextRoute}`);
   setRoute(nextRoute);
+  // Inject the new rich dashboard view for the logged-in role
+  renderDashboardPage(nextRoute);
 });
 window.addEventListener("kanoMart:signed-out", () => {
   syncRoleNavigation();
@@ -1478,6 +1759,10 @@ initSignupPage();
 // Render role dashboards for users already logged in (page reload)
 renderCustomerDashboard();
 renderOrdersPage();
+// Inject rich dashboard view for users restoring a session
+if (state.currentUser) {
+  renderDashboardPage(getCurrentRoute());
+}
 
 const scheduleEnhancements =
   "requestIdleCallback" in window
