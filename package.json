@@ -21,6 +21,7 @@
     "db:verify": "node scripts/verify-db-backup.mjs"
   },
   "devDependencies": {
+    "@types/node": "^25.9.2",
     "esbuild": "^0.28.0",
     "jsdom": "^29.1.1",
     "typescript": "^5.8.0",

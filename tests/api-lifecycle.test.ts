@@ -110,7 +110,7 @@ async function checkoutOrder(paymentMethod = "manual_transfer", deliveryOption =
 }
 
 async function advanceOrder(adminToken: string, orderId: string, statuses: string[]) {
-  let response;
+  let response!: Awaited<ReturnType<typeof requestJson>>;
   for (const status of statuses) {
     response = await requestJson(`/admin/orders/${orderId}`, {
       method: "PATCH",

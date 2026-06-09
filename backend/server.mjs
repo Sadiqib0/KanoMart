@@ -1,4 +1,4 @@
-import { createHash, pbkdf2, pbkdf2Sync, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, pbkdf2, pbkdf2Sync, randomUUID, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 const pbkdf2Async = promisify(pbkdf2);
 import { readFileSync, writeFileSync } from "node:fs";
@@ -62,7 +62,6 @@ async function captureException(error, context = {}) {
   }
 }
 
-const DEFAULT_ADMIN_PHONE = "07015070004";
 const SESSION_COOKIE = "kano_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 const DEFAULT_BODY_LIMIT_BYTES = 1_000_000;
@@ -549,9 +548,38 @@ async function dbClearCart(userId) {
 }
 
 async function dbCreateOrderWithItems(order, items, payment) {
-  // All writes wrapped in a single transaction — a mid-flight failure rolls everything back.
+  // All writes — stock decrements included — happen in ONE transaction, so a
+  // mid-flight failure (or an out-of-stock item discovered halfway through the
+  // cart) rolls everything back and never leaks phantom inventory.
   const sql = db();
-  await sql.begin(async (tx) => {
+  try {
+    await sql.begin(async (tx) => {
+      for (const item of items) {
+        const [r] = await tx`
+          UPDATE products SET
+            quantity_available = quantity_available - ${item.quantity},
+            listing_status = CASE WHEN quantity_available - ${item.quantity} <= 0 THEN 'out_of_stock' ELSE listing_status END,
+            updated_at = now()
+          WHERE id = ${item.productId} AND quantity_available >= ${item.quantity}
+          RETURNING id
+        `;
+        if (!r) {
+          const e = new Error(`Insufficient stock for product ${item.productId}`);
+          e.code = "out_of_stock";
+          e.item = item;
+          throw e; // aborts the transaction — earlier decrements roll back
+        }
+      }
+      await createOrderRows(tx, order, items, payment);
+    });
+  } catch (e) {
+    if (e.code === "out_of_stock") return { ok: false, outOfStockItem: e.item };
+    throw e;
+  }
+  return { ok: true };
+}
+
+async function createOrderRows(tx, order, items, payment) {
     await tx`
       INSERT INTO orders (id, customer_user_id, customer_name, customer_phone,
         delivery_option, delivery_address, delivery_area, delivery_fee,
@@ -587,7 +615,6 @@ async function dbCreateOrderWithItems(order, items, payment) {
     if (order.paymentStatus === "paid") {
       await dbCreateLedgerForOrder(order.id, items, tx);
     }
-  });
 }
 
 async function dbCreateLedgerForOrder(orderId, items, tx) {
@@ -828,6 +855,12 @@ async function dbUpdateOrderStatus(orderId, status, deliveryPerson) {
 async function dbGetPaymentById(paymentId) {
   const sql = db();
   const [r] = await sql`SELECT * FROM payments WHERE id = ${paymentId} LIMIT 1`;
+  return paymentFromRow(r);
+}
+
+async function dbGetPaymentByReference(reference) {
+  const sql = db();
+  const [r] = await sql`SELECT * FROM payments WHERE reference = ${reference} LIMIT 1`;
   return paymentFromRow(r);
 }
 
@@ -1566,7 +1599,7 @@ function sendError(response, status, code, message, details) {
   send(response, status, { error: { code, message, ...(details ? { details } : {}) } });
 }
 
-async function readJson(request) {
+async function readRawBody(request) {
   const chunks = [];
   const limit = Number(process.env.API_BODY_LIMIT_BYTES ?? DEFAULT_BODY_LIMIT_BYTES);
   let total = 0;
@@ -1575,8 +1608,11 @@ async function readJson(request) {
     if (total > limit) { const e = new Error("Request body is too large"); e.status = 413; e.code = "body_too_large"; throw e; }
     chunks.push(chunk);
   }
-  if (!chunks.length) return {};
-  const raw = Buffer.concat(chunks).toString("utf8");
+  return chunks.length ? Buffer.concat(chunks).toString("utf8") : "";
+}
+
+async function readJson(request) {
+  const raw = await readRawBody(request);
   if (!raw.trim()) return {};
   try { return JSON.parse(raw); } catch { const e = new Error("Invalid JSON"); e.status = 400; e.code = "invalid_json"; throw e; }
 }
@@ -1700,11 +1736,14 @@ function createRateLimiter(options = {}) {
   }
 
   // ── In-memory fallback (per-instance — dev / test only) ──────────────────
-  if (process.env.NODE_ENV === "production") {
-    console.warn(
-      "[rate-limit] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set. " +
-      "Rate limiting is per-instance only. Add Upstash from the Vercel Marketplace " +
-      "to enforce limits across the entire fleet."
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_MEMORY_RATE_LIMIT !== "true") {
+    // Fail hard, like the missing-DATABASE_URL case: per-instance limits are
+    // trivially bypassed on serverless and a warning log is too easy to miss.
+    throw new Error(
+      "UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are not set. " +
+      "Distributed rate limiting is required in production — add Upstash Redis " +
+      "from the Vercel Marketplace, or set ALLOW_MEMORY_RATE_LIMIT=true to " +
+      "knowingly accept per-instance limits."
     );
   }
   const windowMs = Number(options.windowMs ?? process.env.API_RATE_LIMIT_WINDOW_MS ?? 60_000);
@@ -1725,11 +1764,42 @@ function createRateLimiter(options = {}) {
 
 // ── Payment helpers ───────────────────────────────────────────────────────────
 
-function paymentStatusForMethod(method) {
-  return ["card", "ussd", "wallet"].includes(method) ? "paid" : "pending";
+// Decides how a checkout is charged:
+//   - card/ussd with PAYSTACK_SECRET_KEY set → Paystack hosted checkout; the
+//     payment stays "pending" until the signed webhook confirms charge.success.
+//   - card/ussd/wallet without Paystack in production → "pending"/manual, so an
+//     admin must verify. Real money is NEVER auto-marked "paid" in production.
+//   - dev/test keeps the instant-paid "prototype" gateway for local flows.
+function resolvePaymentPlan(method, { paystackEnabled, production }) {
+  const gatewayMethods = ["card", "ussd", "wallet"];
+  if (!gatewayMethods.includes(method)) return { status: "pending", gateway: "manual" };
+  if (paystackEnabled && (method === "card" || method === "ussd")) {
+    return { status: "pending", gateway: "paystack" };
+  }
+  if (production) return { status: "pending", gateway: "manual" };
+  return { status: "paid", gateway: "prototype" };
 }
-function paymentGatewayForMethod(method) {
-  return ["card", "ussd", "wallet"].includes(method) ? "prototype" : "manual";
+
+// Create a Paystack hosted-checkout session. Amount is NGN → kobo.
+async function paystackInitialize(secretKey, { email, amountNgn, reference }) {
+  const res = await fetch("https://api.paystack.co/transaction/initialize", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, amount: Math.round(amountNgn * 100), reference, currency: "NGN" }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.status || !data?.data?.authorization_url) {
+    throw new Error(`Paystack initialize failed: ${data?.message ?? `HTTP ${res.status}`}`);
+  }
+  return { authorizationUrl: data.data.authorization_url, accessCode: data.data.access_code };
+}
+
+function verifyPaystackSignature(secretKey, rawBody, signature) {
+  if (!signature) return false;
+  const expected = createHmac("sha512", secretKey).update(rawBody).digest("hex");
+  const a = Buffer.from(String(signature));
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 function calcDeliveryFee(deliveryOption) {
   return deliveryOption === "pickup" ? 0 : 1200;
@@ -1756,11 +1826,19 @@ export function createApp(options = {}) {
     try { initial = JSON.parse(readFileSync(options.dataFile, "utf8")); } catch { /* first run */ }
     store = createMemoryStore(initial?.data ?? null);
   }
-  // Memory-mode tests register admin as "+2348000000000"; production uses env/default.
+  // Memory-mode tests register admin as "+2348000000000". In Postgres mode the
+  // admin account must be seeded explicitly (scripts/reset-and-seed-admin.mjs);
+  // registration-time promotion only happens when KANO_ADMIN_PHONE is set, so a
+  // hardcoded phone number in public source can never grant admin access.
   const adminPhone = options.adminPhone ??
-    (store ? "08000000000" : (process.env.KANO_ADMIN_PHONE ?? DEFAULT_ADMIN_PHONE));
-  const allowedOrigin = options.allowedOrigin ?? process.env.CORS_ORIGIN ?? "http://localhost:4173,http://localhost:63342";
+    (store ? "08000000000" : (process.env.KANO_ADMIN_PHONE || null));
+  // Production default is same-origin only (the SPA is served from the same
+  // domain via Vercel rewrites); set CORS_ORIGIN explicitly to open it up.
+  const allowedOrigin = options.allowedOrigin ?? process.env.CORS_ORIGIN ??
+    (process.env.NODE_ENV === "production" ? "" : "http://localhost:4173,http://localhost:63342");
   const rateLimiter = options.rateLimiter ?? createRateLimiter(options.rateLimit);
+  const paystackSecretKey = options.paystackSecretKey ?? process.env.PAYSTACK_SECRET_KEY ?? "";
+  const isProduction = process.env.NODE_ENV === "production";
   const publicApiBasePath = options.publicApiBasePath ?? process.env.API_PUBLIC_BASE_PATH ?? "";
   const dao = store ? createMemoryDao(store) : createPostgresDao();
   const {
@@ -1773,7 +1851,7 @@ export function createApp(options = {}) {
     dbGetCart, dbUpsertCartItem, dbDeleteCartItem, dbClearCart,
     dbCreateOrderWithItems, dbCreateLedgerForOrder, dbGetOrderWithItems,
     dbGetOrdersForCustomer, dbGetOrdersForVendor, dbGetAllOrders, dbUpdateOrderStatus,
-    dbGetPaymentById, dbGetAllPayments, dbUpdatePaymentStatus,
+    dbGetPaymentById, dbGetPaymentByReference, dbGetAllPayments, dbUpdatePaymentStatus,
     dbGetVendorWallet, dbGetPayoutRequests, dbCreatePayoutRequest, dbUpdatePayoutStatus,
     dbCreateNotification, dbNotifyAdmins, dbGetNotifications, dbMarkNotificationRead,
     dbGetWishlist, dbAddWishlist, dbRemoveWishlist,
@@ -1801,6 +1879,50 @@ export function createApp(options = {}) {
         return;
       }
 
+      // ── PAYMENT WEBHOOKS ──────────────────────────────────────────────────
+      // Paystack calls this on every charge event. Authentication is the
+      // HMAC-SHA512 signature of the raw body — no session, no CORS.
+      if (method === "POST" && requestUrl.pathname === "/payments/webhook/paystack") {
+        if (!paystackSecretKey) { sendError(response, 404, "not_found", "Not found."); return; }
+        const rawBody = await readRawBody(request);
+        if (!verifyPaystackSignature(paystackSecretKey, rawBody, request.headers["x-paystack-signature"])) {
+          sendError(response, 401, "invalid_signature", "Webhook signature verification failed.");
+          return;
+        }
+        let event;
+        try { event = JSON.parse(rawBody); } catch { sendError(response, 400, "invalid_json", "Invalid JSON."); return; }
+
+        if (event?.event === "charge.success" && event.data?.reference) {
+          const payment = await dbGetPaymentByReference(String(event.data.reference));
+          // Idempotent: replayed webhooks for already-paid payments are no-ops.
+          if (payment && payment.status !== "paid") {
+            const paidKobo = Number(event.data.amount ?? 0);
+            const expectedKobo = Math.round(payment.amount * 100);
+            if (paidKobo >= expectedKobo) {
+              await dbUpdatePaymentStatus(payment.id, payment.orderId, "paid", "Confirmed via Paystack webhook");
+              const order = await dbGetOrderWithItems(payment.orderId);
+              if (order) {
+                await dbCreateNotification({ audience: "customer", recipientUserId: order.customerUserId, title: "Payment successful", message: `Payment for order ${order.id} is confirmed.`, type: "payment", orderId: order.id });
+                for (const vendorId of new Set(order.items.map((i) => i.vendorUserId))) {
+                  await dbCreateNotification({ audience: "vendor", recipientUserId: vendorId, title: "Payment confirmed", message: `Payment confirmed for order ${order.id}.`, type: "payment", orderId: order.id });
+                }
+                dbGetUserById(order.customerUserId).then((c) => {
+                  if (c?.email) void sendEmail({ to: c.email, subject: `Payment confirmed for order ${order.id} — Kano Mart`, html: paymentStatusEmail(order, c.name, "paid") });
+                }).catch(() => {});
+              }
+            } else {
+              // Underpayment — keep pending and alert; an admin must resolve it.
+              await captureException(Object.assign(new Error("Paystack amount mismatch"), { status: 500 }), {
+                reference: payment.reference, paidKobo, expectedKobo,
+              });
+            }
+          }
+        }
+        // Always 200 so Paystack stops retrying events we have processed/ignored.
+        send(response, 200, { received: true });
+        return;
+      }
+
       // ── AUTH ──────────────────────────────────────────────────────────────
 
       if (method === "POST" && requestUrl.pathname === "/auth/register") {
@@ -1815,7 +1937,7 @@ export function createApp(options = {}) {
           if (existingEmail) { sendError(response, 409, "email_exists", "A user with this email already exists."); return; }
         }
 
-        const isAdmin = normalizePhone(parsed.value.phone) === normalizePhone(adminPhone);
+        const isAdmin = Boolean(adminPhone) && normalizePhone(parsed.value.phone) === normalizePhone(adminPhone);
         const role = isAdmin ? "admin" : parsed.value.role;
         const firstName = isAdmin ? "Admin" : parsed.value.firstName;
         const lastName = isAdmin ? "" : parsed.value.lastName;
@@ -2205,7 +2327,11 @@ export function createApp(options = {}) {
         const itemsSubtotal = orderItems.reduce((t, i) => t + i.lineTotal, 0);
         const deliveryFee = calcDeliveryFee(parsed.value.deliveryOption);
         const now = new Date().toISOString();
-        const paymentStatus = paymentStatusForMethod(parsed.value.paymentMethod);
+        const paymentPlan = resolvePaymentPlan(parsed.value.paymentMethod, {
+          paystackEnabled: Boolean(paystackSecretKey),
+          production: isProduction,
+        });
+        const paymentStatus = paymentPlan.status;
         const paymentId = randomUUID();
         const order = {
           id: `KM-${randomUUID().slice(0, 8).toUpperCase()}`,
@@ -2217,17 +2343,33 @@ export function createApp(options = {}) {
           commissionTotal: orderItems.reduce((t, i) => t + i.commissionAmount, 0),
           vendorPayoutTotal: orderItems.reduce((t, i) => t + i.vendorPayout, 0),
         };
-        const payment = { id: paymentId, orderId: order.id, reference: order.paymentReference, method: order.paymentMethod, gateway: paymentGatewayForMethod(order.paymentMethod), amount: order.subtotal, currency: "NGN", status: paymentStatus, verifiedAt: paymentStatus === "paid" ? now : null };
+        const payment = { id: paymentId, orderId: order.id, reference: order.paymentReference, method: order.paymentMethod, gateway: paymentPlan.gateway, amount: order.subtotal, currency: "NGN", status: paymentStatus, verifiedAt: paymentStatus === "paid" ? now : null };
 
-        // Decrement stock atomically — fails fast if a concurrent checkout took the last unit.
-        for (const item of orderItems) {
-          const ok = await dbDecrementProductQuantity(item.productId, item.quantity);
-          if (!ok) {
-            sendError(response, 409, "out_of_stock", `"${item.name.en}" is no longer available in the requested quantity.`); return;
+        // Stock decrements + order/payment rows commit in one transaction — an
+        // out-of-stock item anywhere in the cart rolls the whole checkout back.
+        const placed = await dbCreateOrderWithItems(order, orderItems, payment);
+        if (!placed.ok) {
+          sendError(response, 409, "out_of_stock", `"${placed.outOfStockItem.name.en}" is no longer available in the requested quantity.`);
+          return;
+        }
+        await dbClearCart(user.id);
+
+        // Paystack hosted checkout: get the redirect URL for the customer.
+        // A failure here is not fatal — the order stays pending and the admin
+        // payment flow (or a retry) can still settle it.
+        let authorizationUrl;
+        if (paymentPlan.gateway === "paystack") {
+          try {
+            const init = await paystackInitialize(paystackSecretKey, {
+              email: user.email || `${user.phone.replace(/\D/g, "")}@customers.kanomart.app`,
+              amountNgn: order.subtotal,
+              reference: order.paymentReference,
+            });
+            authorizationUrl = init.authorizationUrl;
+          } catch (e) {
+            await captureException(Object.assign(e, { status: 500 }), { orderId: order.id });
           }
         }
-        await dbCreateOrderWithItems(order, orderItems, payment);
-        await dbClearCart(user.id);
 
         await dbCreateNotification({ audience: "customer", recipientUserId: user.id, title: "Order placed", message: `Order ${order.id} has been placed.`, type: "order", orderId: order.id });
         await dbNotifyAdmins({ title: "New order", message: `Order ${order.id} is awaiting confirmation.`, type: "order", orderId: order.id });
@@ -2236,7 +2378,11 @@ export function createApp(options = {}) {
         }
 
         const placedOrder = await dbGetOrderWithItems(order.id);
-        send(response, 201, { order: publicOrder(placedOrder), cart: { items: [], subtotal: 0 } }, headers);
+        send(response, 201, {
+          order: publicOrder(placedOrder),
+          cart: { items: [], subtotal: 0 },
+          ...(authorizationUrl ? { payment: { authorizationUrl } } : {}),
+        }, headers);
         // Fire-and-forget emails — never block the response
         if (user.email) void sendEmail({ to: user.email, subject: `Order ${order.id} confirmed — Kano Mart`, html: orderConfirmationEmail(placedOrder, user.name) });
         for (const vendorId of new Set(orderItems.map((i) => i.vendorUserId))) {
@@ -2622,7 +2768,7 @@ function createPostgresDao() {
     dbGetCart, dbUpsertCartItem, dbDeleteCartItem, dbClearCart,
     dbCreateOrderWithItems, dbCreateLedgerForOrder, dbGetOrderWithItems,
     dbGetOrdersForCustomer, dbGetOrdersForVendor, dbGetAllOrders, dbUpdateOrderStatus,
-    dbGetPaymentById, dbGetAllPayments, dbUpdatePaymentStatus,
+    dbGetPaymentById, dbGetPaymentByReference, dbGetAllPayments, dbUpdatePaymentStatus,
     dbGetVendorWallet, dbGetPayoutRequests, dbCreatePayoutRequest, dbUpdatePayoutStatus,
     dbCreateNotification, dbNotifyAdmins, dbGetNotifications, dbMarkNotificationRead,
     dbGetWishlist, dbAddWishlist, dbRemoveWishlist,
@@ -3025,6 +3171,18 @@ function createMemoryDao(store) {
   // ── Orders ─────────────────────────────────────────────────────────────────
 
   async function dbCreateOrderWithItems(order, items, payment) {
+    // Mirror the Postgres behaviour: all stock is checked first, then decremented
+    // together with order creation — no partial decrements on failure.
+    for (const item of items) {
+      const p = store.products.get(item.productId);
+      if (!p || (p.quantityAvailable ?? 0) < item.quantity) return { ok: false, outOfStockItem: item };
+    }
+    for (const item of items) {
+      const p = store.products.get(item.productId);
+      p.quantityAvailable -= item.quantity;
+      if (p.quantityAvailable <= 0) p.listingStatus = "out_of_stock";
+      p.updatedAt = now();
+    }
     store.orders.set(order.id, {
       ...order,
       paymentId: payment.id,        // link order → payment (mirrors the Postgres payment_id column)
@@ -3034,6 +3192,14 @@ function createMemoryDao(store) {
     store.orderItems.set(order.id, items.map(i => ({ ...i })));
     store.payments.set(payment.id, { ...payment, createdAt: now() });
     if (order.paymentStatus === "paid") memCreateLedger(order.id, items);
+    return { ok: true };
+  }
+
+  async function dbGetPaymentByReference(reference) {
+    for (const p of store.payments.values()) {
+      if (p.reference === reference) return { ...p };
+    }
+    return null;
   }
 
   async function dbCreateLedgerForOrder(orderId, items) {
@@ -3381,7 +3547,7 @@ function createMemoryDao(store) {
     dbGetCart, dbUpsertCartItem, dbDeleteCartItem, dbClearCart,
     dbCreateOrderWithItems, dbCreateLedgerForOrder, dbGetOrderWithItems,
     dbGetOrdersForCustomer, dbGetOrdersForVendor, dbGetAllOrders, dbUpdateOrderStatus,
-    dbGetPaymentById, dbGetAllPayments, dbUpdatePaymentStatus,
+    dbGetPaymentById, dbGetPaymentByReference, dbGetAllPayments, dbUpdatePaymentStatus,
     dbGetVendorWallet, dbGetPayoutRequests, dbCreatePayoutRequest, dbUpdatePayoutStatus,
     dbCreateNotification, dbNotifyAdmins, dbGetNotifications, dbMarkNotificationRead,
     dbGetWishlist, dbAddWishlist, dbRemoveWishlist,
