@@ -1877,9 +1877,23 @@ body.is-admin .mob-nav-item[data-roles="customer vendor admin"]{display:flex}
   --dash-accent-soft:var(--brand-soft);
   position:relative;
   isolation:isolate;
+  display:grid;
+  grid-template-columns:236px minmax(0,1fr);
+  align-items:start;
   gap:22px;
   max-width:1320px;
   padding:clamp(18px,3vw,38px);
+}
+.dash-sidebar{
+  position:sticky;
+  top:12px;
+  z-index:40;
+}
+.dash-content{
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+  min-width:0;
 }
 .dash-shell::before{
   content:"";
@@ -1964,11 +1978,8 @@ body.is-admin .mob-nav-item[data-roles="customer vendor admin"]{display:flex}
 }
 
 .dash-role-nav{
-  position:sticky;
-  top:12px;
-  z-index:40;
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+  grid-template-columns:1fr;
   gap:6px;
   padding:6px;
   border-radius:calc(var(--r-lg) + 2px);
@@ -1979,9 +1990,9 @@ body.is-admin .mob-nav-item[data-roles="customer vendor admin"]{display:flex}
 }
 .dash-role-nav a{
   position:relative;
-  min-height:58px;
+  min-height:54px;
   justify-content:center;
-  padding:10px 13px;
+  padding:10px 13px 10px 22px;
   border:1px solid transparent;
   border-radius:var(--r-lg);
   color:var(--ink-2);
@@ -2393,6 +2404,24 @@ body.is-admin .mob-nav-item[data-roles="customer vendor admin"]{display:flex}
   .dash-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .dash-overview-grid{grid-template-columns:1fr}
 }
+@media(max-width:1000px){
+  .dash-shell{grid-template-columns:1fr}
+  .dash-sidebar{position:sticky;top:8px}
+  .dash-role-nav{
+    display:flex;
+    overflow-x:auto;
+    flex-wrap:nowrap;
+    scroll-snap-type:x proximity;
+  }
+  .dash-role-nav a{
+    flex:0 0 auto;
+    min-height:0;
+    padding:9px 14px;
+    scroll-snap-align:start;
+  }
+  .dash-role-nav a span{display:none}
+  .dash-role-nav a.is-active::before{display:none}
+}
 @media(max-width:780px){
   .dash-shell{padding:16px 12px 84px;gap:16px}
   .dash-page-header{
@@ -2405,18 +2434,7 @@ body.is-admin .mob-nav-item[data-roles="customer vendor admin"]{display:flex}
     border-radius:18px;
   }
   .dash-header-actions .dash-action{flex:1}
-  .dash-role-nav{
-    top:8px;
-    display:flex;
-    overflow-x:auto;
-    flex-wrap:nowrap;
-    scroll-snap-type:x proximity;
-    border-radius:20px;
-  }
-  .dash-role-nav a{
-    flex:0 0 154px;
-    scroll-snap-align:start;
-  }
+  .dash-role-nav{border-radius:20px}
   .dash-mini-row{
     grid-template-columns:1fr;
     align-items:start;

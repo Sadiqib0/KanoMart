@@ -8,19 +8,16 @@ import {
   renderPanel,
   renderStatGrid,
 } from "../../components/dashboard/primitives";
-import { renderRoleDashboardNav } from "../../components/dashboard/role-nav";
+import { renderDashShell } from "../../components/dashboard/shell";
 import { escapeHtml, formatDate, getCopy, getLocalizedValue } from "../../utils";
 
 type AnyAction = { label: string; route?: string; tone?: "primary" | "secondary" };
 
 function shell(currentPath: string, eyebrow: string, title: string, description: string, actions: AnyAction[], body: string): string {
-  return `
-    <div class="dash-shell dash-shell-admin">
-      ${renderDashboardHeader({ eyebrow, title, description, actions })}
-      ${renderRoleDashboardNav("admin", currentPath)}
-      ${body}
-    </div>
-  `;
+  return renderDashShell("admin", currentPath, `
+    ${renderDashboardHeader({ eyebrow, title, description, actions })}
+    ${body}
+  `);
 }
 
 type UserLike = { phone: string; name?: string; email?: string; role: string; createdAt?: string; id?: string; vendorStatus?: string };
@@ -369,8 +366,7 @@ export function renderAdminOverview(currentPath = "admin/overview"): string {
   const failedPayments = data.payments.filter((payment) => payment.status === "failed");
   const recentOrders = data.orders.slice(0, 6);
 
-  return `
-    <div class="dash-shell dash-shell-admin">
+  return renderDashShell("admin", currentPath, `
       ${renderDashboardHeader({
         eyebrow: getCopy("Marketplace control room", "Cibiyar kula da kasuwa"),
         title: getCopy("Admin dashboard", "Allon admin"),
@@ -380,8 +376,6 @@ export function renderAdminOverview(currentPath = "admin/overview"): string {
           { label: getCopy("System health", "Lafiyar tsarin"), route: "admin/system-health", tone: "secondary" },
         ],
       })}
-
-      ${renderRoleDashboardNav("admin", currentPath)}
 
       ${renderStatGrid([
         { label: getCopy("Total users", "Jimillar masu amfani"), value: data.counts.totalUsers, detail: getCopy("Registered accounts", "Asusun da aka yi rajista"), tone: "info" },
@@ -500,6 +494,5 @@ export function renderAdminOverview(currentPath = "admin/overview"): string {
         <div id="demandTrends"></div>
         <table><tbody id="searchHistoryTable"></tbody></table>
       </div>
-    </div>
-  `;
+  `);
 }

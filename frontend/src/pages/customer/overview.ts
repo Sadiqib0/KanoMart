@@ -13,19 +13,16 @@ import {
   renderStatusBadge,
   type ActionInput,
 } from "../../components/dashboard/primitives";
-import { renderRoleDashboardNav } from "../../components/dashboard/role-nav";
+import { renderDashShell } from "../../components/dashboard/shell";
 import type { DashboardRole } from "../../router/dashboard-routes";
 import { escapeHtml, formatDate, getCopy, getLocalizedValue, parsePrice } from "../../utils";
 import { getCatalogProducts } from "../../../backend/products";
 
 function shell(role: DashboardRole, currentPath: string, eyebrow: string, title: string, description: string, actions: ActionInput[], body: string): string {
-  return `
-    <div class="dash-shell dash-shell-${role}">
-      ${renderDashboardHeader({ eyebrow, title, description, actions })}
-      ${renderRoleDashboardNav(role, currentPath)}
-      <div class="dash-overview-grid">${body}</div>
-    </div>
-  `;
+  return renderDashShell(role, currentPath, `
+    ${renderDashboardHeader({ eyebrow, title, description, actions })}
+    <div class="dash-overview-grid">${body}</div>
+  `);
 }
 
 function renderOrdersPage(user: UserSession, data: ReturnType<typeof getCustomerDashboardData>): string {
@@ -213,8 +210,7 @@ export function renderCustomerOverview(user: UserSession, currentPath = "custome
 
   const firstName = user.firstName || user.name.split(" ")[0] || "there";
 
-  return `
-    <div class="dash-shell dash-shell-customer">
+  return renderDashShell("customer", currentPath, `
       ${renderDashboardHeader({
         eyebrow: getCopy("Customer workspace", "Wurin aiki na kwastoma"),
         title: `${getCopy("Welcome back", "Barka da dawowar")}, ${firstName}`,
@@ -224,8 +220,6 @@ export function renderCustomerOverview(user: UserSession, currentPath = "custome
           { label: getCopy("Open cart", "Buɗe kwandon saya"), id: "customerCartBtn", tone: "secondary" },
         ],
       })}
-
-      ${renderRoleDashboardNav("customer", currentPath)}
 
       ${renderStatGrid([
         { label: getCopy("Active orders", "Ododi masu aiki"), value: data.activeOrders.length, detail: `${data.orders.length} ${getCopy("total orders", "jimillar ododi")}`, tone: "info" },
@@ -330,6 +324,5 @@ export function renderCustomerOverview(user: UserSession, currentPath = "custome
           `,
         })}
       </div>
-    </div>
-  `;
+  `);
 }

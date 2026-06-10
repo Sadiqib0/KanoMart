@@ -10,7 +10,7 @@ import {
   renderStatGrid,
   type ActionInput,
 } from "../../components/dashboard/primitives";
-import { renderRoleDashboardNav } from "../../components/dashboard/role-nav";
+import { renderDashShell } from "../../components/dashboard/shell";
 import { escapeHtml, formatDate, getCopy, getLocalizedValue } from "../../utils";
 
 function renderApprovalBanner(status: string, note?: string): string {
@@ -30,13 +30,10 @@ function renderApprovalBanner(status: string, note?: string): string {
 }
 
 function shell(currentPath: string, eyebrow: string, title: string, description: string, actions: ActionInput[], body: string): string {
-  return `
-    <div class="dash-shell dash-shell-vendor">
-      ${renderDashboardHeader({ eyebrow, title, description, actions })}
-      ${renderRoleDashboardNav("vendor", currentPath)}
-      ${body}
-    </div>
-  `;
+  return renderDashShell("vendor", currentPath, `
+    ${renderDashboardHeader({ eyebrow, title, description, actions })}
+    ${body}
+  `);
 }
 
 function renderProductsPage(user: UserSession, data: ReturnType<typeof getVendorDashboardData>): string {
@@ -318,8 +315,7 @@ export function renderVendorOverview(user: UserSession, currentPath = "vendor/ov
   if (currentPath === "vendor/payouts") return renderPayoutsPage(user, data);
   if (currentPath === "vendor/reviews") return renderReviewsPage(user, data);
 
-  return `
-    <div class="dash-shell dash-shell-vendor">
+  return renderDashShell("vendor", currentPath, `
       ${renderDashboardHeader({
         eyebrow: getCopy("Vendor workspace", "Wurin aiki na dillali"),
         title: data.businessName,
@@ -329,8 +325,6 @@ export function renderVendorOverview(user: UserSession, currentPath = "vendor/ov
           { label: getCopy("Request payout", "Neman biya"), route: "vendor/payouts", tone: "secondary" },
         ],
       })}
-
-      ${renderRoleDashboardNav("vendor", currentPath)}
 
       ${renderApprovalBanner(data.approvalStatus, data.approvalNote)}
 
@@ -450,6 +444,5 @@ export function renderVendorOverview(user: UserSession, currentPath = "vendor/ov
           body: `<div class="vendor-commerce-list" id="vendorCommerceList" aria-live="polite"></div>`,
         })}
       </div>
-    </div>
-  `;
+  `);
 }
