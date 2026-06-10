@@ -28,19 +28,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
-
-      - name: Prepare static artifact
-        run: |
-          mkdir -p site
-          cp index.html styles.css site/
-          cp -R assets dist site/
-          touch site/.nojekyll
+      - name: Build frontend + assemble public/
+        run: npm run build && node scripts/build-vercel-output.mjs
 
       - name: Publish gh-pages branch
         run: |
-          cd site
+          cd public
+          touch .nojekyll
           git init
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
