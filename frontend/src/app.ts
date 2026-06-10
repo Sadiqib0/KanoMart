@@ -762,8 +762,10 @@ function wireDashboardEvents(container: HTMLElement, routeForRefresh: string): v
 }
 
 function renderDashboardPage(route: string): void {
+  const startedAt = performance.now();
   const user = state.currentUser;
   const base = route.split("/")[0];
+  let rendered = false;
 
   if (base === "customer" && user?.role === "customer") {
     const container = document.getElementById("customerDashView");
@@ -771,6 +773,7 @@ function renderDashboardPage(route: string): void {
     const dashPath = route === "customer" ? "customer/overview" : route;
     container.innerHTML = renderCustomerOverview(user, dashPath);
     wireDashboardEvents(container, route);
+    rendered = true;
   }
 
   if (base === "vendor" && user?.role === "vendor") {
@@ -779,6 +782,7 @@ function renderDashboardPage(route: string): void {
     const dashPath = route === "vendor" ? "vendor/overview" : route;
     container.innerHTML = renderVendorOverview(user, dashPath);
     wireDashboardEvents(container, route);
+    rendered = true;
   }
 
   if (base === "admin" && user?.role === "admin") {
@@ -787,6 +791,13 @@ function renderDashboardPage(route: string): void {
     const dashPath = route === "admin" ? "admin/overview" : route;
     container.innerHTML = renderAdminOverview(dashPath);
     wireDashboardEvents(container, route);
+    rendered = true;
+  }
+
+  if (rendered) {
+    window.dispatchEvent(new CustomEvent("kanoMart:dashboard-rendered", {
+      detail: { route, role: base, durationMs: Math.round(performance.now() - startedAt) },
+    }));
   }
 }
 

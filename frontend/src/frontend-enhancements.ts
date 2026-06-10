@@ -1,5 +1,5 @@
 import { state } from "./state";
-import { getCopy } from "./utils";
+import { escapeHtml, getCopy } from "./utils";
 
 const ONBOARDING_KEY = "kanoMart.onboardingSeen";
 const FRONTEND_LOG_KEY = "kanoMart.frontendLogs";
@@ -9,6 +9,12 @@ type FrontendLog = {
   message: string;
   createdAt: string;
 };
+
+type DashboardRenderEvent = CustomEvent<{
+  route?: string;
+  role?: string;
+  durationMs?: number;
+}>;
 
 function writeFrontendLog(log: FrontendLog): void {
   try {
@@ -194,24 +200,67 @@ function showOnboarding(): void {
   if (localStorage.getItem(ONBOARDING_KEY)) return;
   localStorage.setItem(ONBOARDING_KEY, new Date().toISOString());
 
+  const role = state.currentUser?.role ?? "customer";
+  const roleCopy = {
+    customer: {
+      title: getCopy("Your buyer workspace is ready", "Wurin aikin mai saye ya shirya"),
+      body: getCopy("Use the dashboard to move faster from discovery to delivery.", "Yi amfani da dashboard don hanzarta daga bincike zuwa isarwa."),
+      cta: getCopy("Start shopping", "Fara sayayya"),
+      steps: [
+        [getCopy("Track live orders", "Bibiyi ododi kai tsaye"), getCopy("Open Orders to see delivery progress and payment status.", "Bude Ododi don ganin ci gaban isarwa da matsayin biyan kudi.")],
+        [getCopy("Build a better cart", "Gina kwando mai kyau"), getCopy("Save items, compare vendors, then checkout when ready.", "Ajiye kaya, kwatanta dillalai, sannan ka biya idan ka shirya.")],
+        [getCopy("Use Hausa or English", "Yi amfani da Hausa ko Turanci"), getCopy("Your language toggle follows you across every page.", "Canjin yare zai bi ka a kowane shafi.")],
+      ],
+    },
+    vendor: {
+      title: getCopy("Your vendor command center is ready", "Cibiyar aikin dillali ta shirya"),
+      body: getCopy("Use the dashboard to protect margin, stock, and fulfillment speed.", "Yi amfani da dashboard don kula da riba, kaya, da saurin cika oda."),
+      cta: getCopy("Open dashboard", "Bude dashboard"),
+      steps: [
+        [getCopy("Watch priority queues", "Duba jerin gaggawa"), getCopy("Low stock, pending orders, and payouts stay surfaced first.", "Karancin kaya, ododi masu jiran aiki, da biyan kudi suna bayyana farko.")],
+        [getCopy("Act without page jumps", "Yi aiki ba tare da sauya shafi ba"), getCopy("Quick actions keep product and order work close to the overview.", "Ayyukan gaggawa suna kusa da takaitaccen shafi.")],
+        [getCopy("Keep listings clean", "Tsabtace jerin kaya"), getCopy("Use statuses and alerts to fix risky products before buyers see issues.", "Yi amfani da matsayi da sanarwa don gyara matsaloli kafin masu saye su gani.")],
+      ],
+    },
+    admin: {
+      title: getCopy("Your operations console is ready", "Na'urar kula da aiki ta shirya"),
+      body: getCopy("Use the dashboard to keep marketplace risk, finance, and moderation visible.", "Yi amfani da dashboard don ganin hadari, kudi, da tantancewa."),
+      cta: getCopy("Review operations", "Duba ayyuka"),
+      steps: [
+        [getCopy("Moderate the marketplace", "Tantance kasuwa"), getCopy("Vendor approvals, product review, and support queues are grouped together.", "Amincewar dillalai, duba kaya, da taimako suna hade wuri daya.")],
+        [getCopy("Scan system health", "Duba lafiyar tsarin"), getCopy("Operational cards make issues visible before they become user pain.", "Katunan aiki suna nuna matsala kafin ta dami masu amfani.")],
+        [getCopy("Move through sections fast", "Matsa tsakanin sassa da sauri"), getCopy("The dashboard navigation stays compact, accessible, and keyboard friendly.", "Kewayar dashboard tana da sauki, tana aiki da keyboard.")],
+      ],
+    },
+  }[role];
+
   const modal = document.createElement("div");
   modal.className = "modal-backdrop onboarding-modal modal-visible";
   modal.setAttribute("role", "dialog");
   modal.setAttribute("aria-modal", "true");
   modal.setAttribute("aria-labelledby", "onboardingTitle");
+  modal.setAttribute("aria-describedby", "onboardingDescription");
   modal.innerHTML = `
-    <div class="modal-box glass-card">
+    <div class="modal-box glass-card onboarding-card">
       <div class="modal-header">
-        <h2 id="onboardingTitle">${getCopy("Welcome to Kano Mart", "Barka da zuwa Kano Mart")}</h2>
+        <div>
+          <span class="onboarding-kicker">${escapeHtml(getCopy("First-use walkthrough", "Jagorar farko"))}</span>
+          <h2 id="onboardingTitle">${escapeHtml(roleCopy.title)}</h2>
+        </div>
         <button type="button" class="modal-close" aria-label="${getCopy("Close", "Rufe")}">×</button>
       </div>
       <div class="onboarding-body">
-        <ol>
-          <li>${getCopy("Search products from trusted Kano vendors.", "Nemi kaya daga amintattun dillalan Kano.")}</li>
-          <li>${getCopy("Save items or add them to cart.", "Ajiye kaya ko saka su a kwando.")}</li>
-          <li>${getCopy("Checkout with card, transfer, USSD, wallet, or pay on delivery.", "Biya da kati, transfer, USSD, wallet, ko biya idan an kawo.")}</li>
-        </ol>
-        <button type="button" class="checkout-done">${getCopy("Start shopping", "Fara sayayya")}</button>
+        <p id="onboardingDescription">${escapeHtml(roleCopy.body)}</p>
+        <div class="onboarding-grid">
+          ${roleCopy.steps.map(([title, body], index) => `
+            <article>
+              <b>${String(index + 1).padStart(2, "0")}</b>
+              <strong>${escapeHtml(title)}</strong>
+              <span>${escapeHtml(body)}</span>
+            </article>
+          `).join("")}
+        </div>
+        <button type="button" class="checkout-done">${escapeHtml(roleCopy.cta)}</button>
       </div>
     </div>
   `;
@@ -230,6 +279,15 @@ function initOnboarding(): void {
 }
 
 function initObservability(): void {
+  window.addEventListener("kanoMart:dashboard-rendered", (event) => {
+    const detail = (event as DashboardRenderEvent).detail;
+    writeFrontendLog({
+      type: "performance",
+      message: `dashboard role=${detail.role ?? "unknown"} route=${detail.route ?? "unknown"} render=${Math.round(detail.durationMs ?? 0)}ms`,
+      createdAt: new Date().toISOString(),
+    });
+  });
+
   window.addEventListener("error", (event) => {
     writeFrontendLog({
       type: "error",

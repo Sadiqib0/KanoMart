@@ -4,6 +4,7 @@ import { getCartItems, getCartSubtotal } from "../../cart";
 import { getWishlist } from "../../wishlist";
 import {
   renderDashboardHeader,
+  renderDashboardNote,
   renderEmptyState,
   renderMiniRows,
   renderMoney,
@@ -28,12 +29,16 @@ function shell(role: DashboardRole, currentPath: string, eyebrow: string, title:
 }
 
 function renderOrdersPage(user: UserSession, data: ReturnType<typeof getCustomerDashboardData>): string {
-  const rows = data.orders.map((order) => ({
+  const visibleOrders = data.orders.slice(0, 30);
+  const rows = visibleOrders.map((order) => ({
     title: `Order ${order.id.slice(-6).toUpperCase()}`,
     meta: `${formatDate(order.createdAt)} · ${order.items.slice(0, 2).join(", ") || "items"}`,
     value: renderMoney(order.total),
     status: order.status,
   }));
+  const limitNote = data.orders.length > visibleOrders.length
+    ? renderDashboardNote(getCopy(`Showing latest ${visibleOrders.length} of ${data.orders.length} orders for faster rendering.`, `Ana nuna sabbin oda ${visibleOrders.length} daga ${data.orders.length} don saurin aiki.`))
+    : "";
 
   return shell("customer", "customer/orders",
     getCopy("Fulfillment", "Cika oda"),
@@ -52,7 +57,7 @@ function renderOrdersPage(user: UserSession, data: ReturnType<typeof getCustomer
       ${renderPanel({
         eyebrow: getCopy("History", "Tarihi"),
         title: getCopy("All orders", "Dukkan ododi"),
-        body: renderMiniRows(rows, { title: getCopy("No orders yet", "Babu ododi tukuna"), body: getCopy("Place your first order to see it here.", "Yi odona farko don ganin sa a nan.") }),
+        body: `${renderMiniRows(rows, { title: getCopy("No orders yet", "Babu ododi tukuna"), body: getCopy("Place your first order to see it here.", "Yi odona farko don ganin sa a nan.") })}${limitNote}`,
       })}
     `
   );

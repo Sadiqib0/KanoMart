@@ -1,6 +1,7 @@
 import { getAdminDashboardData } from "../../services/dashboard-data";
 import {
   renderDashboardHeader,
+  renderDashboardNote,
   renderEmptyState,
   renderMiniRows,
   renderMoney,
@@ -29,7 +30,12 @@ function asUsers(list: ReturnType<typeof getAdminDashboardData>["users"]): UserL
 }
 
 function renderUsersPage(data: ReturnType<typeof getAdminDashboardData>): string {
-  const rows = asUsers(data.users).map((u) => `
+  const allUsers = asUsers(data.users);
+  const visibleUsers = allUsers.slice(0, 50);
+  const limitNote = allUsers.length > visibleUsers.length
+    ? renderDashboardNote(getCopy(`Showing first ${visibleUsers.length} of ${allUsers.length} users to keep the admin registry responsive.`, `Ana nuna masu amfani ${visibleUsers.length} daga ${allUsers.length} don rajistar admin ta yi sauri.`))
+    : "";
+  const rows = visibleUsers.map((u) => `
     <div class="dash-table-row">
       <div class="dash-table-cell"><strong>${escapeHtml(u.name ?? u.phone)}</strong><small>${escapeHtml(u.email ?? "")}</small></div>
       <div class="dash-table-cell"><span class="dash-badge dash-badge--${escapeHtml(u.role)}">${escapeHtml(u.role)}</span></div>
@@ -48,7 +54,7 @@ function renderUsersPage(data: ReturnType<typeof getAdminDashboardData>): string
         eyebrow: getCopy("Registry", "Rajista"),
         title: `${data.users.length} ${getCopy("users", "masu amfani")}`,
         body: data.users.length
-          ? `<div class="dash-table"><div class="dash-table-head"><span>${getCopy("Name", "Suna")}</span><span>${getCopy("Role", "Matsayi")}</span><span>${getCopy("Phone", "Waya")}</span><span>${getCopy("Joined", "Ranar shiga")}</span></div>${rows}</div>`
+          ? `<div class="dash-table"><div class="dash-table-head"><span>${getCopy("Name", "Suna")}</span><span>${getCopy("Role", "Matsayi")}</span><span>${getCopy("Phone", "Waya")}</span><span>${getCopy("Joined", "Ranar shiga")}</span></div>${rows}</div>${limitNote}`
           : renderEmptyState(getCopy("No users yet", "Babu masu amfani tukuna"), getCopy("User accounts will appear here once people sign up.", "Asusun masu amfani za su bayyana a nan da zarar mutane suka yi rajista.")),
       })}
     </div>`
@@ -120,6 +126,11 @@ function renderProductsPage(data: ReturnType<typeof getAdminDashboardData>): str
 }
 
 function renderOrdersPage(data: ReturnType<typeof getAdminDashboardData>): string {
+  const visibleOrders = data.orders.slice(0, 20);
+  const limitNote = data.orders.length > visibleOrders.length
+    ? renderDashboardNote(getCopy(`Showing latest ${visibleOrders.length} of ${data.orders.length} orders.`, `Ana nuna sabbin oda ${visibleOrders.length} daga ${data.orders.length}.`))
+    : "";
+
   return shell("admin/orders",
     getCopy("Operations", "Ayyuka"),
     getCopy("All orders", "Dukkan ododi"),
@@ -129,15 +140,15 @@ function renderOrdersPage(data: ReturnType<typeof getAdminDashboardData>): strin
       ${renderPanel({
         eyebrow: getCopy("Orders", "Ododi"),
         title: `${data.orders.length} ${getCopy("total orders", "jimillar ododi")}`,
-        body: renderMiniRows(
-          data.orders.slice(0, 20).map((o) => ({
+        body: `${renderMiniRows(
+          visibleOrders.map((o) => ({
             title: `#${o.id.slice(-6).toUpperCase()} · ${"customerName" in o ? (o as { customerName?: string }).customerName ?? "" : ""}`,
             meta: `${formatDate(o.createdAt)} · ${"paymentStatus" in o ? (o as { paymentStatus?: string }).paymentStatus ?? "" : ""}`,
             value: renderMoney("subtotal" in o ? (o as { subtotal?: number }).subtotal : undefined),
             status: o.status,
           })),
           { title: getCopy("No orders yet", "Babu ododi tukuna"), body: getCopy("Customer orders will appear here.", "Ododi na kwastoma za su bayyana a nan.") }
-        ),
+        )}${limitNote}`,
       })}
       <div class="record-list" id="orderRecords" hidden></div>
     </div>`
@@ -180,6 +191,10 @@ function renderPaymentsPage(data: ReturnType<typeof getAdminDashboardData>): str
 
 function renderPayoutsPage(data: ReturnType<typeof getAdminDashboardData>): string {
   const pending = data.payouts.filter((p) => p.status === "pending");
+  const visiblePayouts = data.payouts.slice(0, 25);
+  const payoutLimitNote = data.payouts.length > visiblePayouts.length
+    ? renderDashboardNote(getCopy(`Showing latest ${visiblePayouts.length} of ${data.payouts.length} payout requests.`, `Ana nuna sabbin buƙatun biya ${visiblePayouts.length} daga ${data.payouts.length}.`))
+    : "";
 
   return shell("admin/payouts",
     getCopy("Finance", "Kuɗi"),
@@ -209,10 +224,10 @@ function renderPayoutsPage(data: ReturnType<typeof getAdminDashboardData>): stri
       ${renderPanel({
         eyebrow: getCopy("History", "Tarihi"),
         title: getCopy("All payout requests", "Dukkan buƙatun biya"),
-        body: renderMiniRows(
-          data.payouts.map((p) => ({ title: p.accountName ?? p.id, meta: `${p.bankName ?? "—"} · ${p.requestedAt ? formatDate(p.requestedAt) : "—"}`, value: renderMoney(p.amount), status: p.status })),
+        body: `${renderMiniRows(
+          visiblePayouts.map((p) => ({ title: p.accountName ?? p.id, meta: `${p.bankName ?? "—"} · ${p.requestedAt ? formatDate(p.requestedAt) : "—"}`, value: renderMoney(p.amount), status: p.status })),
           { title: getCopy("No payouts", "Babu biyan kuɗi"), body: "" }
-        ),
+        )}${payoutLimitNote}`,
       })}
       <div class="withdrawal-list" id="withdrawalQueue" hidden></div>
     </div>`
@@ -220,6 +235,11 @@ function renderPayoutsPage(data: ReturnType<typeof getAdminDashboardData>): stri
 }
 
 function renderReviewsPage(data: ReturnType<typeof getAdminDashboardData>): string {
+  const visibleReviews = data.reviews.slice(0, 20);
+  const reviewLimitNote = data.reviews.length > visibleReviews.length
+    ? renderDashboardNote(getCopy(`Showing latest ${visibleReviews.length} of ${data.reviews.length} reviews.`, `Ana nuna sabbin ra'ayoyi ${visibleReviews.length} daga ${data.reviews.length}.`))
+    : "";
+
   return shell("admin/reviews",
     getCopy("Trust", "Amana"),
     getCopy("Review moderation", "Duba ra'ayoyi"),
@@ -230,7 +250,7 @@ function renderReviewsPage(data: ReturnType<typeof getAdminDashboardData>): stri
         eyebrow: getCopy("Reviews", "Ra'ayoyi"),
         title: `${data.reviews.length} ${getCopy("platform reviews", "ra'ayoyin dandalin")}`,
         body: data.reviews.length
-          ? `<div class="dash-notification-stack">${data.reviews.slice(0, 20).map((r) => `
+          ? `<div class="dash-notification-stack">${visibleReviews.map((r) => `
               <article class="dash-review-item" data-review-id="${escapeHtml(r.id)}">
                 <div class="dash-review-rating">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</div>
                 <div class="dash-review-body">
@@ -242,7 +262,7 @@ function renderReviewsPage(data: ReturnType<typeof getAdminDashboardData>): stri
                   ${r.hidden ? getCopy("Restore", "Maido") : getCopy("Hide", "Ɓoye")}
                 </button>
               </article>
-            `).join("")}</div>`
+            `).join("")}</div>${reviewLimitNote}`
           : renderEmptyState(getCopy("No reviews yet", "Babu ra'ayoyi tukuna"), getCopy("Customer product reviews will appear here for moderation.", "Ra'ayoyin kayan kwastoma za su bayyana a nan don duba.")),
       })}
       <div class="review-moderation-list" id="reviewModeration" hidden></div>

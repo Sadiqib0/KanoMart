@@ -2,6 +2,7 @@ import type { UserSession } from "../../../backend/types";
 import { getVendorDashboardData, productToMiniMeta } from "../../services/dashboard-data";
 import {
   renderDashboardHeader,
+  renderDashboardNote,
   renderEmptyState,
   renderMiniRows,
   renderMoney,
@@ -39,7 +40,11 @@ function shell(currentPath: string, eyebrow: string, title: string, description:
 }
 
 function renderProductsPage(user: UserSession, data: ReturnType<typeof getVendorDashboardData>): string {
-  const productRows = data.products.map((p) => `
+  const visibleProducts = data.products.slice(0, 50);
+  const productLimitNote = data.products.length > visibleProducts.length
+    ? renderDashboardNote(getCopy(`Showing first ${visibleProducts.length} of ${data.products.length} products to keep this page fast.`, `Ana nuna kaya ${visibleProducts.length} daga ${data.products.length} don shafin ya yi sauri.`))
+    : "";
+  const productRows = visibleProducts.map((p) => `
     <div class="dash-mini-row vendor-product-row">
       <div class="dash-mini-row-main">
         <strong>${escapeHtml(getLocalizedValue(p.name))}</strong>
@@ -67,7 +72,7 @@ function renderProductsPage(user: UserSession, data: ReturnType<typeof getVendor
           eyebrow: getCopy("Listings", "Jeri"),
           title: `${data.products.length} ${getCopy("products", "kaya")}`,
           body: data.products.length
-            ? `<div class="dash-mini-rows">${productRows}</div>`
+            ? `<div class="dash-mini-rows">${productRows}</div>${productLimitNote}`
             : renderEmptyState(getCopy("No products yet", "Babu kaya tukuna"), getCopy("Add your first product to start selling on KanoMart.", "Ƙara kayan farko don fara siyarwa a KanoMart."), { label: getCopy("Add product", "Ƙara kaya"), href: "#vendorProductForm" }),
         })}
         ${renderPanel({
@@ -157,6 +162,11 @@ function renderOrdersPage(user: UserSession, data: ReturnType<typeof getVendorDa
 }
 
 function renderInventoryPage(user: UserSession, data: ReturnType<typeof getVendorDashboardData>): string {
+  const visibleInventory = data.products.slice(0, 50);
+  const inventoryLimitNote = data.products.length > visibleInventory.length
+    ? renderDashboardNote(getCopy(`Showing first ${visibleInventory.length} of ${data.products.length} inventory records.`, `Ana nuna bayanan ajiya ${visibleInventory.length} daga ${data.products.length}.`))
+    : "";
+
   return shell("vendor/inventory",
     getCopy("Inventory", "Ajiya"),
     getCopy("Stock management", "Sarrafa ajiya"),
@@ -174,10 +184,10 @@ function renderInventoryPage(user: UserSession, data: ReturnType<typeof getVendo
       ${renderPanel({
         eyebrow: getCopy("All products", "Dukkan kaya"),
         title: getCopy("Full inventory", "Cikakkiyar ajiya"),
-        body: renderMiniRows(
-          data.products.map((p) => ({ title: getLocalizedValue(p.name), meta: `${getCopy("Stock", "Ajiya")}: ${p.quantityAvailable ?? 0} · ${escapeHtml(p.listingStatus ?? "active")}`, status: p.listingStatus ?? "active" })),
+        body: `${renderMiniRows(
+          visibleInventory.map((p) => ({ title: getLocalizedValue(p.name), meta: `${getCopy("Stock", "Ajiya")}: ${p.quantityAvailable ?? 0} · ${escapeHtml(p.listingStatus ?? "active")}`, status: p.listingStatus ?? "active" })),
           { title: getCopy("No products", "Babu kaya"), body: getCopy("Add products to start tracking inventory.", "Ƙara kaya don fara bin diddigin ajiya.") }
-        ),
+        )}${inventoryLimitNote}`,
       })}
     </div>`
   );

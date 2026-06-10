@@ -1,5 +1,7 @@
 import { escapeHtml, formatPrice, localizeStatus } from "../../utils";
 
+let panelIdCounter = 0;
+
 export type StatCardInput = {
   label: string;
   value: string | number;
@@ -24,7 +26,10 @@ export function renderStatusBadge(status: string, label = status): string {
 export function renderStatCard(stat: StatCardInput): string {
   return `
     <article class="dash-stat-card" data-tone="${escapeHtml(stat.tone ?? "neutral")}">
-      <span>${escapeHtml(stat.label)}</span>
+      <div class="dash-stat-card-top">
+        <span>${escapeHtml(stat.label)}</span>
+        <i aria-hidden="true"></i>
+      </div>
       <strong>${escapeHtml(String(stat.value))}</strong>
       ${stat.detail ? `<small>${escapeHtml(stat.detail)}</small>` : ""}
     </article>
@@ -54,10 +59,14 @@ export function renderErrorState(title: string, body: string): string {
   `;
 }
 
+export function renderDashboardNote(body: string): string {
+  return `<p class="dash-page-note">${escapeHtml(body)}</p>`;
+}
+
 export function renderSkeletonCards(count = 4): string {
   return `
     <div class="dash-stat-grid" aria-hidden="true">
-      ${Array.from({ length: count }, () => `<article class="dash-stat-card dash-skeleton"><span></span><strong></strong><small></small></article>`).join("")}
+      ${Array.from({ length: count }, () => `<article class="dash-stat-card dash-skeleton"><div class="dash-stat-card-top"><span></span><i></i></div><strong></strong><small></small></article>`).join("")}
     </div>
   `;
 }
@@ -79,7 +88,7 @@ export function renderDashboardHeader(input: {
 }): string {
   return `
     <header class="dash-page-header">
-      <div>
+      <div class="dash-header-copy">
         <p class="dash-eyebrow">${escapeHtml(input.eyebrow)}</p>
         <h2>${escapeHtml(input.title)}</h2>
         <p>${escapeHtml(input.description)}</p>
@@ -96,12 +105,14 @@ export function renderPanel(input: {
   body: string;
   className?: string;
 }): string {
+  panelIdCounter += 1;
+  const titleId = `dash-panel-${input.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "section"}-${panelIdCounter}`;
   return `
-    <section class="dash-panel ${escapeHtml(input.className ?? "")}">
+    <section class="dash-panel ${escapeHtml(input.className ?? "")}" aria-labelledby="${escapeHtml(titleId)}">
       <div class="dash-panel-heading">
         <div>
           ${input.eyebrow ? `<span>${escapeHtml(input.eyebrow)}</span>` : ""}
-          <h3>${escapeHtml(input.title)}</h3>
+          <h3 id="${escapeHtml(titleId)}">${escapeHtml(input.title)}</h3>
         </div>
         ${input.action ? renderDashboardAction({ ...input.action, tone: input.action.tone ?? "secondary" }) : ""}
       </div>
@@ -121,13 +132,15 @@ export function renderMiniRows(
         .map(
           (row) => `
             <article class="dash-mini-row">
-              <div>
+              <div class="dash-mini-row-main">
                 <strong>${escapeHtml(row.title)}</strong>
                 ${row.meta ? `<span>${escapeHtml(row.meta)}</span>` : ""}
               </div>
-              ${row.value ? `<b>${escapeHtml(row.value)}</b>` : ""}
-              ${row.status ? renderStatusBadge(row.status) : ""}
-              ${row.action ? renderDashboardAction({ ...row.action, tone: row.action.tone ?? "secondary" }) : ""}
+              <div class="dash-mini-row-aside">
+                ${row.value ? `<b>${escapeHtml(row.value)}</b>` : ""}
+                ${row.status ? renderStatusBadge(row.status) : ""}
+                ${row.action ? renderDashboardAction({ ...row.action, tone: row.action.tone ?? "secondary" }) : ""}
+              </div>
             </article>
           `
         )
