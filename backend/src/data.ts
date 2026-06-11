@@ -266,7 +266,7 @@ export const products: Product[] = [
     vendor: "Hajiya Ladi Kitchen",
     area: "Tarauni",
     availability: { en: "Ready from 12pm", ha: "A shirye daga 12 na rana" },
-    accent: "#b64232",
+    accent: "#1d7d59",
     tags: ["tuwo", "miyan kuka", "traditional", "abincin gargajiya", "restaurant", "gidajen abinci"],
   },
   {
@@ -278,7 +278,7 @@ export const products: Product[] = [
     vendor: "Aminu Snacks",
     area: "Kofar Ruwa",
     availability: { en: "Fresh daily", ha: "Sabo kullum" },
-    accent: "#d69b2d",
+    accent: "#2f9268",
     tags: ["masa", "snacks", "fast food", "kayan ciye ciye", "yaji", "abinci"],
   },
   {
@@ -290,7 +290,7 @@ export const products: Product[] = [
     vendor: "Kantin Kwari Textiles",
     area: "Kantin Kwari",
     availability: { en: "New colors in stock", ha: "Sabbin launuka suna nan" },
-    accent: "#5c4f83",
+    accent: "#14533c",
     tags: ["fabric", "fabrics", "yaduka", "ankara", "kaya", "textile", "fashion"],
   },
   {
@@ -302,7 +302,7 @@ export const products: Product[] = [
     vendor: "Alhaji Musa Wears",
     area: "Fagge",
     availability: { en: "Sizes M to XXL", ha: "Girma M zuwa XXL" },
-    accent: "#1f7b84",
+    accent: "#177a63",
     tags: ["jallabiya", "clothes", "boutique", "kayan boutique", "fashion", "kaya"],
   },
   {
@@ -326,7 +326,7 @@ export const products: Product[] = [
     vendor: "Kano Footwear Hub",
     area: "Naibawa",
     availability: { en: "Made in Kano", ha: "An yi a Kano" },
-    accent: "#854d2a",
+    accent: "#3b6b52",
     tags: ["shoes", "takalma", "sandals", "leather", "fashion", "kaya"],
   },
   {
@@ -338,7 +338,7 @@ export const products: Product[] = [
     vendor: "Amina Boutique",
     area: "Farm Centre",
     availability: { en: "New arrivals", ha: "Sabbin kaya sun iso" },
-    accent: "#5c4f83",
+    accent: "#14533c",
     tags: ["boutique", "clothes", "kayan boutique", "gown", "riga", "fashion", "kaya"],
   },
   {
@@ -350,7 +350,7 @@ export const products: Product[] = [
     vendor: "Safara Beauty",
     area: "Sheka",
     availability: { en: "Verified vendor", ha: "Tabbataccen dan kasuwa" },
-    accent: "#b64232",
+    accent: "#1d7d59",
     tags: ["cosmetics", "makeup", "kwalliya", "kayan kwalliya", "beauty", "fashion", "kaya"],
   },
   {
@@ -386,7 +386,7 @@ export const products: Product[] = [
     vendor: "Clear View Optics",
     area: "Dangi Roundabout",
     availability: { en: "Multiple strengths", ha: "Girma daban-daban" },
-    accent: "#1f7b84",
+    accent: "#177a63",
     tags: ["glasses", "tabarau", "reading glasses", "fashion", "kaya"],
   },
   {
@@ -398,7 +398,7 @@ export const products: Product[] = [
     vendor: "Zahra Bags",
     area: "Aminu Kano Way",
     availability: { en: "Popular colors available", ha: "Akwai shahararrun launuka" },
-    accent: "#854d2a",
+    accent: "#3b6b52",
     tags: ["bags", "bag", "jakunkuna", "jakar hannu", "handbag", "fashion", "kaya"],
   },
   {
@@ -410,7 +410,7 @@ export const products: Product[] = [
     vendor: "Maryam Accessories",
     area: "Court Road",
     availability: { en: "Gift packs ready", ha: "Akwai kunshin kyauta" },
-    accent: "#d69b2d",
+    accent: "#2f9268",
     tags: ["jewelry", "jewellery", "kayan ado", "accessories", "fashion", "kaya"],
   },
   {
@@ -422,7 +422,7 @@ export const products: Product[] = [
     vendor: "Back To School Kano",
     area: "Hotoro",
     availability: { en: "Limited colors", ha: "Launuka kadan sun rage" },
-    accent: "#2563eb",
+    accent: "#0e5a40",
     tags: ["school bag", "school bags", "jakar makaranta", "jakunkunan makaranta", "children", "yara"],
   },
   {
@@ -434,7 +434,7 @@ export const products: Product[] = [
     vendor: "Bayero Bookshop",
     area: "Gwale",
     availability: { en: "Bulk prices available", ha: "Akwai farashin yawa" },
-    accent: "#7c3aed",
+    accent: "#24644b",
     tags: ["books", "book", "littattafai", "exercise", "school", "education", "makaranta", "ilimi"],
   },
   {
@@ -446,7 +446,7 @@ export const products: Product[] = [
     vendor: "Yara Essentials",
     area: "Nassarawa",
     availability: { en: "Available this week", ha: "Akwai a wannan mako" },
-    accent: "#b64232",
+    accent: "#1d7d59",
     tags: ["lunch box", "akwatin abinci", "children", "school", "yara", "makaranta"],
   },
   {
@@ -470,7 +470,7 @@ export const products: Product[] = [
     vendor: "Little Kano Wears",
     area: "Sharada",
     availability: { en: "Ages 2 to 10", ha: "Shekara 2 zuwa 10" },
-    accent: "#5c4f83",
+    accent: "#14533c",
     tags: ["children wears", "children clothes", "kayan yara", "native wear", "yara"],
   },
   {
@@ -482,7 +482,7 @@ export const products: Product[] = [
     vendor: "Yara Footwear",
     area: "Kawo",
     availability: { en: "Black and brown", ha: "Baki da ruwan kasa" },
-    accent: "#1f7b84",
+    accent: "#177a63",
     tags: ["children shoes", "school shoes", "takalman yara", "shoes", "takalma", "yara", "makaranta"],
   },
 ];
