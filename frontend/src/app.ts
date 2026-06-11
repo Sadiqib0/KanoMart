@@ -346,12 +346,48 @@ function syncSidebarLabels(): void {
   });
 }
 
+// — Catalog filters & sort —
+
+const activeFilterCats = new Set<string>();
+const activeFilterAreas = new Set<string>();
+let activeSortOrder: "relevance" | "price-asc" | "price-desc" | "newest" = "relevance";
+
+function applyFiltersAndSort(products: typeof state.lastResults): typeof state.lastResults {
+  let result = products;
+  if (activeFilterCats.size > 0) {
+    result = result.filter((p) => {
+      const cat = p.category.en.toLowerCase();
+      return [...activeFilterCats].some((f) => cat.includes(f));
+    });
+  }
+  if (activeFilterAreas.size > 0) {
+    result = result.filter((p) => [...activeFilterAreas].some((a) => p.area?.toLowerCase().includes(a.toLowerCase())));
+  }
+  if (activeSortOrder === "price-asc") {
+    result = [...result].sort((a, b) => {
+      const pa = parseFloat(a.price.replace(/[^\d.]/g, "")) || 0;
+      const pb = parseFloat(b.price.replace(/[^\d.]/g, "")) || 0;
+      return pa - pb;
+    });
+  } else if (activeSortOrder === "price-desc") {
+    result = [...result].sort((a, b) => {
+      const pa = parseFloat(a.price.replace(/[^\d.]/g, "")) || 0;
+      const pb = parseFloat(b.price.replace(/[^\d.]/g, "")) || 0;
+      return pb - pa;
+    });
+  } else if (activeSortOrder === "newest") {
+    result = [...result].sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  }
+  return result;
+}
+
 // — Search —
 
 function renderProductResults(products = state.lastResults): void {
-  const { visibleProducts, hasMore } = paginateProducts(products, state.visibleProductCount);
+  const filtered = applyFiltersAndSort(products);
+  const { visibleProducts, hasMore } = paginateProducts(filtered, state.visibleProductCount);
   elements.resultsGrid.innerHTML = visibleProducts.map(renderProductCard).join("");
-  elements.emptyState.hidden = products.length > 0;
+  elements.emptyState.hidden = filtered.length > 0;
   elements.loadMoreProducts.hidden = !hasMore;
   syncAllWishlistButtons();
 }
@@ -806,7 +842,12 @@ let _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function performSearch(rawQuery: string, debounceMs = 0): void {
   const query = rawQuery.trim();
-  if (!query) return;
+  if (!query) {
+    state.lastQuery = "";
+    state.visibleProductCount = PRODUCT_PAGE_SIZE;
+    renderCatalogPreview();
+    return;
+  }
 
   if (_searchDebounceTimer !== null) clearTimeout(_searchDebounceTimer);
 
@@ -1188,27 +1229,16 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
       }
     }
 
-    // "Save & add similar" keeps category/price/description/stock so vendors
-    // can list variants (same item, different color) without retyping —
-    // only the names and image are cleared for the next variant.
-    const keepDetails = (event.submitter as HTMLElement | null)?.hasAttribute("data-keep-details");
-    if (keepDetails) {
-      for (const fieldName of ["productName", "productNameHa", "productImage"]) {
-        const field = form.querySelector<HTMLInputElement>(`[name='${fieldName}']`);
-        if (field) field.value = "";
-      }
-      form.querySelector<HTMLInputElement>("input[name='productName']")?.focus();
-      if (message) {
-        message.textContent =
-          getCopy(
-            "Product submitted. Details kept — change the name and image for the next variant.",
-            "An aika kaya. An riƙe bayanan — canza suna da hoto don kaya na gaba."
-          ) + liveMessage;
-      }
-    } else {
-      form.reset();
-      if (message) message.textContent = getCopy("Product added to your active catalog.", "An saka kaya a kasuwarka.") + liveMessage;
+    // After submit keep category/price/description/stock; only clear name and
+    // image so the vendor can list the next product (or a variant) immediately.
+    for (const fieldName of ["productName", "productNameHa", "productImage"]) {
+      const field = form.querySelector<HTMLInputElement>(`[name='${fieldName}']`);
+      if (field) field.value = "";
     }
+    const preview = form.querySelector<HTMLImageElement>("#productImagePreview");
+    if (preview) { preview.src = ""; preview.style.display = "none"; }
+    form.querySelector<HTMLInputElement>("input[name='productName']")?.focus();
+    if (message) message.textContent = getCopy("Product added. Add another or update the details below.", "An saka kaya. Ka ƙara wani ko canza bayanan da ke ƙasa.") + liveMessage;
     renderVendorProducts();
     renderVendorCommerce();
     renderCatalogPreview();
@@ -1286,9 +1316,31 @@ elements.searchForm.addEventListener("submit", (event) => {
 });
 
 elements.searchInput.addEventListener("input", () => {
-  if (elements.searchInput.value.trim().length >= 2) {
+  const val = elements.searchInput.value.trim();
+  if (val.length >= 2) {
     performSearch(elements.searchInput.value, 300);
+  } else if (val.length === 0) {
+    performSearch("", 0);
   }
+});
+
+// Filter sidebar checkboxes
+document.querySelector(".catalog-filter-sidebar")?.addEventListener("change", (event) => {
+  const input = (event.target as Element | null)?.closest<HTMLInputElement>("input[type='checkbox']");
+  if (!input) return;
+  const cat = input.dataset.filterCat;
+  const area = input.dataset.filterArea;
+  if (cat) input.checked ? activeFilterCats.add(cat) : activeFilterCats.delete(cat);
+  if (area) input.checked ? activeFilterAreas.add(area) : activeFilterAreas.delete(area);
+  state.visibleProductCount = PRODUCT_PAGE_SIZE;
+  renderProductResults();
+});
+
+// Sort dropdown
+document.querySelector<HTMLSelectElement>("#catalogSort")?.addEventListener("change", (event) => {
+  activeSortOrder = (event.target as HTMLSelectElement).value as typeof activeSortOrder;
+  state.visibleProductCount = PRODUCT_PAGE_SIZE;
+  renderProductResults();
 });
 
 // Hero quick-search chips AND home category cards both trigger catalog search

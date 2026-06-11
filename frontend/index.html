@@ -28,7 +28,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="preload" as="image" href="assets/kano-market-hero.png" />
-    <link rel="stylesheet" href="styles.css?v=20260611b" />
+    <link rel="stylesheet" href="styles.css?v=20260611c" />
   </head>
   <body>
     <div class="app-shell">
@@ -622,23 +622,27 @@
           <aside class="catalog-filter-sidebar" aria-label="Filter products">
             <div class="cf-block">
               <h4 data-en="Category" data-ha="Rukuni">Category</h4>
-              <label class="cf-row"><input type="checkbox" data-query-en="food" data-query-ha="abinci" /><span data-en="Food" data-ha="Abinci">Food</span></label>
-              <label class="cf-row"><input type="checkbox" data-query-en="fashion" data-query-ha="kaya" /><span data-en="Fashion" data-ha="Kaya">Fashion</span></label>
-              <label class="cf-row"><input type="checkbox" data-query-en="school bags" data-query-ha="kayan makaranta" /><span data-en="Children" data-ha="Yara">Children</span></label>
-              <label class="cf-row"><input type="checkbox" data-query-en="perfumes" data-query-ha="turare" /><span data-en="Perfumes" data-ha="Turare">Perfumes</span></label>
-              <label class="cf-row"><input type="checkbox" data-query-en="groceries" data-query-ha="kayan masarufi" /><span data-en="Groceries" data-ha="Kayan masarufi">Groceries</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-cat="food" /><span data-en="Food" data-ha="Abinci">Food</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-cat="fashion" /><span data-en="Fashion" data-ha="Kaya">Fashion</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-cat="children" /><span data-en="Children" data-ha="Yara">Children</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-cat="perfumes" /><span data-en="Perfumes" data-ha="Turare">Perfumes</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-cat="groceries" /><span data-en="Groceries" data-ha="Kayan masarufi">Groceries</span></label>
             </div>
             <div class="cf-block">
               <h4 data-en="Market area" data-ha="Yankin kasuwa">Market area</h4>
-              <label class="cf-row"><input type="checkbox" data-query-en="Kantin Kwari" data-query-ha="Kantin Kwari" /><span>Kantin Kwari</span></label>
-              <label class="cf-row"><input type="checkbox" data-query-en="Sabon Gari" data-query-ha="Sabon Gari" /><span>Sabon Gari</span></label>
-              <label class="cf-row"><input type="checkbox" data-query-en="Tarauni" data-query-ha="Tarauni" /><span>Tarauni</span></label>
-              <label class="cf-row"><input type="checkbox" data-query-en="Nasarawa" data-query-ha="Nasarawa" /><span>Nasarawa</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-area="Kantin Kwari" /><span>Kantin Kwari</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-area="Sabon Gari" /><span>Sabon Gari</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-area="Tarauni" /><span>Tarauni</span></label>
+              <label class="cf-row"><input type="checkbox" data-filter-area="Nasarawa" /><span>Nasarawa</span></label>
             </div>
             <div class="cf-block">
-              <h4 data-en="Delivery" data-ha="Isarwa">Delivery</h4>
-              <label class="cf-row"><input type="checkbox" /><span data-en="Same-day in Kano" data-ha="Rana ɗaya a Kano">Same-day in Kano</span></label>
-              <label class="cf-row"><input type="checkbox" /><span data-en="Pay on delivery" data-ha="Biya a gida">Pay on delivery</span></label>
+              <h4 data-en="Sort" data-ha="Tsarawa">Sort</h4>
+              <select id="catalogSort" class="cf-select" aria-label="Sort products">
+                <option value="relevance" data-en="Relevance" data-ha="Dacewa">Relevance</option>
+                <option value="price-asc" data-en="Price: low to high" data-ha="Farashi: ƙanƙane zuwa babba">Price: low to high</option>
+                <option value="price-desc" data-en="Price: high to low" data-ha="Farashi: babba zuwa ƙanƙane">Price: high to low</option>
+                <option value="newest" data-en="Newest first" data-ha="Sabon farko">Newest first</option>
+              </select>
             </div>
           </aside>
 
@@ -924,7 +928,6 @@
                     style="display:none;margin-top:8px;max-width:180px;max-height:140px;border-radius:8px;object-fit:cover;border:1px solid var(--line)" />
                 </label>
                 <button type="submit" data-en="Add product" data-ha="Saka kaya">Add product</button>
-                <button type="submit" class="secondary-action" data-keep-details data-en="Add &amp; list similar" data-ha="Saka sannan lissafa makamancinsa" title="Keeps category, price, description and stock for the next product — only name and image reset.">Add &amp; list similar</button>
                 <p class="form-message" id="vendorProductMessage" role="status" aria-live="polite"></p>
               </form>
               <div class="vendor-products-list" id="vendorProductsList" aria-live="polite"></div>

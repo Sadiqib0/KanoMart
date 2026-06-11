@@ -55,6 +55,7 @@ export type ApiProduct = {
   listingStatus?: "active" | "out_of_stock" | "taken_down";
   moderationStatus?: "pending" | "approved" | "hidden" | "rejected";
   reviewNote?: string;
+  createdAt?: string;
 };
 
 export type ApiVendorApplication = {

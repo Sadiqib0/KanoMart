@@ -29,6 +29,7 @@ export interface Product {
   moderationStatus?: "pending" | "approved" | "hidden" | "rejected";
   accent: string;
   tags: string[];
+  createdAt?: string;
 }
 
 export type VendorPlanId = "free" | "standard" | "premium";

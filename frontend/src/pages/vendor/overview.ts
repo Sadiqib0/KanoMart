@@ -120,7 +120,6 @@ function renderProductsPage(user: UserSession, data: ReturnType<typeof getVendor
               </div>
               <div class="dash-form-actions">
                 <button type="submit" class="btn btn-primary">${getCopy("Submit product", "Aika kaya")}</button>
-                <button type="submit" class="btn btn-secondary" data-keep-details title="${getCopy("Keeps category, price, description and stock for the next product — only name and image reset.", "Yana riƙe rukuni, farashi, bayani da ajiya don kaya na gaba — suna da hoto ne kawai ake share.")}">${getCopy("Submit & add similar", "Aika sannan ƙara makamancinsa")}</button>
               </div>
               <div id="vendorProductMessage" class="dash-form-status" role="status" aria-live="polite"></div>
             </form>

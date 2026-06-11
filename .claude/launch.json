@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "kanomart-frontend",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "frontend"],
+      "name": "frontend",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-s", "frontend", "-l", "4173"],
       "port": 4173
     }
   ]

@@ -78,6 +78,7 @@ export function mapApiProduct(product: ApiProduct): Product {
     tags: [nameEn, nameHa, product.category, product.vendorName, product.area, ...(product.tags ?? [])]
       .filter(Boolean)
       .map((item) => String(item).toLowerCase()),
+    createdAt: product.createdAt,
   };
 }
 
