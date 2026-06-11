@@ -137,7 +137,7 @@ export function saveVendorProduct(input: VendorProductInput): Product {
     listingStatus: Number(input.quantityAvailable ?? 1) > 0 ? "active" : "out_of_stock",
     // New products always start pending — admin must approve before they appear in catalog
     moderationStatus: "pending",
-    accent: "#1f7b84",
+    accent: "#177a63",
     tags: [name, input.category, input.vendor, input.area].filter(Boolean).map((item) => item.toLowerCase()),
   };
 

@@ -23,6 +23,17 @@ export function getLiveProducts(): Product[] {
   return liveProducts;
 }
 
+/** Merge products into the live cache without replacing it — used when the
+ * server cart returns product objects the catalog hasn't fetched yet, so
+ * cart rows can always resolve a product for display. */
+export function mergeLiveProducts(products: Product[]): void {
+  if (!products.length) return;
+  const byId = new Map(liveProducts.map((p) => [p.id, p]));
+  for (const product of products) byId.set(product.id, product);
+  liveProducts = [...byId.values()];
+  setLiveProducts(liveProducts);
+}
+
 const categoryLabels: Record<string, Product["category"]> = {
   food: { en: "Food", ha: "Abinci" },
   fashion: { en: "Fashion", ha: "Kaya" },

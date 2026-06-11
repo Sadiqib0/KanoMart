@@ -5,7 +5,7 @@ import { state, elements } from "./state";
 import { escapeHtml, getCopy, parsePrice, formatPrice } from "./utils";
 import { showToast } from "./toast";
 import { getProductById } from "../backend/products";
-import { getLiveProducts } from "./live-api";
+import { getLiveProducts, mergeLiveProducts, mapApiProduct } from "./live-api";
 import { api } from "./api-client";
 
 export function getCartItems(): CartItem[] {
@@ -88,6 +88,91 @@ export function removeFromCart(productId: string): void {
 export function clearCart(): void {
   setStoredList(storageKeys.cart, []);
   syncCart();
+}
+
+/**
+ * Pull the server cart and merge it with the local one (quantity = max of the
+ * two, so neither device's adds are lost), then push local-only items up so
+ * both sides agree. Called on boot and right after sign-in — without this,
+ * items added before signing in exist only in localStorage and checkout
+ * (which reads the SERVER cart) fails with "cart_empty".
+ */
+export async function hydrateCartFromServer(): Promise<void> {
+  if (!state.currentUser?.token || state.currentUser.role !== "customer") return;
+  let serverItems: { productId: string; quantity: number; addedAt?: string }[];
+  try {
+    const { cart } = await api.cart();
+    mergeLiveProducts(cart.items.flatMap((i) => (i.product ? [mapApiProduct(i.product)] : [])));
+    serverItems = cart.items;
+  } catch {
+    return; // offline / transient failure — local cart stays authoritative for display
+  }
+
+  const merged = new Map<string, CartItem>();
+  for (const item of serverItems) {
+    merged.set(item.productId, {
+      productId: item.productId,
+      quantity: item.quantity,
+      addedAt: item.addedAt ?? new Date().toISOString(),
+    });
+  }
+  for (const item of getCartItems()) {
+    const existing = merged.get(item.productId);
+    if (existing) existing.quantity = Math.max(existing.quantity, item.quantity);
+    else merged.set(item.productId, item);
+  }
+
+  const items = [...merged.values()];
+  setStoredList(storageKeys.cart, items);
+  syncCart();
+
+  // Push anything the server doesn't know about (best-effort; checkout
+  // reconciliation is the hard gate).
+  await Promise.all(
+    items.map((item) => {
+      const server = serverItems.find((s) => s.productId === item.productId);
+      if (server && server.quantity === item.quantity) return Promise.resolve();
+      return api.addCartItem(item.productId, item.quantity).then(() => undefined, () => undefined);
+    })
+  );
+}
+
+/**
+ * Make the server cart exactly match the local one. Called right before
+ * checkout, because the server builds the order from ITS cart — if the two
+ * have drifted (a fire-and-forget sync failed earlier), the customer would be
+ * charged for different items than the ones displayed. Throws with the
+ * offending product names so checkout can refuse instead of mischarging.
+ */
+export async function reconcileCartWithServer(): Promise<void> {
+  const local = getCartItems();
+  const { cart } = await api.cart();
+
+  const failures: string[] = [];
+  for (const item of local) {
+    const server = cart.items.find((s) => s.productId === item.productId);
+    if (server && server.quantity === item.quantity) continue;
+    try {
+      await api.addCartItem(item.productId, item.quantity);
+    } catch {
+      const product = getCartProduct(item.productId);
+      failures.push(product ? product.name[state.language] : item.productId);
+    }
+  }
+  for (const item of cart.items) {
+    if (!local.some((l) => l.productId === item.productId)) {
+      await api.removeCartItem(item.productId).catch(() => undefined);
+    }
+  }
+
+  if (failures.length) {
+    throw new Error(
+      getCopy(
+        `These items are not available for online checkout right now: ${failures.join(", ")}. Remove them from your cart and try again.`,
+        `Wadannan kayan ba sa samuwa don biya a yanzu: ${failures.join(", ")}. Cire su daga kwandon ka sake gwadawa.`
+      )
+    );
+  }
 }
 
 export function syncCart(): void {

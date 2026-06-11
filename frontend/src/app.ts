@@ -16,6 +16,7 @@ import {
   renderCartPanel,
   updateQuantity,
   removeFromCart,
+  hydrateCartFromServer,
 } from "./cart";
 import { openCheckoutModal } from "./checkout";
 import { openProductModal, refreshActiveProductModal } from "./product-modal";
@@ -1187,8 +1188,27 @@ async function handleVendorProductSubmit(event: SubmitEvent): Promise<void> {
       }
     }
 
-    form.reset();
-    if (message) message.textContent = getCopy("Product added to your active catalog.", "An saka kaya a kasuwarka.") + liveMessage;
+    // "Save & add similar" keeps category/price/description/stock so vendors
+    // can list variants (same item, different color) without retyping —
+    // only the names and image are cleared for the next variant.
+    const keepDetails = (event.submitter as HTMLElement | null)?.hasAttribute("data-keep-details");
+    if (keepDetails) {
+      for (const fieldName of ["productName", "productNameHa", "productImage"]) {
+        const field = form.querySelector<HTMLInputElement>(`[name='${fieldName}']`);
+        if (field) field.value = "";
+      }
+      form.querySelector<HTMLInputElement>("input[name='productName']")?.focus();
+      if (message) {
+        message.textContent =
+          getCopy(
+            "Product submitted. Details kept — change the name and image for the next variant.",
+            "An aika kaya. An riƙe bayanan — canza suna da hoto don kaya na gaba."
+          ) + liveMessage;
+      }
+    } else {
+      form.reset();
+      if (message) message.textContent = getCopy("Product added to your active catalog.", "An saka kaya a kasuwarka.") + liveMessage;
+    }
     renderVendorProducts();
     renderVendorCommerce();
     renderCatalogPreview();
@@ -1652,6 +1672,9 @@ window.addEventListener("kanoMart:signed-in", () => {
   void refreshLiveVendorDashboard();
   void fetchLiveNotifications();
   if (state.currentUser?.role === "customer") {
+    // Items added while signed out only exist in localStorage; merge them
+    // into the server cart now so checkout (server-driven) sees them.
+    void hydrateCartFromServer();
     void fetchLiveOrders().then(() => {
       renderCustomerDashboard();
       renderDashboardPage(getCurrentRoute());
@@ -1767,6 +1790,9 @@ if (state.currentUser?.token) {
       renderAdminGate();
       setRoute();
       if (user.role === "customer") {
+        // Merge the server cart with whatever was added locally (possibly
+        // pre-sign-in or on another device) so checkout sees the same cart.
+        void hydrateCartFromServer();
         void fetchLiveOrders().then(() => {
           renderCustomerDashboard();
           renderDashboardPage(getCurrentRoute());

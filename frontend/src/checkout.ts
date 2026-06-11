@@ -1,6 +1,6 @@
 import { state } from "./state";
 import { getCopy, escapeHtml, formatPrice, isValidPhone } from "./utils";
-import { getCartItems, getCartProduct, getCartSubtotal, clearCart } from "./cart";
+import { getCartItems, getCartProduct, getCartSubtotal, clearCart, reconcileCartWithServer } from "./cart";
 import { showToast } from "./toast";
 import { api } from "./api-client";
 
@@ -194,6 +194,10 @@ export function openCheckoutModal(): void {
       return;
     }
     try {
+      // The server builds the order from ITS cart — make it match the cart
+      // the customer is looking at before placing the order. Throws (and
+      // blocks checkout) if any displayed item can't be synced.
+      await reconcileCartWithServer();
       const result = await api.checkout({
         customerName,
         customerPhone,

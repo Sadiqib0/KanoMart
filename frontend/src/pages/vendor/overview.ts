@@ -120,6 +120,7 @@ function renderProductsPage(user: UserSession, data: ReturnType<typeof getVendor
               </div>
               <div class="dash-form-actions">
                 <button type="submit" class="btn btn-primary">${getCopy("Submit product", "Aika kaya")}</button>
+                <button type="submit" class="btn btn-secondary" data-keep-details title="${getCopy("Keeps category, price, description and stock for the next product — only name and image reset.", "Yana riƙe rukuni, farashi, bayani da ajiya don kaya na gaba — suna da hoto ne kawai ake share.")}">${getCopy("Submit & add similar", "Aika sannan ƙara makamancinsa")}</button>
               </div>
               <div id="vendorProductMessage" class="dash-form-status" role="status" aria-live="polite"></div>
             </form>
@@ -430,6 +431,7 @@ export function renderVendorOverview(user: UserSession, currentPath = "vendor/ov
                 <label><span>${getCopy("Category", "Rukunin kaya")}</span><select name="productCategory" required><option value="food">${getCopy("Food", "Abinci")}</option><option value="fashion">${getCopy("Fashion", "Kaya")}</option><option value="children">${getCopy("Children", "Yara")}</option><option value="essentials">${getCopy("Essentials", "Abubuwan da ake bukata")}</option></select></label>
                 <label><span>${getCopy("Product picture", "Hoton kaya")}</span><input type="file" name="productImage" accept="image/png,image/jpeg,image/webp" required /><small>${getCopy("JPEG, PNG, or WebP. Large phone photos are optimized before upload.", "JPEG, PNG, ko WebP. Ana inganta hotuna kafin aika.")}</small></label>
                 <button type="submit">${getCopy("Add product", "Ƙara kaya")}</button>
+                <button type="submit" class="secondary-action" data-keep-details title="${getCopy("Keeps category, price, description and stock for the next product — only name and image reset.", "Yana riƙe rukuni, farashi, bayani da ajiya don kaya na gaba — suna da hoto ne kawai ake share.")}">${getCopy("Add & list similar", "Ƙara sannan lissafa makamancinsa")}</button>
                 <p class="form-message" id="vendorProductMessage" role="status" aria-live="polite"></p>
               </form>
               <div class="vendor-products-list" id="vendorProductsList" aria-live="polite"></div>

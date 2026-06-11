@@ -356,6 +356,13 @@ body.sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
 .search-form button[type="submit"]:active,
 .auth-submit-btn:active,
 .checkout-btn:active{transform:translateY(1px)}
+/* "Add & list similar" variant button: visually secondary so the primary action stays obvious */
+.vendor-product-form button[type="submit"][data-keep-details]{
+  background:var(--surface);color:var(--brand-2);border-color:var(--brand)
+}
+.vendor-product-form button[type="submit"][data-keep-details]:hover{
+  background:var(--brand-soft);color:var(--brand-2)
+}
 .checkout-btn:disabled,
 .auth-submit-btn:disabled{background:var(--line-2);color:var(--muted);cursor:not-allowed}
 
