@@ -1053,7 +1053,8 @@ body.cart-open .cart-panel{transform:translateX(0)}
 
 /* ════════════════════ 24 · RESPONSIVE ════════════════════ */
 @media (max-width: 980px){
-  .app-shell{grid-template-columns:1fr}
+  .app-shell,
+  body.sidebar-collapsed .app-shell{grid-template-columns:1fr}
   .app-sidebar{
     position:fixed;top:0;left:0;height:100vh;width:280px;z-index:90;
     transform:translateX(-100%);transition:transform .22s ease;border-right:1px solid var(--line);
@@ -1962,6 +1963,7 @@ body.is-admin .mob-nav-item[data-roles="customer vendor admin"]{display:flex}
   border-radius:999px;
   font-weight:700;
   letter-spacing:-.01em;
+  white-space:nowrap;
 }
 .dash-action-primary{
   background:var(--dash-accent);
@@ -2757,10 +2759,142 @@ body.is-admin .mob-nav-item[data-roles="customer vendor admin"]{display:flex}
 }
 .img-lightbox-close:hover{background:rgba(255,255,255,.24)}
 
-/* — Responsive — */
+/* — Responsive (section 30 extras) — */
 @media(max-width:640px){
   .form-grid-two{grid-template-columns:1fr}
   .vendor-commerce-columns{grid-template-columns:1fr}
   .product-modal-actions{flex-direction:column}
   .product-modal-actions .btn-wishlist{justify-content:center}
+}
+
+/* ════════════════════ 31 · MOBILE (≤780px / ≤640px / ≤380px) ════════════════════ */
+
+/* Dashboard: sidebar becomes a sticky bottom tab bar on mobile */
+@media(max-width:780px){
+  /* Collapse shell to single column; leave room for bottom bar */
+  .dash-shell{
+    grid-template-columns:1fr !important;
+    padding:12px 12px 80px !important;
+    gap:14px !important;
+  }
+  /* Pin sidebar to bottom of viewport */
+  .dash-sidebar{
+    position:fixed !important;
+    inset:auto 0 0 !important;
+    top:auto !important;
+    z-index:80;
+    background:var(--surface);
+    border-top:1px solid var(--line);
+    border-radius:18px 18px 0 0;
+    box-shadow:0 -2px 20px rgba(14,26,22,.12);
+    padding:0 !important;
+  }
+  /* Horizontal scrollable tab strip */
+  .dash-role-nav{
+    display:flex !important;
+    grid-template-columns:unset !important;
+    overflow-x:auto;
+    flex-wrap:nowrap !important;
+    gap:2px !important;
+    padding:6px 8px env(safe-area-inset-bottom,8px) !important;
+    background:transparent !important;
+    border:none !important;
+    border-radius:0 !important;
+    box-shadow:none !important;
+    scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
+  }
+  .dash-role-nav::-webkit-scrollbar{display:none}
+  .dash-role-nav a{
+    flex:1 0 auto !important;
+    min-width:56px;
+    max-width:76px;
+    flex-direction:column !important;
+    align-items:center !important;
+    justify-content:center;
+    padding:8px 4px 6px !important;
+    gap:3px !important;
+    text-align:center;
+    min-height:0 !important;
+  }
+  .dash-role-nav a strong{
+    font-size:10px !important;
+    line-height:1.2;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:68px;
+  }
+  .dash-role-nav a span{display:none !important}
+  .dash-role-nav a.is-active::before{display:none !important}
+  /* Icon inside nav link */
+  .dash-role-nav a svg,.dash-role-nav a .nav-glyph{
+    width:20px;height:20px;flex-shrink:0;
+  }
+}
+
+/* Modals: bottom-sheet style on mobile */
+@media(max-width:640px){
+  #productModal,#checkoutModal,#authModal,#userPanel,#wishlistModal,.modal-backdrop{
+    padding:0 !important;
+    align-items:flex-end !important;
+  }
+  #productModal>.modal-content,#productModal>div,
+  #checkoutModal>.modal-content,#checkoutModal>div,
+  #authModal>.modal-content,#authModal>div,
+  #userPanel>.modal-content,#userPanel>div,
+  #wishlistModal>.modal-content,#wishlistModal>div,
+  .modal-backdrop>.modal-box,.modal-backdrop>.modal-content,.modal-backdrop>div{
+    max-width:100% !important;
+    max-height:94vh !important;
+    overflow-y:auto !important;
+    border-radius:var(--r-lg) var(--r-lg) 0 0 !important;
+    padding:20px 16px 32px !important;
+    transform:translateY(32px) !important;
+  }
+  /* Visible state: slide up from bottom */
+  #productModal.modal-visible>div,
+  #checkoutModal.modal-visible>div,
+  #authModal.modal-visible>div,
+  #userPanel.modal-visible>div,
+  #wishlistModal.modal-visible>div,
+  .modal-backdrop.modal-visible>div{
+    transform:translateY(0) !important;
+  }
+  /* Product modal specific */
+  #productModal>div,#productModal>.modal-content{
+    overflow-y:auto !important;
+    padding:16px 16px 28px !important;
+  }
+  .product-modal-thumb{height:190px}
+  .modal-header h2{font-size:18px}
+  .modal-header{margin-bottom:14px;padding-bottom:12px}
+
+  /* Cart drawer: tighter on mobile */
+  .cart-panel-header,.cart-panel-footer{padding:12px 14px}
+  .cart-items-list{padding:10px 14px}
+  .cart-panel-header h2{font-size:18px}
+
+  /* Reduce app page side padding */
+  .app-page{padding:16px 12px !important}
+
+  /* Vendor product rows: wrap actions below on narrow screens */
+  .vendor-product-row{
+    grid-template-columns:40px minmax(0,1fr) !important;
+    grid-template-rows:auto auto;
+  }
+  .vendor-product-actions{
+    grid-column:1/-1;
+    justify-content:flex-start;
+    padding-top:4px;
+  }
+}
+
+/* Very small screens (≤380px): single-column product grid, tighter stats */
+@media(max-width:380px){
+  .product-grid{grid-template-columns:1fr !important}
+  .home-cat-grid{grid-template-columns:1fr 1fr !important}
+  .dash-stat-grid{grid-template-columns:1fr !important}
+  .dash-page-header h2{font-size:26px !important}
+  .site-header{padding:10px 12px !important;gap:8px !important}
 }
